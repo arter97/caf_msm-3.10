@@ -135,6 +135,7 @@ irqreturn_t mdss_mdp_isr(int irq, void *ptr)
 	if (isr == 0)
 		goto mdp_isr_done;
 
+	MDSS_MDP_REG_WRITE(MDSS_MDP_REG_DRM_INTR_STATUS, isr);
 
 	mask = readl_relaxed(mdata->mdp_base + MDSS_MDP_REG_INTR_EN);
 	writel_relaxed(isr, mdata->mdp_base + MDSS_MDP_REG_INTR_CLEAR);
