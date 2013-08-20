@@ -39,8 +39,6 @@
 
 #define DRM_KGSL_GEM_FLAG_MAPPED (1 << 0)
 
-#define MAX_CRTC	4
-
 #define DRM_KGSL_NOT_INITED -1
 #define DRM_KGSL_INITED   1
 
@@ -91,7 +89,7 @@ struct drm_kgsl_private {
 	void __iomem *regs;
 	size_t reg_size;
 	unsigned int irq;
-	atomic_t vbl_received[MAX_CRTC];
+	atomic_t vbl_received[DRM_KGSL_CRTC_MAX];
 };
 
 struct drm_kgsl_gem_object {
@@ -1297,7 +1295,7 @@ kgsl_drm_get_vblank_counter(struct drm_device *dev, int crtc)
 
 	DRM_DEBUG("%s:crtc[%d]\n", __func__, crtc);
 
-	if (crtc > MAX_CRTC) {
+	if (crtc > DRM_KGSL_CRTC_MAX) {
 		DRM_ERROR("failed to get vbl counter\n");
 		return -EINVAL;
 	}
@@ -1310,7 +1308,7 @@ kgsl_drm_enable_vblank(struct drm_device *dev, int crtc)
 {
 	DRM_DEBUG("%s:crtc[%d]\n", __func__, crtc);
 
-	if (crtc > MAX_CRTC) {
+	if (crtc > DRM_KGSL_CRTC_MAX) {
 		DRM_ERROR("failed to disable vblank.\n");
 		return -EINVAL;
 	}
@@ -1323,7 +1321,7 @@ kgsl_drm_disable_vblank(struct drm_device *dev, int crtc)
 {
 	DRM_DEBUG("%s:crtc[%d]\n", __func__, crtc);
 
-	if (crtc > MAX_CRTC)
+	if (crtc > DRM_KGSL_CRTC_MAX)
 		DRM_ERROR("failed to disable vblank.\n");
 }
 
@@ -1344,22 +1342,22 @@ kgsl_drm_irq_handler(DRM_IRQ_ARGS)
 
 	if (isr & MDSS_MDP_INTR_INTF_1_VSYNC) {
 		DRM_DEBUG("%s:DSI0\n", __func__);
-		drm_handle_vblank(dev, 0);
+		drm_handle_vblank(dev, DRM_KGSL_CRTC_PRIMARY);
 	}
 
 	if (isr & MDSS_MDP_INTR_INTF_3_VSYNC) {
 		DRM_DEBUG("%s:HDMI\n", __func__);
-		drm_handle_vblank(dev, 1);
+		drm_handle_vblank(dev, DRM_KGSL_CRTC_HDMI);
 	}
 
 	if (isr & MDSS_MDP_INTR_WB_0_DONE) {
 		DRM_DEBUG("%s:Rotator\n", __func__);
-		drm_handle_vblank(dev, 2);
+		drm_handle_vblank(dev, DRM_KGSL_CRTC_ROTATOR);
 	}
 
 	if (isr & MDSS_MDP_INTR_WB_2_DONE) {
 		DRM_DEBUG("%s:WFD\n", __func__);
-		drm_handle_vblank(dev, 3);
+		drm_handle_vblank(dev, DRM_KGSL_CRTC_WFD);
 	}
 
 irq_done:
@@ -1375,7 +1373,7 @@ kgsl_drm_irq_preinstall(struct drm_device *dev)
 
 	DRM_DEBUG("%s\n", __func__);
 
-	for (i = 0; i < MAX_CRTC; i++)
+	for (i = 0; i < DRM_KGSL_CRTC_MAX; i++)
 		atomic_set(&dev_priv->vbl_received[i], 0);
 
 	dev->irq_enabled = 0;
@@ -1667,7 +1665,7 @@ static int kgsl_drm_load(struct drm_device *dev, unsigned long flags)
 	 * 3 : writeback 0 device(Rotator)
 	 * 4 : writeback 2 device(WFD)
 	 */
-	ret = drm_vblank_init(dev, MAX_CRTC);
+	ret = drm_vblank_init(dev, DRM_KGSL_CRTC_MAX);
 	if (ret) {
 		DRM_ERROR("failed to init vblank.\n");
 		return ret;
