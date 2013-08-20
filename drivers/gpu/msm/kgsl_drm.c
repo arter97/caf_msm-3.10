@@ -92,6 +92,7 @@ struct drm_kgsl_private {
 	unsigned int irq;
 	bool fake_vbl;
 	struct work_struct fake_vbl_work;
+	struct mutex fake_vbl_lock;
 	atomic_t vbl_received[DRM_KGSL_CRTC_MAX];
 };
 
@@ -1321,8 +1322,10 @@ kgsl_drm_enable_vblank(struct drm_device *dev, int crtc)
 
 	switch (crtc) {
 	case DRM_KGSL_CRTC_FAKE:
+		mutex_lock(&dev_priv->fake_vbl_lock);
 		dev_priv->fake_vbl = true;
 		schedule_work(&dev_priv->fake_vbl_work);
+		mutex_unlock(&dev_priv->fake_vbl_lock);
 		break;
 	default:
 		break;
@@ -1344,7 +1347,9 @@ kgsl_drm_disable_vblank(struct drm_device *dev, int crtc)
 
 	switch (crtc) {
 	case DRM_KGSL_CRTC_FAKE:
+		mutex_lock(&dev_priv->fake_vbl_lock);
 		dev_priv->fake_vbl = false;
+		mutex_unlock(&dev_priv->fake_vbl_lock);
 		break;
 	default:
 		break;
@@ -1400,7 +1405,10 @@ kgsl_drm_fake_vblank_handler(struct work_struct *work)
 	usleep_range(15000, 16000);
 
 	DRM_DEBUG("%s\n", __func__);
+
+	mutex_lock(&dev_priv->fake_vbl_lock);
 	drm_handle_vblank(dev_priv->drm_dev, DRM_KGSL_CRTC_FAKE);
+	mutex_unlock(&dev_priv->fake_vbl_lock);
 
 	if (dev_priv->fake_vbl)
 		schedule_work(&dev_priv->fake_vbl_work);
@@ -1697,6 +1705,9 @@ static int kgsl_drm_load(struct drm_device *dev, unsigned long flags)
 
 	/* init workqueue for fake vsync */
 	INIT_WORK(&dev_priv->fake_vbl_work, kgsl_drm_fake_vblank_handler);
+
+	/* mutext init */
+	mutex_init(&dev_priv->fake_vbl_lock);
 
 	/* store dev structure */
 	dev_priv->drm_dev = dev;
