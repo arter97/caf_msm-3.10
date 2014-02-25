@@ -20,8 +20,9 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/msm_ion.h>
+#ifdef CONFIG_GENLOCK
 #include <linux/genlock.h>
-
+#endif
 #include "kgsl.h"
 #include "kgsl_device.h"
 #include "kgsl_drm.h"
@@ -113,7 +114,9 @@ struct drm_kgsl_gem_object {
 		uint32_t gpuaddr;
 	} bufs[DRM_KGSL_GEM_MAX_BUFFERS];
 
+#ifdef CONFIG_GENLOCK
 	struct genlock_handle *glock_handle[DRM_KGSL_GEM_MAX_BUFFERS];
+#endif
 
 	int bound;
 	int lockpid;
@@ -347,8 +350,9 @@ static void
 kgsl_gem_free_memory(struct drm_gem_object *obj)
 {
 	struct drm_kgsl_gem_object *priv = obj->driver_private;
+#ifdef CONFIG_GENLOCK
 	int index;
-
+#endif
 	if (!kgsl_gem_memory_allocated(obj) || TYPE_IS_FD(priv->type))
 		return;
 
@@ -368,10 +372,12 @@ kgsl_gem_free_memory(struct drm_gem_object *obj)
 
 	memset(&priv->memdesc, 0, sizeof(priv->memdesc));
 
+#ifdef CONFIG_GENLOCK
 	for (index = 0; index < priv->bufcount; index++) {
 		if (priv->glock_handle[index])
 			genlock_put_handle(priv->glock_handle[index]);
 	}
+#endif
 
 	kgsl_mmu_putpagetable(priv->pagetable);
 	priv->pagetable = NULL;
@@ -954,9 +960,9 @@ out:
 	return ret;
 }
 
+#ifdef CONFIG_GENLOCK
 /* Get the genlock handles base off the GEM handle
  */
-
 int
 kgsl_gem_get_glock_handles_ioctl(struct drm_device *dev, void *data,
 					struct drm_file *file_priv)
@@ -1015,6 +1021,23 @@ kgsl_gem_set_glock_handles_ioctl(struct drm_device *dev, void *data,
 
 	return 0;
 }
+#else
+
+int
+kgsl_gem_get_glock_handles_ioctl(struct drm_device *dev, void *data,
+					struct drm_file *file_priv)
+{
+	return -EINVAL;
+}
+
+int
+kgsl_gem_set_glock_handles_ioctl(struct drm_device *dev, void *data,
+					struct drm_file *file_priv)
+{
+	return -EINVAL;
+}
+
+#endif
 
 int
 kgsl_gem_set_bufcount_ioctl(struct drm_device *dev, void *data,
