@@ -65,6 +65,7 @@
 #include "apq8084-pinctrl.dtsi"
 #include "apq8084-camera.dtsi"
 #include "apq8084-ipcrouter.dtsi"
+#include "apq8084-drm.dtsi"
 
 &soc {
 	#address-cells = <1>;
