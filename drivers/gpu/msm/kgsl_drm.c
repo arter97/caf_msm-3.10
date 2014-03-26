@@ -1549,8 +1549,12 @@ int kgsl_gem_prime_fd_to_handle(struct drm_device *dev,
 	}
 
 	ret = kgsl_gem_init_obj(dev, file_priv, obj, &gem_handle);
-	if (ret)
+	if (ret) {
+		drm_gem_object_release(obj);
+		kfree(obj->driver_private);
+		kfree(obj);
 		return ret;
+	}
 
 	priv = obj->driver_private;
 	priv->ion_handle = ion_handle;
@@ -1574,6 +1578,7 @@ int kgsl_gem_prime_fd_to_handle(struct drm_device *dev,
 		kgsl_mmu_putpagetable(priv->pagetable);
 		drm_gem_object_release(obj);
 		kfree(priv);
+		kfree(obj);
 		return -ENOMEM;
 	}
 
@@ -1597,6 +1602,7 @@ int kgsl_gem_prime_fd_to_handle(struct drm_device *dev,
 		kgsl_mmu_putpagetable(priv->pagetable);
 		drm_gem_object_release(obj);
 		kfree(priv);
+		kfree(obj);
 		return -ENOMEM;
 	}
 
