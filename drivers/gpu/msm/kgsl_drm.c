@@ -353,13 +353,16 @@ kgsl_gem_free_memory(struct drm_gem_object *obj)
 #ifdef CONFIG_GENLOCK
 	int index;
 #endif
-	if (!kgsl_gem_memory_allocated(obj) || TYPE_IS_FD(priv->type))
+	if (!kgsl_gem_memory_allocated(obj))
 		return;
 
 	if (priv->memdesc.gpuaddr) {
 		kgsl_mmu_unmap(priv->memdesc.pagetable, &priv->memdesc);
 		kgsl_mmu_put_gpuaddr(priv->memdesc.pagetable, &priv->memdesc);
 	}
+
+	if(priv->type == DRM_KGSL_GEM_TYPE_FD_FBMEM )
+		kgsl_free(priv->memdesc.sg);
 
 	/* ION will take care of freeing the sg table. */
 	priv->memdesc.sg = NULL;
@@ -541,8 +544,11 @@ kgsl_gem_create_fd_ioctl(struct drm_device *dev, void *data,
 	dev_t rdev;
 	struct fb_info *info;
 	struct drm_gem_object *obj;
+	struct kgsl_mmu *mmu;
 	struct drm_kgsl_gem_object *priv;
 	int ret, put_needed, handle;
+	int index;
+	int result = 0;
 
 	file = fget_light(args->fd, &put_needed);
 
@@ -591,10 +597,82 @@ kgsl_gem_create_fd_ioctl(struct drm_device *dev, void *data,
 
 	priv = obj->driver_private;
 	priv->memdesc.physaddr = info->fix.smem_start;
+	priv->memdesc.size = info->fix.smem_len;
 	priv->type = DRM_KGSL_GEM_TYPE_FD_FBMEM;
 
-	mutex_unlock(&dev->struct_mutex);
+	if (priv->pagetable == NULL) {
+		mmu = &kgsl_get_device(KGSL_DEVICE_3D0)->mmu;
+
+		priv->pagetable = kgsl_mmu_getpagetable(mmu,
+					KGSL_MMU_GLOBAL_PT);
+
+		if (priv->pagetable == NULL) {
+			DRM_ERROR("Unable to get the GPU MMU pagetable\n");
+			drm_gem_object_release(obj);
+			kfree(priv);
+			kfree(obj);
+			ret = -EINVAL;
+			goto unlock;
+		}
+	}
+
+	priv->memdesc.pagetable = priv->pagetable;
+
+	result = memdesc_sg_phys(&priv->memdesc,
+	priv->memdesc.physaddr, priv->memdesc.size);
+
+	if (result) {
+			DRM_ERROR("Unable to get sg list for FBMEM\n");
+			kgsl_mmu_putpagetable(priv->pagetable);
+			drm_gem_object_release(obj);
+			kfree(priv);
+			kfree(obj);
+			ret= result;
+			goto unlock;
+	}
+
+	 result = kgsl_mmu_get_gpuaddr(priv->pagetable,
+								 &priv->memdesc);
+	 if (result) {
+		 DRM_ERROR(
+		 "kgsl_mmu_get_gpuaddr failed. result = %d\n",
+		 result);
+		 kgsl_free(priv->memdesc.sg);
+		 kgsl_mmu_putpagetable(priv->pagetable);
+		 drm_gem_object_release(obj);
+		 kfree(priv);
+		 kfree(obj);
+		 ret = result;
+		 goto unlock;
+	}
+
+	result = kgsl_mmu_map(priv->pagetable, &priv->memdesc);
+	if (result) {
+		 DRM_ERROR(
+		 "kgsl_mmu_map failed.	result = %d\n", result);
+		 kgsl_mmu_put_gpuaddr(priv->pagetable,
+					 &priv->memdesc);
+		 kgsl_free(priv->memdesc.sg);
+		 kgsl_mmu_putpagetable(priv->pagetable);
+		 drm_gem_object_release(obj);
+		 kfree(priv);
+		 kfree(obj);
+		 ret = result;
+		 goto unlock;
+	}
+
+	for (index = 0; index < priv->bufcount; index++) {
+		priv->bufs[index].offset = index * obj->size;
+		priv->bufs[index].gpuaddr =
+			priv->memdesc.gpuaddr +
+			priv->bufs[index].offset;
+	}
+	priv->flags |= DRM_KGSL_GEM_FLAG_MAPPED;
+
 	args->handle = handle;
+
+unlock:
+	mutex_unlock(&dev->struct_mutex);
 
 error_fput:
 	fput_light(file, put_needed);
