@@ -728,6 +728,7 @@ kgsl_gem_create_from_ion_ioctl(struct drm_device *dev, void *data,
 		return ret;
 	}
 
+	mutex_lock(&dev->struct_mutex);
 	priv = obj->driver_private;
 	priv->ion_handle = ion_handle;
 
@@ -742,7 +743,7 @@ kgsl_gem_create_from_ion_ioctl(struct drm_device *dev, void *data,
 
 	sg_table = ion_sg_table(kgsl_drm_ion_client,
 		priv->ion_handle);
-	if (IS_ERR_OR_NULL(priv->ion_handle)) {
+	if (IS_ERR_OR_NULL(sg_table)) {
 		DRM_ERROR("Unable to get ION sg table\n");
 		ion_free(kgsl_drm_ion_client,
 			priv->ion_handle);
@@ -751,7 +752,8 @@ kgsl_gem_create_from_ion_ioctl(struct drm_device *dev, void *data,
 		drm_gem_object_release(obj);
 		kfree(priv);
 		kfree(obj);
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto unlock;
 	}
 
 	priv->memdesc.sg = sg_table->sgl;
@@ -775,7 +777,8 @@ kgsl_gem_create_from_ion_ioctl(struct drm_device *dev, void *data,
 		drm_gem_object_release(obj);
 		kfree(priv);
 		kfree(obj);
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto unlock;
 	}
 	ret = kgsl_mmu_map(priv->pagetable, &priv->memdesc);
 	if (ret) {
@@ -788,7 +791,8 @@ kgsl_gem_create_from_ion_ioctl(struct drm_device *dev, void *data,
 		drm_gem_object_release(obj);
 		kfree(priv);
 		kfree(obj);
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto unlock;
 	}
 
 	priv->bufs[0].offset = 0;
@@ -796,7 +800,11 @@ kgsl_gem_create_from_ion_ioctl(struct drm_device *dev, void *data,
 	priv->flags |= DRM_KGSL_GEM_FLAG_MAPPED;
 
 	args->handle = handle;
-	return 0;
+	args->size = size;
+
+unlock:
+	mutex_unlock(&dev->struct_mutex);
+	return ret;
 }
 
 int
