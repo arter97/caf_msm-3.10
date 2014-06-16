@@ -70,7 +70,6 @@
 	(((_t & DRM_KGSL_GEM_TYPE_MEM_MASK) == DRM_KGSL_GEM_TYPE_KMEM_NOCACHE))
 
 /* MDP register information from mdss_mdp_hwio.h */
-#define MDSS_MDP_REG_DRM_INTR_STATUS    0x14
 #define MDSS_MDP_REG_INTR_EN			0x00110
 #define MDSS_MDP_REG_INTR_STATUS		0x00114
 #define MDSS_MDP_REG_INTR_CLEAR		0x00118
@@ -80,6 +79,7 @@
 #define MDSS_MDP_INTR_WB_0_DONE		BIT(0)
 #define MDSS_MDP_INTR_WB_2_DONE		BIT(4)
 
+extern u32 mdp_drm_intr_status;
 
 /* Returns true if memory type is secure */
 #define TYPE_IS_SECURE(_t) \
@@ -1360,13 +1360,10 @@ static irqreturn_t
 kgsl_drm_irq_handler(DRM_IRQ_ARGS)
 {
 	struct drm_device *dev = (struct drm_device *)arg;
-	struct drm_kgsl_private *dev_priv =
-		(struct drm_kgsl_private *)dev->dev_private;
-	u32 isr;
+	u32 isr = mdp_drm_intr_status;
 
-	isr = readl_relaxed(dev_priv->regs + MDSS_MDP_REG_DRM_INTR_STATUS);
-
-	DRM_DEBUG("%s:isr[0x%x]\n", __func__, isr);
+	DRM_DEBUG("%s:isr[0x%x] mdp_mdrm_intr_status =%u \n", __func__, isr,
+			mdp_drm_intr_status);
 
 	if (isr == 0)
 		goto irq_done;
@@ -1552,8 +1549,12 @@ int kgsl_gem_prime_fd_to_handle(struct drm_device *dev,
 	}
 
 	ret = kgsl_gem_init_obj(dev, file_priv, obj, &gem_handle);
-	if (ret)
+	if (ret) {
+		drm_gem_object_release(obj);
+		kfree(obj->driver_private);
+		kfree(obj);
 		return ret;
+	}
 
 	priv = obj->driver_private;
 	priv->ion_handle = ion_handle;
@@ -1577,6 +1578,7 @@ int kgsl_gem_prime_fd_to_handle(struct drm_device *dev,
 		kgsl_mmu_putpagetable(priv->pagetable);
 		drm_gem_object_release(obj);
 		kfree(priv);
+		kfree(obj);
 		return -ENOMEM;
 	}
 
@@ -1600,6 +1602,7 @@ int kgsl_gem_prime_fd_to_handle(struct drm_device *dev,
 		kgsl_mmu_putpagetable(priv->pagetable);
 		drm_gem_object_release(obj);
 		kfree(priv);
+		kfree(obj);
 		return -ENOMEM;
 	}
 
