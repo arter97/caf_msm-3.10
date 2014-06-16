@@ -939,6 +939,7 @@ int msm_vidc_qbuf(void *instance, struct v4l2_buffer *b)
 		}
 	}
 
+
 	if (inst->session_type == MSM_VIDC_DECODER)
 		return msm_vdec_qbuf(instance, b);
 	if (inst->session_type == MSM_VIDC_ENCODER)
@@ -1269,6 +1270,7 @@ void *msm_vidc_open(int core_id, int session_type)
 	inst->state = MSM_VIDC_CORE_UNINIT_DONE;
 	inst->core = core;
 	inst->map_output_buffer = false;
+	inst->seq_hdr_sent = false;
 
 	for (i = SESSION_MSG_INDEX(SESSION_MSG_START);
 		i <= SESSION_MSG_INDEX(SESSION_MSG_END); i++) {
