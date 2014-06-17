@@ -272,7 +272,7 @@ kgsl_gem_alloc_memory(struct drm_gem_object *obj)
 
 		sg_table = ion_sg_table(kgsl_drm_ion_client,
 				priv->ion_handle);
-		if (IS_ERR_OR_NULL(priv->ion_handle)) {
+		if (IS_ERR_OR_NULL(sg_table)) {
 			DRM_ERROR(
 			"Unable to get ION sg table\n");
 			goto memerr;
@@ -313,7 +313,7 @@ kgsl_gem_alloc_memory(struct drm_gem_object *obj)
 		}
 		sg_table = ion_sg_table(kgsl_drm_ion_client,
 				priv->ion_handle);
-		if (IS_ERR_OR_NULL(priv->ion_handle)) {
+		if (IS_ERR_OR_NULL(sg_table)) {
 			DRM_ERROR("Unable to get ION sg table\n");
 			goto memerr;
 		}
@@ -1679,7 +1679,7 @@ int kgsl_gem_prime_fd_to_handle(struct drm_device *dev,
 
 	sg_table = ion_sg_table(kgsl_drm_ion_client,
 		priv->ion_handle);
-	if (IS_ERR_OR_NULL(priv->ion_handle)) {
+	if (IS_ERR_OR_NULL(sg_table)) {
 		DRM_ERROR("Unable to get ION sg table\n");
 		ion_free(kgsl_drm_ion_client,
 			priv->ion_handle);
