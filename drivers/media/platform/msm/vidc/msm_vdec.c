@@ -671,7 +671,18 @@ int msm_vdec_streamoff(struct msm_vidc_inst *inst, enum v4l2_buf_type i)
 {
 	int rc = 0;
 	struct buf_queue *q;
+	u32 flags = 0;
 
+	if (i == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+		dprintk(VIDC_DBG, "msm_vdec_streamoff try flush first");
+		flags = V4L2_QCOM_CMD_FLUSH_OUTPUT | V4L2_QCOM_CMD_FLUSH_CAPTURE;
+		rc = msm_comm_flush(inst, flags, true);
+		if (rc) {
+			dprintk(VIDC_ERR,
+				"StreamOff Failed to flush buffers: %d\n", rc);
+			return rc;
+		}
+	}
 	q = msm_comm_get_vb2q(inst, i);
 	if (!q) {
 		dprintk(VIDC_ERR,
@@ -1669,7 +1680,7 @@ int msm_vdec_cmd(struct msm_vidc_inst *inst, struct v4l2_decoder_cmd *dec)
 					"Failed to recover from session_error: %d\n",
 					rc);
 		}
-		rc = msm_comm_flush(inst, dec->flags);
+		rc = msm_comm_flush(inst, dec->flags, false);
 		if (rc) {
 			dprintk(VIDC_ERR,
 					"Failed to flush buffers: %d\n", rc);

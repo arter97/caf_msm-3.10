@@ -2383,7 +2383,7 @@ int msm_venc_cmd(struct msm_vidc_inst *inst, struct v4l2_encoder_cmd *enc)
 	core = inst->core;
 	switch (enc->cmd) {
 	case V4L2_ENC_QCOM_CMD_FLUSH:
-		rc = msm_comm_flush(inst, enc->flags);
+		rc = msm_comm_flush(inst, enc->flags, false);
 		break;
 	case V4L2_ENC_CMD_STOP:
 		if (inst->state == MSM_VIDC_CORE_INVALID ||
@@ -2983,6 +2983,18 @@ int msm_venc_streamoff(struct msm_vidc_inst *inst, enum v4l2_buf_type i)
 {
 	int rc = 0;
 	struct buf_queue *q;
+	u32 flags = 0;
+
+	if (i == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+		dprintk(VIDC_DBG, "msm_venc_streamoff try flush first");
+		flags = V4L2_QCOM_CMD_FLUSH_OUTPUT | V4L2_QCOM_CMD_FLUSH_CAPTURE;
+		rc = msm_comm_flush(inst, flags, true);
+		if (rc) {
+			dprintk(VIDC_ERR,
+				"StreamOff Failed to flush buffers: %d\n", rc);
+			return rc;
+		}
+	}
 	q = msm_comm_get_vb2q(inst, i);
 	if (!q) {
 		dprintk(VIDC_ERR,

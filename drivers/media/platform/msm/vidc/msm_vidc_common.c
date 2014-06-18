@@ -3207,7 +3207,7 @@ void msm_comm_flush_dynamic_buffers(struct msm_vidc_inst *inst)
 	mutex_unlock(&inst->lock);
 }
 
-int msm_comm_flush(struct msm_vidc_inst *inst, u32 flags)
+int msm_comm_flush(struct msm_vidc_inst *inst, u32 flags, bool sync)
 {
 	int rc =  0;
 	bool ip_flush = false;
@@ -3263,12 +3263,21 @@ int msm_comm_flush(struct msm_vidc_inst *inst, u32 flags)
 			dprintk(VIDC_WARN,
 			"FLUSH BUG: Pending q not empty! It should be empty\n");
 		}
+		if (sync)
+			init_completion(&inst->completions[
+				SESSION_MSG_INDEX(SESSION_FLUSH_DONE)]);
 		rc = call_hfi_op(hdev, session_flush, inst->session,
 				HAL_FLUSH_OUTPUT);
 		if (!rc && (msm_comm_get_stream_output_mode(inst) ==
 			HAL_VIDEO_DECODER_SECONDARY))
 			rc = call_hfi_op(hdev, session_flush, inst->session,
 				HAL_FLUSH_OUTPUT2);
+		if (sync) {
+			rc = wait_for_completion_timeout(
+				&inst->completions[SESSION_MSG_INDEX(SESSION_FLUSH_DONE)],
+					msecs_to_jiffies(msm_vidc_hw_rsp_timeout));
+			dprintk(VIDC_DBG, "session flush done recvd, %d", rc);
+		}
 
 	} else {
 		if (!list_empty(&inst->pendingq)) {
@@ -3290,12 +3299,21 @@ int msm_comm_flush(struct msm_vidc_inst *inst, u32 flags)
 				kfree(temp);
 			}
 		}
+		if (sync)
+			init_completion(&inst->completions[
+				SESSION_MSG_INDEX(SESSION_FLUSH_DONE)]);
 
 		/*Do not send flush in case of session_error */
 		if (!(inst->state == MSM_VIDC_CORE_INVALID &&
 			  core->state != VIDC_CORE_INVALID))
 			rc = call_hfi_op(hdev, session_flush, inst->session,
 				HAL_FLUSH_ALL);
+		if (sync) {
+			rc = wait_for_completion_timeout(
+				&inst->completions[SESSION_MSG_INDEX(SESSION_FLUSH_DONE)],
+					msecs_to_jiffies(msm_vidc_hw_rsp_timeout));
+			dprintk(VIDC_DBG, "session flush done recvd, %d", rc);
+		}
 	}
 	mutex_unlock(&inst->sync_lock);
 	return rc;
