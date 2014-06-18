@@ -753,8 +753,8 @@ int msm_dolby_dap_param_to_get_control_get(struct snd_kcontrol *kcontrol,
 	int port_id = dolby_dap_params_states.port_id;
 
 	if (port_id == DOLBY_INVALID_PORT_ID) {
-		pr_err("%s, port_id not set, do not query ADM\n", __func__);
-		return -EINVAL;
+		pr_debug("%s, port_id not set, not returning data\n", __func__);
+		return 0;
 	}
 	params_value = kzalloc(params_length, GFP_KERNEL);
 	if (!params_value) {
@@ -847,9 +847,9 @@ int msm_dolby_dap_param_visualizer_control_get(struct snd_kcontrol *kcontrol,
 		DOLBY_PARAM_PAYLOAD_SIZE * sizeof(uint32_t);
 	int port_id = dolby_dap_params_states.port_id;
 	if (port_id == DOLBY_INVALID_PORT_ID) {
-		pr_debug("%s, port_id not set, returning error", __func__);
+		pr_debug("%s, port_id not set, not returning data", __func__);
 		ucontrol->value.integer.value[0] = 0;
-		return -EINVAL;
+		return 0;
 	}
 	visualizer_data = kzalloc(params_length, GFP_KERNEL);
 	if (!visualizer_data) {

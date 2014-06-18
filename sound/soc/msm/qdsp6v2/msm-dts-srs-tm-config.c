@@ -170,8 +170,7 @@ static int msm_dts_srs_trumedia_control_hdmi_set(struct snd_kcontrol *kcontrol,
 static const struct snd_kcontrol_new lpa_srs_trumedia_controls[] = {
 	{.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
 	.name = "SRS TruMedia",
-	.access = SNDRV_CTL_ELEM_ACCESS_TLV_READ |
-			SNDRV_CTL_ELEM_ACCESS_READWRITE,
+	.access = SNDRV_CTL_ELEM_ACCESS_READWRITE,
 	.info = snd_soc_info_volsw,
 	.get = msm_dts_srs_trumedia_control_get,
 	.put = msm_dts_srs_trumedia_control_set,
@@ -190,8 +189,7 @@ static const struct snd_kcontrol_new lpa_srs_trumedia_controls[] = {
 static const struct snd_kcontrol_new lpa_srs_trumedia_controls_hdmi[] = {
 	{.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
 	.name = "SRS TruMedia HDMI",
-	.access = SNDRV_CTL_ELEM_ACCESS_TLV_READ |
-			SNDRV_CTL_ELEM_ACCESS_READWRITE,
+	.access = SNDRV_CTL_ELEM_ACCESS_READWRITE,
 	.info = snd_soc_info_volsw,
 	.get = msm_dts_srs_trumedia_control_get,
 	.put = msm_dts_srs_trumedia_control_hdmi_set,
@@ -210,8 +208,7 @@ static const struct snd_kcontrol_new lpa_srs_trumedia_controls_hdmi[] = {
 static const struct snd_kcontrol_new lpa_srs_trumedia_controls_i2s[] = {
 	{.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
 	.name = "SRS TruMedia I2S",
-	.access = SNDRV_CTL_ELEM_ACCESS_TLV_READ |
-		SNDRV_CTL_ELEM_ACCESS_READWRITE,
+	.access = SNDRV_CTL_ELEM_ACCESS_READWRITE,
 	.info = snd_soc_info_volsw,
 	.get = msm_dts_srs_trumedia_control_get,
 	.put = msm_dts_srs_trumedia_control_i2s_set,

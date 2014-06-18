@@ -95,7 +95,7 @@ static int msm_qti_pp_get_eq_enable_mixer(struct snd_kcontrol *kcontrol,
 					kcontrol->private_value)->reg;
 
 	if ((eq_idx < 0) || (eq_idx >= MAX_EQ_SESSIONS))
-		return -EINVAL;
+		return 0;
 
 	ucontrol->value.integer.value[0] = eq_data[eq_idx].enable;
 
@@ -130,7 +130,7 @@ static int msm_qti_pp_get_eq_band_count_audio_mixer(
 					kcontrol->private_value)->reg;
 
 	if ((eq_idx < 0) || (eq_idx >= MAX_EQ_SESSIONS))
-		return -EINVAL;
+		return 0;
 	ucontrol->value.integer.value[0] = eq_data[eq_idx].num_bands;
 
 	pr_debug("%s: EQ #%d bands %d\n", __func__,
@@ -165,7 +165,7 @@ static int msm_qti_pp_get_eq_band_audio_mixer(struct snd_kcontrol *kcontrol,
 
 	if ((eq_idx < 0) || (eq_idx >= MAX_EQ_SESSIONS) ||
 	    (band_idx < EQ_BAND1) || (band_idx >= EQ_BAND_MAX))
-		return -EINVAL;
+		return 0;
 
 	ucontrol->value.integer.value[0] =
 			eq_data[eq_idx].eq_bands[band_idx].band_idx;
@@ -322,9 +322,15 @@ static int msm_qti_pp_get_rms_value_control(struct snd_kcontrol *kcontrol,
 		if (msm_bedai.port_id == SLIMBUS_0_TX)
 			break;
 	}
-	if ((be_idx >= MSM_BACKEND_DAI_MAX) || !msm_bedai.active) {
-		pr_err("%s, back not active to query rms\n", __func__);
+	if (be_idx >= MSM_BACKEND_DAI_MAX) {
+		pr_err("%s, could not find backend\n", __func__);
 		rc = -EINVAL;
+		goto get_rms_value_err;
+	}
+	if (!msm_bedai.active) {
+		pr_debug("%s, back not active to query rms\n", __func__);
+		rc = 0;
+		ucontrol->value.integer.value[0] = 0;
 		goto get_rms_value_err;
 	}
 	rc = adm_get_params(SLIMBUS_0_TX,
@@ -333,8 +339,9 @@ static int msm_qti_pp_get_rms_value_control(struct snd_kcontrol *kcontrol,
 			param_length + param_payload_len,
 			param_value);
 	if (rc) {
-		pr_err("%s: get parameters failed rc=%d\n", __func__, rc);
-		rc = -EINVAL;
+		pr_debug("%s: get parameters failed rc=%d\n", __func__, rc);
+		rc = 0;
+		ucontrol->value.integer.value[0] = 0;
 		goto get_rms_value_err;
 	}
 	update_param_value = (int *)param_value;

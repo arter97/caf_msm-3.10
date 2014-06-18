@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -68,7 +68,7 @@ static int msm_hdmi_edid_get(struct snd_kcontrol *kcontrol,
 		       edid_blk.spk_alloc_data_blk_size);
 	}
 
-	return rc;
+	return 0;
 }
 
 static const struct snd_kcontrol_new msm_hdmi_codec_rx_controls[] = {

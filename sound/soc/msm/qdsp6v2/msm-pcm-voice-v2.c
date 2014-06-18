@@ -347,6 +347,12 @@ static int msm_pcm_ioctl(struct snd_pcm_substream *substream,
 	return ret;
 }
 
+static int msm_voice_gain_get(struct snd_kcontrol *kcontrol,
+			      struct snd_ctl_elem_value *ucontrol)
+{
+	return 0;
+}
+
 static int msm_voice_gain_put(struct snd_kcontrol *kcontrol,
 			      struct snd_ctl_elem_value *ucontrol)
 {
@@ -370,6 +376,12 @@ static int msm_voice_gain_put(struct snd_kcontrol *kcontrol,
 
 done:
 	return ret;
+}
+
+static int msm_voice_mute_get(struct snd_kcontrol *kcontrol,
+			      struct snd_ctl_elem_value *ucontrol)
+{
+	return 0;
 }
 
 static int msm_voice_mute_put(struct snd_kcontrol *kcontrol,
@@ -397,6 +409,12 @@ done:
 	return ret;
 }
 
+static int msm_voice_tx_device_mute_get(struct snd_kcontrol *kcontrol,
+					struct snd_ctl_elem_value *ucontrol)
+{
+	return 0;
+}
+
 static int msm_voice_tx_device_mute_put(struct snd_kcontrol *kcontrol,
 					struct snd_ctl_elem_value *ucontrol)
 {
@@ -421,6 +439,12 @@ static int msm_voice_tx_device_mute_put(struct snd_kcontrol *kcontrol,
 
 done:
 	return ret;
+}
+
+static int msm_voice_rx_device_mute_get(struct snd_kcontrol *kcontrol,
+					struct snd_ctl_elem_value *ucontrol)
+{
+	return 0;
 }
 
 static int msm_voice_rx_device_mute_put(struct snd_kcontrol *kcontrol,
@@ -478,6 +502,12 @@ static int msm_voice_tty_mode_put(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+static int msm_voice_slowtalk_get(struct snd_kcontrol *kcontrol,
+				  struct snd_ctl_elem_value *ucontrol)
+{
+	return 0;
+}
+
 static int msm_voice_slowtalk_put(struct snd_kcontrol *kcontrol,
 			struct snd_ctl_elem_value *ucontrol)
 {
@@ -495,17 +525,17 @@ static int msm_voice_slowtalk_put(struct snd_kcontrol *kcontrol,
 
 static struct snd_kcontrol_new msm_voice_controls[] = {
 	SOC_SINGLE_MULTI_EXT("Voice Rx Device Mute", SND_SOC_NOPM, 0, VSID_MAX,
-				0, 3, NULL, msm_voice_rx_device_mute_put),
+				0, 3, msm_voice_rx_device_mute_get, msm_voice_rx_device_mute_put),
 	SOC_SINGLE_MULTI_EXT("Voice Tx Device Mute", SND_SOC_NOPM, 0, VSID_MAX,
-				0, 3, NULL, msm_voice_tx_device_mute_put),
+				0, 3, msm_voice_tx_device_mute_get, msm_voice_tx_device_mute_put),
 	SOC_SINGLE_MULTI_EXT("Voice Tx Mute", SND_SOC_NOPM, 0, VSID_MAX,
-				0, 3, NULL, msm_voice_mute_put),
+				0, 3, msm_voice_mute_get, msm_voice_mute_put),
 	SOC_SINGLE_MULTI_EXT("Voice Rx Gain", SND_SOC_NOPM, 0, VSID_MAX, 0, 3,
-				NULL, msm_voice_gain_put),
+				msm_voice_gain_get, msm_voice_gain_put),
 	SOC_ENUM_EXT("TTY Mode", msm_tty_mode_enum[0], msm_voice_tty_mode_get,
 				msm_voice_tty_mode_put),
 	SOC_SINGLE_MULTI_EXT("Slowtalk Enable", SND_SOC_NOPM, 0, VSID_MAX, 0, 2,
-				NULL, msm_voice_slowtalk_put),
+				msm_voice_slowtalk_get, msm_voice_slowtalk_put),
 };
 
 static struct snd_pcm_ops msm_pcm_ops = {
