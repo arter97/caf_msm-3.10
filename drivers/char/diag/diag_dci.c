@@ -2230,6 +2230,8 @@ static int diag_dci_probe(struct platform_device *pdev)
 		if (err)
 			pr_err("diag: In %s, cannot open DCI Modem port, Id = %d, err: %d\n",
 				__func__, pdev->id, err);
+		else
+			diag_smd_buffer_init(&driver->smd_dci[index]);
 	}
 
 	if (pdev->id == SMD_APPS_QDSP) {
@@ -2243,6 +2245,8 @@ static int diag_dci_probe(struct platform_device *pdev)
 		if (err)
 			pr_err("diag: In %s, cannot open DCI Lpass port, Id = %d, err: %d\n",
 				__func__, pdev->id, err);
+		else
+			diag_smd_buffer_init(&driver->smd_dci[index]);
 	}
 
 	return err;
@@ -2265,6 +2269,8 @@ static int diag_dci_cmd_probe(struct platform_device *pdev)
 		if (err)
 			pr_err("diag: In %s, cannot open DCI Modem CMD port, Id = %d, err: %d\n",
 				__func__, pdev->id, err);
+		else
+			diag_smd_buffer_init(&driver->smd_dci_cmd[index]);
 	}
 
 	return err;
@@ -2379,7 +2385,7 @@ err:
 
 int diag_dci_init(void)
 {
-	int success = 0;
+	int ret = 0;
 	int i;
 
 	driver->dci_tag = 0;
@@ -2390,22 +2396,22 @@ int diag_dci_init(void)
 	mutex_init(&dci_event_mask_mutex);
 	spin_lock_init(&ws_lock);
 
-	success = diag_dci_init_ops_tbl();
-	if (success)
+	ret = diag_dci_init_ops_tbl();
+	if (ret)
 		goto err;
 
 	for (i = 0; i < NUM_SMD_DCI_CHANNELS; i++) {
-		success = diag_smd_constructor(&driver->smd_dci[i], i,
+		ret = diag_smd_constructor(&driver->smd_dci[i], i,
 							SMD_DCI_TYPE);
-		if (!success)
+		if (ret)
 			goto err;
 	}
 
 	if (driver->supports_separate_cmdrsp) {
 		for (i = 0; i < NUM_SMD_DCI_CMD_CHANNELS; i++) {
-			success = diag_smd_constructor(&driver->smd_dci_cmd[i],
+			ret = diag_smd_constructor(&driver->smd_dci_cmd[i],
 							i, SMD_DCI_CMD_TYPE);
-			if (!success)
+			if (ret)
 				goto err;
 		}
 	}
@@ -2419,15 +2425,18 @@ int diag_dci_init(void)
 	INIT_LIST_HEAD(&driver->dci_req_list);
 
 	driver->diag_dci_wq = create_singlethread_workqueue("diag_dci_wq");
+	if (!driver->diag_dci_wq)
+		goto err;
+
 	INIT_WORK(&dci_data_drain_work, dci_data_drain_work_fn);
-	success = platform_driver_register(&msm_diag_dci_driver);
-	if (success) {
+	ret = platform_driver_register(&msm_diag_dci_driver);
+	if (ret) {
 		pr_err("diag: Could not register DCI driver\n");
 		goto err;
 	}
 	if (driver->supports_separate_cmdrsp) {
-		success = platform_driver_register(&msm_diag_dci_cmd_driver);
-		if (success) {
+		ret = platform_driver_register(&msm_diag_dci_cmd_driver);
+		if (ret) {
 			pr_err("diag: Could not register DCI cmd driver\n");
 			goto err;
 		}
@@ -2700,15 +2709,18 @@ fail_alloc:
 	if (new_entry) {
 		for (i = 0; i < new_entry->num_buffers; i++) {
 			proc_buf = &new_entry->buffers[i];
-			mutex_destroy(&proc_buf->health_mutex);
-			mutex_destroy(&proc_buf->buf_primary->data_mutex);
-			mutex_destroy(&proc_buf->buf_cmd->data_mutex);
-			if (proc_buf->buf_primary)
-				kfree(proc_buf->buf_primary->data);
-			kfree(proc_buf->buf_primary);
-			if (proc_buf->buf_cmd)
-				kfree(proc_buf->buf_cmd->data);
-			kfree(proc_buf->buf_cmd);
+			if (proc_buf) {
+				mutex_destroy(&proc_buf->health_mutex);
+				mutex_destroy(
+					&proc_buf->buf_primary->data_mutex);
+				mutex_destroy(&proc_buf->buf_cmd->data_mutex);
+				if (proc_buf->buf_primary)
+					kfree(proc_buf->buf_primary->data);
+				kfree(proc_buf->buf_primary);
+				if (proc_buf->buf_cmd)
+					kfree(proc_buf->buf_cmd->data);
+				kfree(proc_buf->buf_cmd);
+			}
 		}
 		kfree(new_entry->dci_event_mask);
 		kfree(new_entry->dci_log_mask);

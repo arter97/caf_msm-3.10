@@ -888,13 +888,20 @@
 	};
 
 	qcom,lpass@fe200000 {
-		compatible = "qcom,pil-q6v5-lpass";
-		reg = <0xfe200000 0x00100>,
-		      <0xfd485100 0x00010>,
-		      <0xfc4016c0 0x00004>;
-		reg-names = "qdsp6_base", "halt_base", "restart_reg";
+		compatible = "qcom,pil-tz-generic";
+		reg = <0xfe200000 0x00100>;
 		interrupts = <0 162 1>;
+
 		vdd_cx-supply = <&pm8110_s1_corner>;
+		proxy-reg-names = "vdd_cx";
+		vdd_cx-uV-uA = <7 100000>;
+		clock-names = "bus_clk", "xo";
+		active-clock-names = "bus_clk";
+		proxy-clock-names = "xo";
+
+		qcom,pas-id = <1>;
+		qcom,proxy-timeout-ms = <10000>;
+		qcom,smem-id = <423>;
 		qcom,firmware-name = "adsp";
 
 		/* GPIO inputs from lpass */
@@ -973,11 +980,12 @@
 		qcom,msm-bus,num-cases = <4>;
 		qcom,msm-bus,active-only = <0>;
 		qcom,msm-bus,num-paths = <1>;
+		qcom,support-bus-scaling;
 		qcom,msm-bus,vectors-KBps =
 				<55 512 0 0>,
-				<55 512 3936000 393600>,
-				<55 512 3936000 393600>,
-				<55 512 3936000 393600>;
+				<55 512 0 0>,
+				<55 512 120000 1200000>,
+				<55 512 393600 3936000>;
 	};
 
         qcom,msm-rng@f9bff000 {
@@ -1044,6 +1052,7 @@
 		interrupts = <0 207 0>;
 		qcom,bam-pipe-pair = <2>;
 		qcom,ce-hw-instance = <1>;
+		qcom,ce-device = <0>;
 		qcom,ce-hw-shared;
 		qcom,msm-bus,name = "qcrypto-noc";
 		qcom,msm-bus,num-cases = <2>;
@@ -1062,6 +1071,7 @@
 		interrupts = <0 207 0>;
 		qcom,bam-pipe-pair = <1>;
 		qcom,ce-hw-instance = <1>;
+		qcom,ce-device = <0>;
 		qcom,ce-hw-shared;
 		qcom,msm-bus,name = "qcedev-noc";
 		qcom,msm-bus,num-cases = <2>;
@@ -1232,6 +1242,7 @@
 		qcom,hw-settle-time = <2>;
 		qcom,fast-avg-setup = <3>;
 		qcom,btm-channel-number = <0x48>;
+		qcom,meas-interval-timer-idx = <2>;
 	};
 
 	chan@8 {

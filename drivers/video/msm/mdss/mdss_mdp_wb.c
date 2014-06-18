@@ -197,7 +197,7 @@ int mdss_mdp_wb_set_secure(struct msm_fb_data_type *mfd, int enable)
 	if (!enable) {
 		if (pipe) {
 			/* unset pipe */
-			mdss_mdp_mixer_pipe_unstage(pipe);
+			mdss_mdp_mixer_pipe_unstage(pipe, pipe->mixer_left);
 			mdss_mdp_pipe_destroy(pipe);
 			wb->secure_pipe = NULL;
 		}
@@ -211,10 +211,11 @@ int mdss_mdp_wb_set_secure(struct msm_fb_data_type *mfd, int enable)
 	}
 
 	if (!pipe) {
-		pipe = mdss_mdp_pipe_alloc(mixer, MDSS_MDP_PIPE_TYPE_RGB);
+		pipe = mdss_mdp_pipe_alloc(mixer, MDSS_MDP_PIPE_TYPE_RGB,
+			NULL);
 		if (!pipe)
 			pipe = mdss_mdp_pipe_alloc(mixer,
-					MDSS_MDP_PIPE_TYPE_VIG);
+				MDSS_MDP_PIPE_TYPE_VIG, NULL);
 		if (!pipe) {
 			pr_err("Unable to get pipe to set secure session\n");
 			return -ENOMEM;
@@ -489,8 +490,13 @@ static int mdss_mdp_wb_queue(struct msm_fb_data_type *mfd,
 
 	pr_debug("fb%d queue\n", wb->fb_ndx);
 
-	if (!mfd->panel_info->cont_splash_enabled)
-		mdss_iommu_attach(mdp5_data->mdata);
+	if (!mfd->panel_info->cont_splash_enabled) {
+		ret  = mdss_iommu_attach(mdp5_data->mdata);
+		if (ret) {
+			pr_err("mdss iommu attach failed rc=%d", ret);
+			return ret;
+		}
+	}
 
 	mutex_lock(&wb->lock);
 	if (local)
@@ -641,6 +647,7 @@ int mdss_mdp_wb_kickoff(struct msm_fb_data_type *mfd)
 		pr_err("error on commit ctl=%d\n", ctl->num);
 		goto kickoff_fail;
 	}
+	mdss_mdp_display_wait4comp(ctl);
 
 	if (wb && node) {
 		mutex_lock(&wb->lock);

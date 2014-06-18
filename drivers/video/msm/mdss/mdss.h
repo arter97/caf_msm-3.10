@@ -68,6 +68,11 @@ struct mdss_fudge_factor {
 	u32 denom;
 };
 
+struct mdss_perf_tune {
+	unsigned long min_mdp_clk;
+	u64 min_bus_vote;
+};
+
 #define MDSS_IRQ_SUSPEND	-1
 #define MDSS_IRQ_RESUME		1
 #define MDSS_IRQ_REQ		0
@@ -117,6 +122,8 @@ struct mdss_data_type {
 	u32 wfd_mode;
 	u8 has_wb_ad;
 	u8 has_non_scalar_rgb;
+	bool has_src_split;
+	bool idle_pc_enabled;
 
 	u32 rotator_ot_limit;
 	u32 mdp_irq_mask;
@@ -126,7 +133,6 @@ struct mdss_data_type {
 	u8 clk_ena;
 	u8 fs_ena;
 	u8 vsync_ena;
-	unsigned long min_mdp_clk;
 
 	u32 res_init;
 
@@ -147,6 +153,7 @@ struct mdss_data_type {
 
 	struct mdss_fudge_factor ab_factor;
 	struct mdss_fudge_factor ib_factor;
+	struct mdss_fudge_factor ib_factor_overlap;
 	struct mdss_fudge_factor clk_factor;
 
 	struct mdss_hw_settings *hw_settings;
@@ -192,7 +199,8 @@ struct mdss_data_type {
 	struct mdss_prefill_data prefill_data;
 
 	int handoff_pending;
-	bool ulps;
+	bool idle_pc;
+	struct mdss_perf_tune perf_tune;
 };
 extern struct mdss_data_type *mdss_res;
 
@@ -215,7 +223,7 @@ int mdss_register_irq(struct mdss_hw *hw);
 void mdss_enable_irq(struct mdss_hw *hw);
 void mdss_disable_irq(struct mdss_hw *hw);
 void mdss_disable_irq_nosync(struct mdss_hw *hw);
-void mdss_bus_bandwidth_ctrl(int enable);
+int mdss_bus_bandwidth_ctrl(int enable);
 
 static inline struct ion_client *mdss_get_ionclient(void)
 {

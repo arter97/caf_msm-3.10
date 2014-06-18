@@ -49,6 +49,22 @@
 	status = "ok";
 };
 
+&pcie1 {
+	qcom,ep-wakeirq;
+};
+
+&mhi {
+	esoc-names = "mdm";
+	esoc-0 = <&mdm1>;
+	mhi-device-wake-gpio =
+		<&msmgpio 108 0>;
+	qcom,msm-bus,name = "mhi";
+	qcom,msm-bus,num-cases = <2>;
+	qcom,msm-bus,num-paths = <1>;
+	qcom,msm-bus,vectors-KBps =
+			<100 512 0 0>,
+			<100 512 625000000 625000000>;
+};
 &ufsphy1 {
 	status = "disabled";
 };
@@ -57,3 +73,7 @@
 	status = "disabled";
 };
 
+&cnss {
+	esoc-names = "modem_wlan";
+	esoc-0 = <&mdm1>;
+};

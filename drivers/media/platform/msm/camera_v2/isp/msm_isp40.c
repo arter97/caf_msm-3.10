@@ -575,7 +575,7 @@ static long msm_vfe40_reset_hardware(struct vfe_device *vfe_dev)
 {
 	init_completion(&vfe_dev->reset_complete);
 	msm_camera_io_w_mb(0x1FF, vfe_dev->vfe_base + 0xC);
-	return wait_for_completion_interruptible_timeout(
+	return wait_for_completion_timeout(
 		&vfe_dev->reset_complete, msecs_to_jiffies(50));
 }
 
@@ -1177,13 +1177,55 @@ static int msm_vfe40_stats_check_streams(
 static void msm_vfe40_stats_cfg_comp_mask(struct vfe_device *vfe_dev,
 	uint32_t stats_mask, uint8_t enable)
 {
-	uint32_t comp_mask;
-	comp_mask = msm_camera_io_r(vfe_dev->vfe_base + 0x44) >> 16;
-	if (enable)
-		comp_mask |= stats_mask;
-	else
-		comp_mask &= ~stats_mask;
-	msm_camera_io_w(comp_mask << 16, vfe_dev->vfe_base + 0x44);
+	uint32_t reg_mask, comp_stats_mask;
+	uint32_t i = 0;
+	atomic_t *stats_comp;
+	struct msm_vfe_stats_shared_data *stats_data = &vfe_dev->stats_data;
+
+	stats_mask = stats_mask & 0xFF;
+
+	if (vfe_dev->hw_info->stats_hw_info->num_stats_comp_mask >
+			MAX_NUM_STATS_COMP_MASK) {
+		pr_err("%s: num of comp masks %d exceed max %d\n",
+			__func__,
+			vfe_dev->hw_info->stats_hw_info->num_stats_comp_mask,
+			MAX_NUM_STATS_COMP_MASK);
+		return;
+	}
+
+	for (i = 0;
+		i < vfe_dev->hw_info->stats_hw_info->num_stats_comp_mask; i++) {
+
+		reg_mask = msm_camera_io_r(vfe_dev->vfe_base + 0x44);
+		comp_stats_mask = reg_mask & (STATS_COMP_BIT_MASK << (i*8));
+		stats_comp = &stats_data->stats_comp_mask[i];
+
+		if (enable) {
+			if (comp_stats_mask)
+				continue;
+
+			reg_mask |= (stats_mask << (16 + i*8));
+			atomic_add(stats_mask, stats_comp);
+		} else {
+			/*
+			 * Check if comp mask in reg is valid
+			 * and contains this stat
+			 */
+			if (!comp_stats_mask ||
+				!((comp_stats_mask >> (16 + i*8)) &
+					stats_mask))
+				continue;
+
+			atomic_sub(stats_mask, stats_comp);
+			reg_mask &= ~(stats_mask << (16 + i*8));
+		}
+		ISP_DBG("%s: comp_mask: %x atomic stats[0]: %x %x\n",
+			__func__, reg_mask,
+			atomic_read(&stats_data->stats_comp_mask[0]),
+			atomic_read(&stats_data->stats_comp_mask[1]));
+		msm_camera_io_w(reg_mask, vfe_dev->vfe_base + 0x44);
+		return;
+	}
 }
 
 static void msm_vfe40_stats_cfg_wm_irq_mask(
@@ -1366,12 +1408,19 @@ static int msm_vfe40_get_platform_data(struct vfe_device *vfe_dev)
 		goto vfe_no_resource;
 	}
 
-	vfe_dev->iommu_ctx[0] = msm_iommu_get_ctx("vfe0");
-	vfe_dev->iommu_ctx[1] = msm_iommu_get_ctx("vfe1");
-	if (!vfe_dev->iommu_ctx[0] || !vfe_dev->iommu_ctx[1]) {
+	vfe_dev->iommu_ctx[0] = msm_iommu_get_ctx("vfe");
+	if (!vfe_dev->iommu_ctx[0]) {
 		pr_err("%s: cannot get iommu_ctx\n", __func__);
 		rc = -ENODEV;
 		goto vfe_no_resource;
+	}
+	if (vfe_dev->hw_info->num_iommu_secure_ctx) {
+		vfe_dev->iommu_secure_ctx[0] = msm_iommu_get_ctx("vfe_secure");
+		if (!vfe_dev->iommu_secure_ctx[0]) {
+			pr_err("%s: cannot get secure iommu_ctx\n", __func__);
+			rc = -ENODEV;
+			goto vfe_no_resource;
+		}
 	}
 
 vfe_no_resource:
@@ -1420,7 +1469,8 @@ static struct v4l2_subdev_internal_ops msm_vfe40_internal_ops = {
 };
 
 struct msm_vfe_hardware_info vfe40_hw_info = {
-	.num_iommu_ctx = 2,
+	.num_iommu_ctx = 1,
+	.num_iommu_secure_ctx = 1,
 	.vfe_clk_idx = VFE40_CLK_IDX,
 	.vfe_ops = {
 		.irq_ops = {

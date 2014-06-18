@@ -790,7 +790,11 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 					break;
 				}
 			} else {
-				/* no charger registered, start peripheral */
+				/*
+				 * no charger registered, assuming SDP
+				 * and start peripheral
+				 */
+				phy->state = OTG_STATE_B_PERIPHERAL;
 				if (dwc3_otg_start_peripheral(&dotg->otg, 1)) {
 					/*
 					 * Probably set_peripheral not called
@@ -859,9 +863,14 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 				pm_runtime_put_sync(phy->dev);
 				return;
 			} else {
-				/* xHCI increments PM child count as needed */
-				dev_dbg(phy->dev, "a_host state entered. Allow runtime suspend.\n");
-				pm_runtime_put_sync(phy->dev);
+				/*
+				 * delay 1s to allow for xHCI to detect
+				 * just-attached devices before allowing
+				 * runtime suspend
+				 */
+				dev_dbg(phy->dev, "a_host state entered\n");
+				delay = VBUS_REG_CHECK_DELAY;
+				work = 1;
 			}
 		}
 		break;

@@ -48,9 +48,10 @@ static int esoc_msm_restart_handler(struct notifier_block *nb,
 					esoc_restart);
 	struct esoc_clink *esoc_clink = mdm_drv->esoc_clink;
 	const struct esoc_clink_ops const *clink_ops = esoc_clink->clink_ops;
-
-	dev_dbg(&esoc_clink->dev, "Notifying esoc of cold reboot\n");
-	clink_ops->notify(ESOC_PRIMARY_REBOOT, esoc_clink);
+	if (action == SYS_RESTART) {
+		dev_dbg(&esoc_clink->dev, "Notifying esoc of cold reboot\n");
+		clink_ops->notify(ESOC_PRIMARY_REBOOT, esoc_clink);
+	}
 	return NOTIFY_OK;
 }
 static void mdm_handle_clink_evt(enum esoc_evt evt,
@@ -155,11 +156,6 @@ static int mdm_subsys_powerup(const struct subsys_desc *crashed_subsys)
 		ret = clink_ops->cmd_exe(ESOC_EXIT_DEBUG, esoc_clink);
 		if (ret) {
 			dev_err(&esoc_clink->dev, "cannot exit debug mode\n");
-			return ret;
-		}
-		ret = clink_ops->cmd_exe(ESOC_PWR_OFF, esoc_clink);
-		if (ret) {
-			dev_err(&esoc_clink->dev, "pwr off fail\n");
 			return ret;
 		}
 		mdm_drv->mode = PWR_OFF;

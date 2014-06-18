@@ -234,6 +234,8 @@ Optional properties:
 				pipes which have no scaling support.
 - qcom,mdss-has-decimation: Boolean property to indicate the presence of
 			    decimation feature in fetch.
+- qcom,mdss-has-source-split: Boolean property to indicate if source split
+			      feature is available or not.
 - qcom,mdss-ad-off:		Array of offset addresses for the available
 				Assertive Display (AD) blocks. These offsets
 				are calculated from the register "mdp_phys"
@@ -303,6 +305,10 @@ Fudge Factors:			Fudge factors are used to boost demand for
 				FUDGE(x, a, b) = ((x * a) / b)
 - qcom,mdss-ib-factor:		This fudge factor is applied to calculated ib
 				values in default conditions.
+- qcom,mdss-ib-factor-overlap:	This fudge factor is applied to calculated ib
+				values when the overlap bandwidth is the
+				predominant value compared to prefill bandwidth
+				value.
 - qcom,mdss-clk-factor:		This fudge factor is applied to calculated mdp
 				clk rate in default conditions.
 
@@ -363,6 +369,9 @@ Subnode properties:
 					screen feature and has no relation with
 					qcom,cont-splash-enabled entry present in
 					panel configuration.
+- qcom,mdss-idle-power-collapse-enabled: Boolean property that enables support
+					for mdss power collapse in idle
+					screen use cases with smart panels.
 
 Example:
 	mdss_mdp: qcom,mdss_mdp@fd900000 {
@@ -417,6 +426,7 @@ Example:
 		qcom,mdss-has-non-scalar-rgb;
 		qcom,mdss-has-bwc;
 		qcom,mdss-has-decimation;
+		qcom,mdss-has-source-split;
 		qcom,mdss-wfd-mode = "intf";
 
 		qcom,mdss-pipe-vig-xin-id = <0 4 8>;
@@ -461,6 +471,7 @@ Example:
 		qcom,mdss-prefill-post-scaler-buffer-pixels = <2048>;
 		qcom,mdss-prefill-pingpong-buffer-pixels = <5120>;
 		qcom,mdss-prefill-fbc-lines = <2>;
+		qcom,mdss-idle-power-collapse-enabled;
 
 		mdss_fb0: qcom,mdss_fb_primary {
 			cell-index = <0>;

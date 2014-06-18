@@ -258,8 +258,8 @@ static ssize_t kgsl_drv_full_cache_threshold_store(struct device *dev,
 	int ret;
 	unsigned int thresh = 0;
 
-	ret = kgsl_sysfs_store(buf, count, &thresh);
-	if (ret != count)
+	ret = kgsl_sysfs_store(buf, &thresh);
+	if (ret)
 		return ret;
 
 	kgsl_driver.full_cache_threshold = thresh;
@@ -551,7 +551,8 @@ static struct kgsl_memdesc_ops kgsl_coherent_ops = {
 	.free = kgsl_coherent_free,
 };
 
-void kgsl_cache_range_op(struct kgsl_memdesc *memdesc, int op)
+int kgsl_cache_range_op(struct kgsl_memdesc *memdesc, size_t offset,
+			size_t size, unsigned int op)
 {
 	/*
 	 * If the buffer is mapped in the kernel operate on that address
@@ -561,7 +562,16 @@ void kgsl_cache_range_op(struct kgsl_memdesc *memdesc, int op)
 	void *addr = (memdesc->hostptr) ?
 		memdesc->hostptr : (void *) memdesc->useraddr;
 
-	int size = memdesc->size;
+	/* Check that offset+length does not exceed memdesc->size */
+	if ((offset + size) > memdesc->size)
+		return -ERANGE;
+
+	addr = addr + offset;
+
+	/*
+	 * The dmac_xxx_range functions handle addresses and sizes that
+	 * are not aligned to the cacheline size correctly.
+	 */
 
 	if (addr !=  NULL) {
 		switch (op) {
@@ -577,6 +587,8 @@ void kgsl_cache_range_op(struct kgsl_memdesc *memdesc, int op)
 		}
 	}
 	outer_cache_range_op_sg(memdesc->sg, memdesc->sglen, op);
+
+	return 0;
 }
 EXPORT_SYMBOL(kgsl_cache_range_op);
 
@@ -835,6 +847,8 @@ kgsl_sharedmem_readl(const struct kgsl_memdesc *memdesc,
 	WARN_ON(offsetbytes + sizeof(uint32_t) > memdesc->size);
 	if (offsetbytes + sizeof(uint32_t) > memdesc->size)
 		return -ERANGE;
+
+	rmb();
 	src = (uint32_t *)(memdesc->hostptr + offsetbytes);
 	*dst = *src;
 	return 0;
@@ -861,6 +875,9 @@ kgsl_sharedmem_writel(struct kgsl_device *device,
 		src, sizeof(uint32_t));
 	dst = (uint32_t *)(memdesc->hostptr + offsetbytes);
 	*dst = src;
+
+	wmb();
+
 	return 0;
 }
 EXPORT_SYMBOL(kgsl_sharedmem_writel);

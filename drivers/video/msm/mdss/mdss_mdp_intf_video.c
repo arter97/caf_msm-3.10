@@ -16,12 +16,12 @@
 #include <linux/iopoll.h>
 #include <linux/delay.h>
 #include <linux/dma-mapping.h>
-#include <linux/bootmem.h>
 #include <linux/memblock.h>
 
 #include "mdss_fb.h"
 #include "mdss_mdp.h"
 #include "mdss_panel.h"
+#include "mdss_debug.h"
 
 /* wait for at least 2 vsyncs for lowest refresh rate (24hz) */
 #define VSYNC_TIMEOUT_US 100000
@@ -256,6 +256,8 @@ static int mdss_mdp_video_add_vsync_handler(struct mdss_mdp_ctl *ctl,
 		goto exit;
 	}
 
+	MDSS_XLOG(ctl->num, ctl->vsync_cnt, handle->enabled);
+
 	spin_lock_irqsave(&ctx->vsync_lock, flags);
 	if (!handle->enabled) {
 		handle->enabled = true;
@@ -281,6 +283,8 @@ static int mdss_mdp_video_remove_vsync_handler(struct mdss_mdp_ctl *ctl,
 		pr_err("invalid ctx for ctl=%d\n", ctl->num);
 		return -ENODEV;
 	}
+
+	MDSS_XLOG(ctl->num, ctl->vsync_cnt, handle->enabled);
 
 	spin_lock_irqsave(&ctx->vsync_lock, flags);
 	if (handle->enabled) {
@@ -309,7 +313,7 @@ static int mdss_mdp_video_stop(struct mdss_mdp_ctl *ctl)
 		pr_err("invalid ctx for ctl=%d\n", ctl->num);
 		return -ENODEV;
 	}
-
+	MDSS_XLOG(ctl->num, ctl->vsync_cnt);
 	if (ctx->timegen_en) {
 		rc = mdss_mdp_ctl_intf_event(ctl, MDSS_EVENT_BLANK, NULL);
 		if (rc == -EBUSY) {
@@ -372,6 +376,8 @@ static void mdss_mdp_video_vsync_intr_done(void *arg)
 	vsync_time = ktime_get();
 	ctl->vsync_cnt++;
 
+	MDSS_XLOG(ctl->num, ctl->vsync_cnt, ctl->vsync_cnt);
+
 	pr_debug("intr ctl=%d vsync cnt=%u vsync_time=%d\n",
 		 ctl->num, ctl->vsync_cnt, (int)ktime_to_ms(vsync_time));
 
@@ -401,6 +407,7 @@ static int mdss_mdp_video_pollwait(struct mdss_mdp_ctl *ctl)
 	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF, false);
 
 	if (rc == 0) {
+		MDSS_XLOG(ctl->num, ctl->vsync_cnt);
 		pr_debug("vsync poll successful! rc=%d status=0x%x\n",
 				rc, status);
 		ctx->poll_cnt++;
@@ -438,8 +445,10 @@ static int mdss_mdp_video_wait4comp(struct mdss_mdp_ctl *ctl, void *arg)
 	if (ctx->polling_en) {
 		rc = mdss_mdp_video_pollwait(ctl);
 	} else {
+		mutex_unlock(&ctl->lock);
 		rc = wait_for_completion_timeout(&ctx->vsync_comp,
 				usecs_to_jiffies(VSYNC_TIMEOUT_US));
+		mutex_lock(&ctl->lock);
 		if (rc == 0) {
 			pr_warn("vsync wait timeout %d, fallback to poll mode\n",
 					ctl->num);
@@ -467,6 +476,8 @@ static void mdss_mdp_video_underrun_intr_done(void *arg)
 		return;
 
 	ctl->underrun_cnt++;
+	MDSS_XLOG(ctl->num, ctl->underrun_cnt);
+	MDSS_XLOG_TOUT_HANDLER("mdp", "dsi0", "dsi1", "edp", "hdmi", "panic");
 	pr_debug("display underrun detected for ctl=%d count=%d\n", ctl->num,
 			ctl->underrun_cnt);
 }
@@ -493,7 +504,7 @@ static int mdss_mdp_video_vfp_fps_update(struct mdss_mdp_ctl *ctl, int new_fps)
 	}
 
 	vsync_period = mdss_panel_get_vtotal(&pdata->panel_info);
-	hsync_period = mdss_panel_get_htotal(&pdata->panel_info);
+	hsync_period = mdss_panel_get_htotal(&pdata->panel_info, true);
 	curr_fps = mdss_panel_get_framerate(&pdata->panel_info);
 
 	if (curr_fps > new_fps) {
@@ -555,7 +566,7 @@ static int mdss_mdp_video_config_fps(struct mdss_mdp_ctl *ctl,
 	}
 
 	vsync_period = mdss_panel_get_vtotal(&pdata->panel_info);
-	hsync_period = mdss_panel_get_htotal(&pdata->panel_info);
+	hsync_period = mdss_panel_get_htotal(&pdata->panel_info, true);
 
 	if (pdata->panel_info.dfps_update
 			!= DFPS_SUSPEND_RESUME_MODE) {
@@ -640,9 +651,6 @@ static int mdss_mdp_video_config_fps(struct mdss_mdp_ctl *ctl,
 	return rc;
 }
 
-
-
-
 static int mdss_mdp_video_display(struct mdss_mdp_ctl *ctl, void *arg)
 {
 	struct mdss_mdp_video_ctx *ctx;
@@ -664,6 +672,8 @@ static int mdss_mdp_video_display(struct mdss_mdp_ctl *ctl, void *arg)
 	} else {
 		WARN(1, "commit without wait! ctl=%d", ctl->num);
 	}
+
+	MDSS_XLOG(ctl->num, ctl->underrun_cnt);
 
 	if (!ctx->timegen_en) {
 		rc = mdss_mdp_ctl_intf_event(ctl, MDSS_EVENT_UNBLANK, NULL);
@@ -706,7 +716,6 @@ int mdss_mdp_video_reconfigure_splash_done(struct mdss_mdp_ctl *ctl,
 {
 	struct mdss_panel_data *pdata;
 	int i, ret = 0, off;
-	struct mdss_overlay_private *mdp5_data = mfd_to_mdp5_data(ctl->mfd);
 	u32 data, flush;
 	struct mdss_mdp_video_ctx *ctx;
 
@@ -752,11 +761,6 @@ int mdss_mdp_video_reconfigure_splash_done(struct mdss_mdp_ctl *ctl,
 			MDSS_EVENT_CONT_SPLASH_FINISH, NULL);
 	}
 
-	/* Give back the reserved memory to the system */
-	memblock_free(mdp5_data->splash_mem_addr, mdp5_data->splash_mem_size);
-	free_bootmem_late(mdp5_data->splash_mem_addr,
-				 mdp5_data->splash_mem_size);
-
 	return ret;
 }
 
@@ -786,6 +790,7 @@ int mdss_mdp_video_start(struct mdss_mdp_ctl *ctl)
 		return -EINVAL;
 	}
 
+	MDSS_XLOG(ctl->num, ctl->vsync_cnt);
 	pr_debug("start ctl=%u\n", ctl->num);
 
 	ctl->priv_data = ctx;

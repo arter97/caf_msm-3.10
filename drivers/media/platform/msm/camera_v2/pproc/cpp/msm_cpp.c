@@ -946,7 +946,6 @@ static int cpp_open_node(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 			return rc;
 		}
 
-		iommu_attach_device(cpp_dev->domain, cpp_dev->iommu_ctx);
 		cpp_init_mem(cpp_dev);
 		cpp_dev->state = CPP_STATE_IDLE;
 	}
@@ -1022,9 +1021,13 @@ static int cpp_close_node(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 		pr_debug("DEBUG_R1: 0x%x\n",
 			msm_camera_io_r(cpp_dev->cpp_hw_base + 0x8C));
 		msm_camera_io_w(0x0, cpp_dev->base + MSM_CPP_MICRO_CLKEN_CTL);
-		cpp_deinit_mem(cpp_dev);
-		iommu_detach_device(cpp_dev->domain, cpp_dev->iommu_ctx);
 		cpp_release_hardware(cpp_dev);
+		if (cpp_dev->iommu_state == CPP_IOMMU_STATE_ATTACHED) {
+			iommu_detach_device(cpp_dev->domain,
+				cpp_dev->iommu_ctx);
+			cpp_dev->iommu_state = CPP_IOMMU_STATE_DETACHED;
+		}
+		cpp_deinit_mem(cpp_dev);
 		msm_cpp_empty_list(processing_q, list_frame);
 		msm_cpp_empty_list(eventData_q, list_eventdata);
 		cpp_dev->state = CPP_STATE_OFF;
@@ -1470,7 +1473,7 @@ long msm_cpp_subdev_ioctl(struct v4l2_subdev *sd,
 	struct msm_camera_v4l2_ioctl_t *ioctl_ptr = arg;
 	int rc = 0;
 
-	if (ioctl_ptr == NULL) {
+	if ((ioctl_ptr == NULL) || (ioctl_ptr->ioctl_ptr == NULL)){
 		pr_err("ioctl_ptr is null\n");
 		return -EINVAL;
 	}
@@ -1623,16 +1626,6 @@ long msm_cpp_subdev_ioctl(struct v4l2_subdev *sd,
 
 		kfree(k_stream_buff_info.buffer_info);
 		kfree(u_stream_buff_info);
-		if (cpp_dev->stream_cnt == 0) {
-			rc = msm_isp_update_bandwidth(ISP_CPP, 981345600,
-				1066680000);
-			if (rc < 0) {
-				pr_err("Bandwidth Set Failed!\n");
-				msm_isp_update_bandwidth(ISP_CPP, 0, 0);
-				mutex_unlock(&cpp_dev->mutex);
-				return -EINVAL;
-			}
-		}
 
 		if (cmd != VIDIOC_MSM_CPP_APPEND_STREAM_BUFF_INFO) {
 			cpp_dev->stream_cnt++;
@@ -1644,10 +1637,11 @@ long msm_cpp_subdev_ioctl(struct v4l2_subdev *sd,
 		uint32_t identity;
 		struct msm_cpp_buff_queue_info_t *buff_queue_info;
 		CPP_DBG("VIDIOC_MSM_CPP_DEQUEUE_STREAM_BUFF_INFO\n");
-
 		if ((ioctl_ptr->len == 0) ||
-		    (ioctl_ptr->len > sizeof(uint32_t)))
+		    (ioctl_ptr->len > sizeof(uint32_t))) {
+			mutex_unlock(&cpp_dev->mutex);
 			return -EINVAL;
+		}
 
 		rc = (copy_from_user(&identity,
 				(void __user *)ioctl_ptr->ioctl_ptr,
@@ -1735,10 +1729,19 @@ long msm_cpp_subdev_ioctl(struct v4l2_subdev *sd,
 			return -EINVAL;
 		}
 
-		if ((clock_rate == MSM_CPP_NOMINAL_CLOCK) ||
-			(clock_rate == MSM_CPP_TURBO_CLOCK)) {
+		if (clock_rate > 0) {
+			clock_rate =
+				clk_round_rate(cpp_dev->cpp_clk[4], clock_rate);
 			CPP_DBG("clk:%ld\n", clock_rate);
 			clk_set_rate(cpp_dev->cpp_clk[4], clock_rate);
+			rc = msm_isp_update_bandwidth(ISP_CPP, clock_rate * 4,
+				clock_rate * 6);
+			if (rc < 0) {
+				pr_err("Bandwidth Set Failed!\n");
+				msm_isp_update_bandwidth(ISP_CPP, 0, 0);
+				mutex_unlock(&cpp_dev->mutex);
+				return -EINVAL;
+			}
 		}
 		break;
 	}
@@ -1811,6 +1814,34 @@ long msm_cpp_subdev_ioctl(struct v4l2_subdev *sd,
 	default:
 		pr_err_ratelimited("invalid value: cmd=0x%x\n", cmd);
 		break;
+	case VIDIOC_MSM_CPP_IOMMU_ATTACH: {
+		if (cpp_dev->iommu_state == CPP_IOMMU_STATE_DETACHED) {
+			rc = iommu_attach_device(cpp_dev->domain,
+				cpp_dev->iommu_ctx);
+			if (rc < 0) {
+				pr_err("%s:%dError iommu_attach_device failed\n",
+					__func__, __LINE__);
+				rc = -EINVAL;
+			}
+			cpp_dev->iommu_state = CPP_IOMMU_STATE_ATTACHED;
+		} else {
+			pr_err("%s:%d IOMMMU attach triggered in invalid state\n",
+				__func__, __LINE__);
+			rc = -EINVAL;
+		}
+		break;
+	}
+	case VIDIOC_MSM_CPP_IOMMU_DETACH: {
+		if (cpp_dev->iommu_state == CPP_IOMMU_STATE_ATTACHED) {
+			iommu_detach_device(cpp_dev->domain,
+				cpp_dev->iommu_ctx);
+			cpp_dev->iommu_state = CPP_IOMMU_STATE_DETACHED;
+		} else {
+			pr_err("%s:%d IOMMMU attach triggered in invalid state\n",
+				__func__, __LINE__);
+		}
+		break;
+	}
 	}
 	mutex_unlock(&cpp_dev->mutex);
 	CPP_DBG("X\n");
@@ -2109,6 +2140,7 @@ static int cpp_probe(struct platform_device *pdev)
 	INIT_WORK((struct work_struct *)cpp_dev->work, msm_cpp_do_timeout_work);
 	cpp_dev->cpp_open_cnt = 0;
 	cpp_dev->is_firmware_loaded = 0;
+	cpp_dev->iommu_state = CPP_IOMMU_STATE_DETACHED;
 	cpp_timer.data.cpp_dev = cpp_dev;
 	atomic_set(&cpp_timer.used, 0);
 	cpp_dev->fw_name_bin = NULL;

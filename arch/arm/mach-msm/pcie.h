@@ -15,6 +15,7 @@
 
 #include <linux/clk.h>
 #include <linux/compiler.h>
+#include <linux/ipc_logging.h>
 #include <linux/platform_device.h>
 #include <linux/regulator/consumer.h>
 #include <linux/types.h>
@@ -36,13 +37,42 @@
 
 #define PCIE_MSI_NR_IRQS 256
 
-#define PCIE_DBG(x...) do {              \
+#define PCIE_LOG_PAGES (50)
+
+#define PCIE_DBG(dev, fmt, arg...) do {			 \
+	if ((dev) && (dev)->ipc_log)   \
+		ipc_log_string((dev)->ipc_log, "%s: " fmt, __func__, arg); \
 	if (msm_pcie_get_debug_mask())   \
-		pr_info(x);              \
+		pr_alert("%s: " fmt, __func__, arg);              \
+	} while (0)
+
+#define PCIE_INFO(dev, fmt, arg...) do {			 \
+	if ((dev) && (dev)->ipc_log)   \
+		ipc_log_string((dev)->ipc_log, "%s: " fmt, __func__, arg); \
+	pr_info("%s: " fmt, __func__, arg);  \
+	} while (0)
+
+#define PCIE_ERR(dev, fmt, arg...) do {			 \
+	if ((dev) && (dev)->ipc_log)   \
+		ipc_log_string((dev)->ipc_log, "%s: " fmt, __func__, arg); \
+	pr_err("%s: " fmt, __func__, arg);  \
 	} while (0)
 
 #define PCIE_BUS_PRIV_DATA(pdev) \
 	(((struct pci_sys_data *)pdev->bus->sysdata)->private_data)
+
+/* PM control options */
+#define PM_IRQ                   0x1
+#define PM_CLK                   0x2
+#define PM_GPIO                  0x4
+#define PM_VREG                  0x8
+#define PM_PIPE_CLK              0x10
+#define PM_EXPT                  0x80000000
+#define PM_ALL (PM_IRQ | PM_CLK | PM_GPIO | PM_VREG | PM_PIPE_CLK)
+
+#define PCIE_CONF_SPACE_DW		      1024
+#define PCIE_CLEAR			      0xDEADBEEF
+#define PCIE_LINK_DOWN                        0xFFFFFFFF
 
 enum msm_pcie_res {
 	MSM_PCIE_RES_PARF,
@@ -160,6 +190,7 @@ struct msm_pcie_dev_t {
 	bool                         cfg_access;
 	spinlock_t                   cfg_lock;
 	unsigned long                irqsave_flags;
+	struct mutex                 setup_lock;
 
 	struct irq_domain            *irq_domain;
 	DECLARE_BITMAP(msi_irq_in_use, PCIE_MSI_NR_IRQS);
@@ -171,17 +202,37 @@ struct msm_pcie_dev_t {
 	struct pci_saved_state	     *saved_state;
 
 	struct wakeup_source	     ws;
+	struct msm_bus_scale_pdata   *bus_scale_table;
+	uint32_t                     bus_client;
 
 	bool                         l1ss_supported;
 	bool                         aux_clk_sync;
 	uint32_t                     n_fts;
+	uint32_t                     ep_latency;
+	bool                         ep_wakeirq;
 
 	uint32_t                     rc_idx;
 	bool                         enumerated;
 	struct work_struct	     handle_wake_work;
+	struct work_struct	     handle_linkdown_work;
+	int                          handling_linkdown;
+	bool                         recovery_pending;
+	struct mutex                 recovery_lock;
+	ulong                        linkdown_counter;
+	bool                         suspending;
+	ulong                        wake_counter;
+	u32			     ep_shadow[PCIE_CONF_SPACE_DW];
+	u32                          rc_shadow[PCIE_CONF_SPACE_DW];
+	bool                         shadow_en;
+	struct msm_pcie_register_event *event_reg;
+	bool                         power_on;
+	void                         *ipc_log;
 };
 
 extern int msm_pcie_enumerate(u32 rc_idx);
+extern int msm_pcie_enable(struct msm_pcie_dev_t *dev, u32 options);
+extern void msm_pcie_disable(struct msm_pcie_dev_t *dev, u32 options);
+extern void msm_pcie_cfg_recover(struct msm_pcie_dev_t *dev, bool rc);
 extern void msm_pcie_config_msi_controller(struct msm_pcie_dev_t *dev);
 extern int32_t msm_pcie_irq_init(struct msm_pcie_dev_t *dev);
 extern void msm_pcie_irq_deinit(struct msm_pcie_dev_t *dev);
@@ -189,5 +240,22 @@ extern int msm_pcie_get_debug_mask(void);
 
 extern void pcie_phy_init(struct msm_pcie_dev_t *dev);
 extern bool pcie_phy_is_ready(struct msm_pcie_dev_t *dev);
+
+static inline bool msm_pcie_confirm_linkup(struct msm_pcie_dev_t *dev)
+{
+	if (dev->link_status != MSM_PCIE_LINK_ENABLED)
+		return false;
+
+	if (!(readl_relaxed(dev->dm_core + 0x80) & BIT(29)))
+		return false;
+
+	if (readl_relaxed(dev->dm_core) == PCIE_LINK_DOWN)
+		return false;
+
+	if (readl_relaxed(dev->conf) == PCIE_LINK_DOWN)
+		return false;
+
+	return true;
+}
 
 #endif

@@ -42,6 +42,8 @@ struct msm_bus_fabric_registration {
 	void *hw_data;
 	uint32_t qos_freq;
 	uint32_t qos_baseoffset;
+	u64 nr_lim_thresh;
+	uint32_t eff_fact;
 	bool virt;
 };
 
@@ -310,6 +312,7 @@ enum msm_bus_fabric_master_type {
 	MSM_BUS_MASTER_CRYPTO_CORE2,
 	MSM_BUS_MASTER_EMAC,
 	MSM_BUS_MASTER_VPU_1,
+	MSM_BUS_MASTER_PCIE_1,
 
 	MSM_BUS_MASTER_LAST,
 

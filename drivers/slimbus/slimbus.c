@@ -677,9 +677,12 @@ void slim_msg_response(struct slim_controller *ctrl, u8 *reply, u8 tid, u8 len)
 
 	mutex_lock(&ctrl->m_ctrl);
 	txn = ctrl->txnt[tid];
-	if (txn == NULL) {
-		dev_err(&ctrl->dev, "Got response to invalid TID:%d, len:%d",
+	if (txn == NULL || txn->rbuf == NULL) {
+		if (txn == NULL)
+			dev_err(&ctrl->dev, "Got response to invalid TID:%d, len:%d",
 				tid, len);
+		else
+			dev_err(&ctrl->dev, "Invalid client buffer passed\n");
 		mutex_unlock(&ctrl->m_ctrl);
 		return;
 	}
@@ -1090,6 +1093,28 @@ xfer_err:
 	return ret;
 }
 EXPORT_SYMBOL_GPL(slim_xfer_msg);
+
+/*
+ * User message:
+ * slim_user_msg: Send user message that is interpreted by destination device
+ * @sb: Client handle sending the message
+ * @la: Destination device for this user message
+ * @mt: Message Type (Soruce-referred, or Destination-referred)
+ * @mc: Message Code
+ * @msg: Message structure (start offset, number of bytes) to be sent
+ * @buf: data buffer to be sent
+ * @len: data buffer size in bytes
+ */
+int slim_user_msg(struct slim_device *sb, u8 la, u8 mt, u8 mc,
+				struct slim_ele_access *msg, u8 *buf, u8 len)
+{
+	if (!sb || !sb->ctrl || !msg || mt == SLIM_MSG_MT_CORE)
+		return -EINVAL;
+	if (!sb->ctrl->xfer_user_msg)
+		return -EPROTONOSUPPORT;
+	return sb->ctrl->xfer_user_msg(sb->ctrl, la, mt, mc, msg, buf, len);
+}
+EXPORT_SYMBOL(slim_user_msg);
 
 /*
  * slim_alloc_mgrports: Allocate port on manager side.

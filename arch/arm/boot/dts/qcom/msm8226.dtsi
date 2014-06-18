@@ -43,12 +43,6 @@
 			label = "qsecom_mem";
 		};
 
-		fb_mem: fb_region@0 {
-			linux,reserve-contiguous-region;
-			reg = <0 0x800000>;
-			label = "fb_mem";
-		};
-
 		audio_mem: audio_region@0 {
 			linux,reserve-contiguous-region;
 			linux,reserve-region;
@@ -183,7 +177,6 @@
 			<244800 133330000>,
 			<108000  66700000>;
 		qcom,hfi = "venus";
-		qcom,bus-ports = <1>;
 		qcom,reg-presets = <0xE0024 0x0>,
 			<0x80124 0x3>,
 			<0xE0020 0x5555556>,
@@ -194,14 +187,6 @@
 			<0x800D0 0x00000010>,
 			<0x800D4 0x00000010>,
 			<0x800D8 0x00000707>;
-		qcom,enc-ddr-ab-ib = <0 0>,
-			<129000 142000>,
-			<384000 422000>,
-			<866000 953000>;
-		qcom,dec-ddr-ab-ib = <0 0>,
-			<103000 134000>,
-			<268000 348000>,
-			<505000 657000>;
 		qcom,buffer-type-tz-usage-table = <0x1 0x1>,
 			<0x6 0x2>,
 			<0x7C0 0x3>;
@@ -217,6 +202,31 @@
 				qcom,vidc-domain-phandle = <&venus_domain_cp>;
 				qcom,vidc-partition-buffer-types = <0x6>,
 							<0x7c1>;
+			};
+		};
+		qcom,msm-bus-clients {
+			qcom,msm-bus-client@0 {
+				qcom,msm-bus,name = "venc-ddr";
+				qcom,msm-bus,num-cases = <4>;
+				qcom,msm-bus,num-paths = <1>;
+				qcom,msm-bus,vectors-KBps =
+					<63 512 0 0>,
+					<63 512 129000 142000>,
+					<63 512 384000 422000>,
+					<63 512 866000 953000>;
+				qcom,bus-configs = <0x1000414>;
+			};
+
+			qcom,msm-bus-client@1 {
+				qcom,msm-bus,name = "vdec-ddr";
+				qcom,msm-bus,num-cases = <4>;
+				qcom,msm-bus,num-paths = <1>;
+				qcom,msm-bus,vectors-KBps =
+					<63 512 0 0>,
+					<63 512 103000 134000>,
+					<63 512 268000 348000>,
+					<63 512 505000 657000>;
+				qcom,bus-configs = <0x30fcfff>;
 			};
 		};
 	};
@@ -1128,7 +1138,6 @@
 		qcom,msm-bus,name = "pil-venus";
 		qcom,msm-bus,num-cases = <2>;
 		qcom,msm-bus,num-paths = <1>;
-		qcom,msm-bus,active-only = <0>;
 		qcom,msm-bus,vectors-KBps =
 				<63 512 0 0>,
 				<63 512 0 304000>;
@@ -1164,14 +1173,20 @@
 	};
 
 	qcom,lpass@fe200000 {
-		compatible = "qcom,pil-q6v5-lpass";
-		reg = <0xfe200000 0x00100>,
-		      <0xfd485100 0x00010>,
-		      <0xfc4016c0 0x00004>;
-		reg-names = "qdsp6_base", "halt_base", "restart_reg";
-		vdd_cx-supply = <&pm8226_s1_corner>;
+		compatible = "qcom,pil-tz-generic";
+		reg = <0xfe200000 0x00100>;
 		interrupts = <0 162 1>;
 
+		vdd_cx-supply = <&pm8226_s1_corner>;
+		proxy-reg-names = "vdd_cx";
+		vdd_cx-uV-uA = <7 100000>;
+		clock-names = "bus_clk", "xo";
+		active-clock-names = "bus_clk";
+		proxy-clock-names = "xo";
+
+		qcom,pas-id = <1>;
+		qcom,proxy-timeout-ms = <10000>;
+		qcom,smem-id = <423>;
 		qcom,firmware-name = "adsp";
 
 		/* GPIO inputs from lpass */
@@ -1367,6 +1382,7 @@
 		qcom,msm-bus,active-only = <0>;
 		qcom,msm-bus,num-paths = <1>;
 		qcom,support-bus-scaling;
+		qcom,support-fde;
 		qcom,msm-bus,vectors-KBps =
 				<55 512 0 0>,
 				<55 512 0 0>,
@@ -1382,6 +1398,7 @@
 		interrupts = <0 207 0>;
 		qcom,bam-pipe-pair = <2>;
 		qcom,ce-hw-instance = <0>;
+		qcom,ce-device = <0>;
 		qcom,ce-hw-shared;
 		qcom,msm-bus,name = "qcrypto-noc";
 		qcom,msm-bus,num-cases = <2>;
@@ -1400,6 +1417,7 @@
 		interrupts = <0 207 0>;
 		qcom,bam-pipe-pair = <1>;
 		qcom,ce-hw-instance = <0>;
+		qcom,ce-device = <0>;
 		qcom,ce-hw-shared;
 		qcom,msm-bus,name = "qcedev-noc";
 		qcom,msm-bus,num-cases = <2>;
@@ -1563,6 +1581,7 @@
 		qcom,hw-settle-time = <2>;
 		qcom,fast-avg-setup = <3>;
 		qcom,btm-channel-number = <0x48>;
+		qcom,meas-interval-timer-idx = <2>;
 	};
 
 	chan@8 {

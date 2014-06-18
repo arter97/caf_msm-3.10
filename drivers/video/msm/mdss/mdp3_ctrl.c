@@ -27,10 +27,7 @@
 
 #define VSYNC_EXPIRE_TICK	4
 
-static void mdp3_ctrl_pan_display(struct msm_fb_data_type *mfd,
-					struct mdp_overlay *req,
-					int image_size,
-					int *pipe_ndx);
+static void mdp3_ctrl_pan_display(struct msm_fb_data_type *mfd);
 static int mdp3_overlay_unset(struct msm_fb_data_type *mfd, int ndx);
 static int mdp3_histogram_stop(struct mdp3_session_data *session,
 					u32 block);
@@ -1073,10 +1070,7 @@ static int mdp3_ctrl_display_commit_kickoff(struct msm_fb_data_type *mfd,
 	return 0;
 }
 
-static void mdp3_ctrl_pan_display(struct msm_fb_data_type *mfd,
-					struct mdp_overlay *req,
-					int image_size,
-					int *pipe_ndx)
+static void mdp3_ctrl_pan_display(struct msm_fb_data_type *mfd)
 {
 	struct fb_info *fbi;
 	struct mdp3_session_data *mdp3_session;
@@ -1637,6 +1631,7 @@ static int mdp3_overlay_prepare(struct msm_fb_data_type *mfd,
 {
 	struct mdp_overlay_list ovlist;
 	struct mdp3_session_data *mdp3_session = mfd->mdp.private1;
+	struct mdp_overlay *req_list;
 	struct mdp_overlay *req;
 	int rc;
 
@@ -1653,12 +1648,15 @@ static int mdp3_overlay_prepare(struct msm_fb_data_type *mfd,
 		return -EINVAL;
 	}
 
-	if (copy_from_user(req, ovlist.overlay_list[0], sizeof(*req)))
+	if (copy_from_user(&req_list, ovlist.overlay_list, sizeof(struct mdp_overlay*)))
+		return -EFAULT;
+
+	if (copy_from_user(req, req_list, sizeof(*req)))
 		return -EFAULT;
 
 	rc = mdp3_overlay_set(mfd, req);
 	if (!IS_ERR_VALUE(rc)) {
-		if (copy_to_user(ovlist.overlay_list[0], req, sizeof(*req)))
+		if (copy_to_user(req_list, req, sizeof(*req)))
 			return -EFAULT;
 	}
 
@@ -1800,12 +1798,11 @@ int mdp3_ctrl_init(struct msm_fb_data_type *mfd)
 	mdp3_interface->kickoff_fnc = mdp3_ctrl_display_commit_kickoff;
 	mdp3_interface->lut_update = mdp3_ctrl_lut_update;
 
-	mdp3_session = kmalloc(sizeof(struct mdp3_session_data), GFP_KERNEL);
+	mdp3_session = kzalloc(sizeof(struct mdp3_session_data), GFP_KERNEL);
 	if (!mdp3_session) {
 		pr_err("fail to allocate mdp3 private data structure");
 		return -ENOMEM;
 	}
-	memset(mdp3_session, 0, sizeof(struct mdp3_session_data));
 	mutex_init(&mdp3_session->lock);
 	INIT_WORK(&mdp3_session->clk_off_work, mdp3_dispatch_clk_off);
 	INIT_WORK(&mdp3_session->dma_done_work, mdp3_dispatch_dma_done);

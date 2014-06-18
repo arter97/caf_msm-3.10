@@ -30,21 +30,6 @@
 #define GROUP_BYTES 4
 #define ROW_BYTES 16
 #define MAX_VSYNC_COUNT 0xFFFFFFF
-struct mdss_debug_data {
-	struct dentry *root;
-	struct list_head base_list;
-};
-
-struct mdss_debug_base {
-	struct mdss_debug_data *mdd;
-	void __iomem *base;
-	size_t off;
-	size_t cnt;
-	size_t max_offset;
-	char *buf;
-	size_t buf_len;
-	struct list_head head;
-};
 
 static int mdss_debug_base_open(struct inode *inode, struct file *file)
 {
@@ -266,12 +251,14 @@ int mdss_debug_register_base(const char *name, void __iomem *base,
 	if (!dbg)
 		return -ENOMEM;
 
+	if (name)
+		strlcpy(dbg->name, name, sizeof(dbg->name));
 	dbg->base = base;
 	dbg->max_offset = max_offset;
 	dbg->off = 0;
 	dbg->cnt = DEFAULT_BASE_REG_CNT;
 
-	if (name)
+	if (name && strcmp(name, "mdp"))
 		prefix_len = snprintf(dn, sizeof(dn), "%s_", name);
 
 	strlcpy(dn + prefix_len, "off", sizeof(dn) - prefix_len);
@@ -347,6 +334,78 @@ static const struct file_operations mdss_stat_fops = {
 	.read = mdss_debug_stat_read,
 };
 
+static ssize_t mdss_debug_factor_write(struct file *file,
+		    const char __user *user_buf, size_t count, loff_t *ppos)
+{
+	struct mdss_fudge_factor *factor  = file->private_data;
+	u32 numer = factor->numer;
+	u32 denom = factor->denom;
+	char buf[32];
+
+	if (!factor)
+		return -ENODEV;
+
+	if (count >= sizeof(buf))
+		return -EFAULT;
+
+	if (copy_from_user(buf, user_buf, count))
+		return -EFAULT;
+
+	buf[count] = 0;	/* end of string */
+
+	if (strnchr(buf, count, '/')) {
+		/* Parsing buf as fraction */
+		if (sscanf(buf, "%d/%d", &numer, &denom) != 2)
+			return -EFAULT;
+	} else {
+		/* Parsing buf as percentage */
+		if (sscanf(buf, "%d", &numer) != 1)
+			return -EFAULT;
+		denom = 100;
+	}
+
+	if (numer && denom) {
+		factor->numer = numer;
+		factor->denom = denom;
+	}
+
+	pr_debug("numer=%d  denom=%d\n", numer, denom);
+
+	return count;
+}
+
+static ssize_t mdss_debug_factor_read(struct file *file,
+			char __user *buff, size_t count, loff_t *ppos)
+{
+	struct mdss_fudge_factor *factor = file->private_data;
+	int len = 0;
+	char buf[32];
+
+	if (!factor)
+		return -ENODEV;
+
+	if (*ppos)
+		return 0;	/* the end */
+
+	len = snprintf(buf, sizeof(buf), "%d/%d\n",
+			factor->numer, factor->denom);
+	if (len < 0)
+		return 0;
+
+	if (copy_to_user(buff, buf, len))
+		return -EFAULT;
+
+	*ppos += len;	/* increase offset */
+
+	return len;
+}
+
+static const struct file_operations mdss_factor_fops = {
+	.open = simple_open,
+	.read = mdss_debug_factor_read,
+	.write = mdss_debug_factor_write,
+};
+
 static int mdss_debugfs_cleanup(struct mdss_debug_data *mdd)
 {
 	struct mdss_debug_base *base, *tmp;
@@ -363,6 +422,39 @@ static int mdss_debugfs_cleanup(struct mdss_debug_data *mdd)
 		debugfs_remove_recursive(mdd->root);
 
 	kfree(mdd);
+
+	return 0;
+}
+
+static int mdss_debugfs_perf_init(struct mdss_debug_data *mdd,
+			struct mdss_data_type *mdata) {
+
+	debugfs_create_u32("min_mdp_clk", 0644, mdd->perf,
+		(u32 *)&mdata->perf_tune.min_mdp_clk);
+
+	debugfs_create_u64("min_bus_vote", 0644, mdd->perf,
+		(u64 *)&mdata->perf_tune.min_bus_vote);
+
+	debugfs_create_file("ab_factor", 0644, mdd->perf,
+		&mdata->ab_factor, &mdss_factor_fops);
+
+	debugfs_create_file("ib_factor", 0644, mdd->perf,
+		&mdata->ib_factor, &mdss_factor_fops);
+
+	debugfs_create_file("ib_factor_overlap", 0644, mdd->perf,
+		&mdata->ib_factor_overlap, &mdss_factor_fops);
+
+	debugfs_create_file("clk_factor", 0644, mdd->perf,
+		&mdata->clk_factor, &mdss_factor_fops);
+
+	debugfs_create_u32("threshold_low", 0644, mdd->perf,
+		(u32 *)&mdata->max_bw_low);
+
+	debugfs_create_u32("threshold_high", 0644, mdd->perf,
+		(u32 *)&mdata->max_bw_high);
+
+	debugfs_create_u32("threshold_pipe", 0644, mdd->perf,
+		(u32 *)&mdata->max_bw_per_pipe);
 
 	return 0;
 }
@@ -385,20 +477,31 @@ int mdss_debugfs_init(struct mdss_data_type *mdata)
 
 	mdd->root = debugfs_create_dir("mdp", NULL);
 	if (IS_ERR_OR_NULL(mdd->root)) {
-		pr_err("debugfs_create_dir fail, error %ld\n",
+		pr_err("debugfs_create_dir for mdp failed, error %ld\n",
 		       PTR_ERR(mdd->root));
-		mdd->root = NULL;
-		mdss_debugfs_cleanup(mdd);
-		return -ENODEV;
+		goto err;
 	}
 	debugfs_create_file("stat", 0644, mdd->root, mdata, &mdss_stat_fops);
 
-	debugfs_create_u32("min_mdp_clk", 0644, mdd->root,
-			(u32 *)&mdata->min_mdp_clk);
+	mdd->perf = debugfs_create_dir("perf", mdd->root);
+	if (IS_ERR_OR_NULL(mdd->perf)) {
+		pr_err("debugfs_create_dir perf fail, error %ld\n",
+			PTR_ERR(mdd->perf));
+		goto err;
+	}
+
+	mdss_debugfs_perf_init(mdd, mdata);
+
+	if (mdss_create_xlog_debug(mdd))
+		goto err;
 
 	mdata->debug_inf.debug_data = mdd;
 
 	return 0;
+
+err:
+	mdss_debugfs_cleanup(mdd);
+	return -ENODEV;
 }
 
 int mdss_debugfs_remove(struct mdss_data_type *mdata)
@@ -409,6 +512,29 @@ int mdss_debugfs_remove(struct mdss_data_type *mdata)
 	mdata->debug_inf.debug_data = NULL;
 
 	return 0;
+}
+
+void mdss_dump_reg(char __iomem *base, int len)
+{
+	char *addr;
+	u32 x0, x4, x8, xc;
+	int i;
+
+	addr = base;
+	if (len % 16)
+		len += 16;
+	len /= 16;
+
+	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON, false);
+	for (i = 0; i < len; i++) {
+		x0 = readl_relaxed(addr+0x0);
+		x4 = readl_relaxed(addr+0x4);
+		x8 = readl_relaxed(addr+0x8);
+		xc = readl_relaxed(addr+0xc);
+		pr_info("%p : %08x %08x %08x %08x\n", addr, x0, x4, x8, xc);
+		addr += 16;
+	}
+	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF, false);
 }
 
 int vsync_count;
@@ -489,6 +615,32 @@ static inline struct mdss_mdp_misr_map *mdss_misr_get_map(u32 block_id)
 	return map;
 }
 
+/*
+ * switch_mdp_misr_offset() - Update MDP MISR register offset for MDSS
+ * Hardware Revision 103.
+ * @map: mdss_mdp_misr_map
+ * @mdp_rev: MDSS Hardware Revision
+ * @block_id: Logical MISR Block ID
+ *
+ * Return: true when MDSS Revision is 103 else false.
+ */
+static bool switch_mdp_misr_offset(struct mdss_mdp_misr_map *map, u32 mdp_rev,
+					u32 block_id)
+{
+	bool use_mdp_up_misr = false;
+
+	if ((IS_MDSS_MAJOR_MINOR_SAME(mdp_rev, MDSS_MDP_HW_REV_103)) &&
+		(block_id == DISPLAY_MISR_MDP)) {
+		/* Use Upper pipe MISR for Layer Mixer CRC */
+		map->ctrl_reg = MDSS_MDP_UP_MISR_CTRL_MDP;
+		map->value_reg = MDSS_MDP_UP_MISR_SIGN_MDP;
+		use_mdp_up_misr = true;
+	}
+	pr_debug("MISR Module(%d) Offset of MISR_CTRL = 0x%x MISR_SIG = 0x%x\n",
+			block_id, map->ctrl_reg, map->value_reg);
+	return use_mdp_up_misr;
+}
+
 int mdss_misr_set(struct mdss_data_type *mdata,
 			struct mdp_misr *req,
 			struct mdss_mdp_ctl *ctl)
@@ -498,7 +650,11 @@ int mdss_misr_set(struct mdss_data_type *mdata,
 	u32 config = 0, val = 0;
 	u32 mixer_num = 0;
 	bool is_valid_wb_mixer = true;
+	bool use_mdp_up_misr = false;
+
 	map = mdss_misr_get_map(req->block_id);
+	use_mdp_up_misr = switch_mdp_misr_offset(map, mdata->mdp_rev,
+				req->block_id);
 	if (!map) {
 		pr_err("Invalid MISR Block=%d\n", req->block_id);
 		return -EINVAL;
@@ -528,16 +684,23 @@ int mdss_misr_set(struct mdss_data_type *mdata,
 			is_valid_wb_mixer = false;
 			break;
 		}
-		if (is_valid_wb_mixer)
-			writel_relaxed(val,
-				mdata->mdp_base + MDSS_MDP_LP_MISR_SEL);
+		if (is_valid_wb_mixer) {
+			if (use_mdp_up_misr)
+				writel_relaxed((val +
+					MDSS_MDP_UP_MISR_LMIX_SEL_OFFSET),
+					(mdata->mdp_base +
+					 MDSS_MDP_UP_MISR_SEL));
+			else
+				writel_relaxed(val, (mdata->mdp_base +
+					MDSS_MDP_LP_MISR_SEL));
+		}
 	}
 	vsync_count = 0;
 	map->crc_op_mode = req->crc_op_mode;
-	config = (MDSS_MDP_LP_MISR_CTRL_FRAME_COUNT_MASK & req->frame_count) |
-			(MDSS_MDP_LP_MISR_CTRL_ENABLE);
+	config = (MDSS_MDP_MISR_CTRL_FRAME_COUNT_MASK & req->frame_count) |
+			(MDSS_MDP_MISR_CTRL_ENABLE);
 
-	writel_relaxed(MDSS_MDP_LP_MISR_CTRL_STATUS_CLEAR,
+	writel_relaxed(MDSS_MDP_MISR_CTRL_STATUS_CLEAR,
 			mdata->mdp_base + map->ctrl_reg);
 	/* ensure clear is done */
 	wmb();
@@ -570,6 +733,7 @@ int mdss_misr_get(struct mdss_data_type *mdata,
 	int i;
 
 	map = mdss_misr_get_map(resp->block_id);
+	switch_mdp_misr_offset(map, mdata->mdp_rev, resp->block_id);
 	if (!map) {
 		pr_err("Invalid MISR Block=%d\n", resp->block_id);
 		return -EINVAL;
@@ -579,7 +743,7 @@ int mdss_misr_get(struct mdss_data_type *mdata,
 	case MISR_OP_SFM:
 	case MISR_OP_MFM:
 		ret = readl_poll_timeout(mdata->mdp_base + map->ctrl_reg,
-				status, status & MDSS_MDP_LP_MISR_CTRL_STATUS,
+				status, status & MDSS_MDP_MISR_CTRL_STATUS,
 				MISR_POLL_SLEEP, MISR_POLL_TIMEOUT);
 		if (ret == 0) {
 			resp->crc_value[0] = readl_relaxed(mdata->mdp_base +
@@ -591,7 +755,7 @@ int mdss_misr_get(struct mdss_data_type *mdata,
 			mdss_mdp_ctl_write(ctl, MDSS_MDP_REG_CTL_START, 1);
 			ret = readl_poll_timeout(mdata->mdp_base +
 					map->ctrl_reg, status,
-					status & MDSS_MDP_LP_MISR_CTRL_STATUS,
+					status & MDSS_MDP_MISR_CTRL_STATUS,
 					MISR_POLL_SLEEP, MISR_POLL_TIMEOUT);
 			if (ret == 0) {
 				resp->crc_value[0] =
@@ -640,11 +804,12 @@ void mdss_misr_crc_collect(struct mdss_data_type *mdata, int block_id)
 	bool crc_stored = false;
 
 	map = mdss_misr_get_map(block_id);
+	switch_mdp_misr_offset(map, mdata->mdp_rev, block_id);
 	if (!map || (map->crc_op_mode != MISR_OP_BM))
 		return;
 
 	status = readl_relaxed(mdata->mdp_base + map->ctrl_reg);
-	if (MDSS_MDP_LP_MISR_CTRL_STATUS & status) {
+	if (MDSS_MDP_MISR_CTRL_STATUS & status) {
 		crc = readl_relaxed(mdata->mdp_base + map->value_reg);
 		if (map->use_ping) {
 			if (map->is_ping_full) {
@@ -684,7 +849,7 @@ void mdss_misr_crc_collect(struct mdss_data_type *mdata, int block_id)
 			pr_err("CRC(%d) Not saved\n", crc);
 		}
 
-		writel_relaxed(MDSS_MDP_LP_MISR_CTRL_STATUS_CLEAR,
+		writel_relaxed(MDSS_MDP_MISR_CTRL_STATUS_CLEAR,
 				mdata->mdp_base + map->ctrl_reg);
 		writel_relaxed(MISR_CRC_BATCH_CFG,
 				mdata->mdp_base + map->ctrl_reg);

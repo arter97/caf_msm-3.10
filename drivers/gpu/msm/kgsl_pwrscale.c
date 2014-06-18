@@ -67,7 +67,8 @@ void kgsl_pwrscale_wake(struct kgsl_device *device)
 
 	device->pwrscale.time = ktime_to_us(ktime_get());
 
-	device->pwrscale.next_governor_call = 0;
+	device->pwrscale.next_governor_call = jiffies +
+			msecs_to_jiffies(KGSL_GOVERNOR_CALL_INTERVAL);
 
 	/* to call devfreq_resume_device() from a kernel thread */
 	queue_work(device->pwrscale.devfreq_wq,
@@ -92,39 +93,48 @@ void kgsl_pwrscale_busy(struct kgsl_device *device)
 }
 EXPORT_SYMBOL(kgsl_pwrscale_busy);
 
-/*
- * kgsl_pwrscale_update - update device busy statistics
+/**
+ * kgsl_pwrscale_update_stats() - update device busy statistics
  * @device: The device
  *
- * Read hardware busy counters when the device is likely to be
- * on and accumulate the results between devfreq get_dev_status
- * calls. This is limits the need to turn on clocks to read these
- * values for governors that run independently of hardware
- * activity (for example, by time based polling).
+ * Read hardware busy counters and accumulate the results.
  */
-void kgsl_pwrscale_update(struct kgsl_device *device)
+void kgsl_pwrscale_update_stats(struct kgsl_device *device)
 {
-	struct kgsl_power_stats stats;
 	BUG_ON(!mutex_is_locked(&device->mutex));
 
 	if (!device->pwrscale.enabled)
 		return;
 
-	if (device->pwrscale.next_governor_call == 0)
-		device->pwrscale.next_governor_call = jiffies;
+	if (device->state == KGSL_STATE_ACTIVE) {
+		struct kgsl_power_stats stats;
+		device->ftbl->power_stats(device, &stats);
+		device->pwrscale.accum_stats.busy_time += stats.busy_time;
+		device->pwrscale.accum_stats.ram_time += stats.ram_time;
+		device->pwrscale.accum_stats.ram_wait += stats.ram_wait;
+	}
+}
+EXPORT_SYMBOL(kgsl_pwrscale_update_stats);
+
+/**
+ * kgsl_pwrscale_update() - update device busy statistics
+ * @device: The device
+ *
+ * If enough time has passed schedule the next call to devfreq
+ * get_dev_status.
+ */
+void kgsl_pwrscale_update(struct kgsl_device *device)
+{
+	BUG_ON(!mutex_is_locked(&device->mutex));
+
+	if (!device->pwrscale.enabled)
+		return;
 
 	if (time_before(jiffies, device->pwrscale.next_governor_call))
 		return;
 
 	device->pwrscale.next_governor_call = jiffies
 			+ msecs_to_jiffies(KGSL_GOVERNOR_CALL_INTERVAL);
-
-	if (device->state == KGSL_STATE_ACTIVE) {
-		device->ftbl->power_stats(device, &stats);
-		device->pwrscale.accum_stats.busy_time += stats.busy_time;
-		device->pwrscale.accum_stats.ram_time += stats.ram_time;
-		device->pwrscale.accum_stats.ram_wait += stats.ram_wait;
-	}
 
 	/* to call srcu_notifier_call_chain() from a kernel thread */
 	if (device->requested_state != KGSL_STATE_SLUMBER)
@@ -206,7 +216,7 @@ int kgsl_devfreq_target(struct device *dev, unsigned long *freq, u32 flags)
 		return 0;
 	}
 
-	mutex_lock(&device->mutex);
+	kgsl_mutex_lock(&device->mutex, &device->mutex_owner);
 	cur_freq = kgsl_pwrctrl_active_freq(pwr);
 	level = pwr->active_pwrlevel;
 	pwr_level = &pwr->pwrlevels[level];
@@ -249,15 +259,21 @@ int kgsl_devfreq_target(struct device *dev, unsigned long *freq, u32 flags)
 	else {
 		/* Change the power level */
 		kgsl_pwrctrl_pwrlevel_change(device, level);
-
-		/*Invalidate the constraint set */
-		pwr->constraint.type = KGSL_CONSTRAINT_NONE;
+		if (pwr->constraint.type != KGSL_CONSTRAINT_NONE) {
+			/* Trace the constraint being un-set by the driver */
+			trace_kgsl_constraint(device,
+				pwr->constraint.type,
+				level,
+				0);
+			/*Invalidate the constraint set */
+			pwr->constraint.type = KGSL_CONSTRAINT_NONE;
+		}
 		pwr->constraint.expires = 0;
 
 		*freq = kgsl_pwrctrl_active_freq(pwr);
 	}
 
-	mutex_unlock(&device->mutex);
+	kgsl_mutex_unlock(&device->mutex, &device->mutex_owner);
 	return 0;
 }
 EXPORT_SYMBOL(kgsl_devfreq_target);
@@ -284,15 +300,13 @@ int kgsl_devfreq_get_dev_status(struct device *dev,
 
 	pwrscale = &device->pwrscale;
 
-	mutex_lock(&device->mutex);
-	/* make sure we don't turn on clocks just to read stats */
-	if (device->state == KGSL_STATE_ACTIVE) {
-		struct kgsl_power_stats extra;
-		device->ftbl->power_stats(device, &extra);
-		device->pwrscale.accum_stats.busy_time += extra.busy_time;
-		device->pwrscale.accum_stats.ram_time += extra.ram_time;
-		device->pwrscale.accum_stats.ram_wait += extra.ram_wait;
-	}
+	kgsl_mutex_lock(&device->mutex, &device->mutex_owner);
+	/*
+	 * If the GPU clock is on grab the latest power counter
+	 * values.  Otherwise the most recent ACTIVE values will
+	 * already be stored in accum_stats.
+	 */
+	kgsl_pwrscale_update_stats(device);
 
 	tmp = ktime_to_us(ktime_get());
 	stat->total_time = tmp - pwrscale->time;
@@ -312,7 +326,7 @@ int kgsl_devfreq_get_dev_status(struct device *dev,
 	trace_kgsl_pwrstats(device, stat->total_time, &pwrscale->accum_stats);
 	memset(&pwrscale->accum_stats, 0, sizeof(pwrscale->accum_stats));
 
-	mutex_unlock(&device->mutex);
+	kgsl_mutex_unlock(&device->mutex, &device->mutex_owner);
 
 	return 0;
 }
@@ -335,9 +349,9 @@ int kgsl_devfreq_get_cur_freq(struct device *dev, unsigned long *freq)
 	if (freq == NULL)
 		return -EINVAL;
 
-	mutex_lock(&device->mutex);
+	kgsl_mutex_lock(&device->mutex, &device->mutex_owner);
 	*freq = kgsl_pwrctrl_active_freq(&device->pwrctrl);
-	mutex_unlock(&device->mutex);
+	kgsl_mutex_unlock(&device->mutex, &device->mutex_owner);
 
 	return 0;
 }
@@ -473,7 +487,8 @@ int kgsl_pwrscale_init(struct device *dev, const char *governor)
 	INIT_WORK(&pwrscale->devfreq_resume_ws, do_devfreq_resume);
 	INIT_WORK(&pwrscale->devfreq_notify_ws, do_devfreq_notify);
 
-	pwrscale->next_governor_call = 0;
+	pwrscale->next_governor_call = jiffies +
+			msecs_to_jiffies(KGSL_GOVERNOR_CALL_INTERVAL);
 
 	return 0;
 }

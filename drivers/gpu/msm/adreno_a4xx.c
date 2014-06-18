@@ -309,14 +309,17 @@ static void a4xx_enable_hwcg(struct kgsl_device *device)
 	kgsl_regwrite(device, A4XX_RBBM_CLOCK_CTL_RB2, 0x22222222);
 	kgsl_regwrite(device, A4XX_RBBM_CLOCK_CTL_RB3, 0x22222222);
 	/* Disable L1 clocking in A420 due to CCU issues with it */
-	if (adreno_is_a420(adreno_dev))
+	if (adreno_is_a420(adreno_dev)) {
 		kgsl_regwrite(device, A4XX_RBBM_CLOCK_CTL2_RB0, 0x00002020);
-	else
+		kgsl_regwrite(device, A4XX_RBBM_CLOCK_CTL2_RB1, 0x00002020);
+		kgsl_regwrite(device, A4XX_RBBM_CLOCK_CTL2_RB2, 0x00002020);
+		kgsl_regwrite(device, A4XX_RBBM_CLOCK_CTL2_RB3, 0x00002020);
+	} else {
 		kgsl_regwrite(device, A4XX_RBBM_CLOCK_CTL2_RB0, 0x00022020);
-
-	kgsl_regwrite(device, A4XX_RBBM_CLOCK_CTL2_RB1, 0x00022020);
-	kgsl_regwrite(device, A4XX_RBBM_CLOCK_CTL2_RB2, 0x00022020);
-	kgsl_regwrite(device, A4XX_RBBM_CLOCK_CTL2_RB3, 0x00022020);
+		kgsl_regwrite(device, A4XX_RBBM_CLOCK_CTL2_RB1, 0x00022020);
+		kgsl_regwrite(device, A4XX_RBBM_CLOCK_CTL2_RB2, 0x00022020);
+		kgsl_regwrite(device, A4XX_RBBM_CLOCK_CTL2_RB3, 0x00022020);
+	}
 	kgsl_regwrite(device, A4XX_RBBM_CLOCK_CTL_MARB_CCU0, 0x00000922);
 	kgsl_regwrite(device, A4XX_RBBM_CLOCK_CTL_MARB_CCU1, 0x00000922);
 	kgsl_regwrite(device, A4XX_RBBM_CLOCK_CTL_MARB_CCU2, 0x00000922);
@@ -347,6 +350,43 @@ static void a4xx_enable_hwcg(struct kgsl_device *device)
 	kgsl_regwrite(device, A4XX_RBBM_CLOCK_DELAY_HLSQ, 0x00020000);
 	kgsl_regwrite(device, A4XX_RBBM_CLOCK_CTL, 0xAAAAAAAA);
 	kgsl_regwrite(device, A4XX_RBBM_CLOCK_CTL2, 0);
+}
+
+/**
+ * a4xx_protect_init() - Initializes register protection on a4xx
+ * @device: Pointer to the device structure
+ * Performs register writes to enable protected access to sensitive
+ * registers
+ */
+static void a4xx_protect_init(struct kgsl_device *device)
+{
+	int index = 0;
+
+	/* enable access protection to privileged registers */
+	kgsl_regwrite(device, A4XX_CP_PROTECT_CTRL, 0x00000007);
+	/* RBBM registers */
+	adreno_set_protected_registers(device, &index, 0x4, 2);
+	adreno_set_protected_registers(device, &index, 0x8, 3);
+	adreno_set_protected_registers(device, &index, 0x10, 4);
+	adreno_set_protected_registers(device, &index, 0x20, 5);
+	adreno_set_protected_registers(device, &index, 0x40, 6);
+	adreno_set_protected_registers(device, &index, 0x80, 4);
+
+	/* CP registers */
+	adreno_set_protected_registers(device, &index, 0x200, 7);
+	adreno_set_protected_registers(device, &index, 0x580, 4);
+
+	/* RB registers */
+	adreno_set_protected_registers(device, &index, 0xCC0, 0);
+
+	/* HLSQ registers */
+	adreno_set_protected_registers(device, &index, 0xE00, 0);
+
+	/* VPC registers */
+	adreno_set_protected_registers(device, &index, 0xE60, 1);
+
+	/* SMMU registers */
+	adreno_set_protected_registers(device, &index, 0x4000, 14);
 }
 
 static void a4xx_start(struct adreno_device *adreno_dev)
@@ -412,6 +452,8 @@ static void a4xx_start(struct adreno_device *adreno_dev)
 		val |= 2 << A4XX_CGC_HLSQ_TP_EARLY_CYC_SHIFT;
 		kgsl_regwrite(device, A4XX_RBBM_CLOCK_DELAY_HLSQ, val);
 	}
+
+	a4xx_protect_init(device);
 }
 
 int a4xx_perfcounter_enable_vbif(struct kgsl_device *device,
@@ -564,6 +606,7 @@ static unsigned int a4xx_register_offsets[ADRENO_REG_REGISTER_MAX] = {
 	ADRENO_REG_DEFINE(ADRENO_REG_CP_MEQ_ADDR, A4XX_CP_MEQ_ADDR),
 	ADRENO_REG_DEFINE(ADRENO_REG_CP_MEQ_DATA, A4XX_CP_MEQ_DATA),
 	ADRENO_REG_DEFINE(ADRENO_REG_CP_HW_FAULT, A4XX_CP_HW_FAULT),
+	ADRENO_REG_DEFINE(ADRENO_REG_CP_PROTECT_STATUS, A4XX_CP_PROTECT_STATUS),
 	ADRENO_REG_DEFINE(ADRENO_REG_SCRATCH_ADDR, A4XX_CP_SCRATCH_ADDR),
 	ADRENO_REG_DEFINE(ADRENO_REG_SCRATCH_UMSK, A4XX_CP_SCRATCH_UMASK),
 	ADRENO_REG_DEFINE(ADRENO_REG_RBBM_STATUS, A4XX_RBBM_STATUS),
@@ -582,6 +625,10 @@ static unsigned int a4xx_register_offsets[ADRENO_REG_REGISTER_MAX] = {
 					A4XX_RBBM_AHB_ERROR_STATUS),
 	ADRENO_REG_DEFINE(ADRENO_REG_RBBM_AHB_CMD, A4XX_RBBM_AHB_CMD),
 	ADRENO_REG_DEFINE(ADRENO_REG_RBBM_CLOCK_CTL, A4XX_RBBM_CLOCK_CTL),
+	ADRENO_REG_DEFINE(ADRENO_REG_RBBM_AHB_ME_SPLIT_STATUS,
+			A4XX_RBBM_AHB_ME_SPLIT_STATUS),
+	ADRENO_REG_DEFINE(ADRENO_REG_RBBM_AHB_PFP_SPLIT_STATUS,
+			A4XX_RBBM_AHB_PFP_SPLIT_STATUS),
 	ADRENO_REG_DEFINE(ADRENO_REG_VPC_DEBUG_RAM_SEL,
 					A4XX_VPC_DEBUG_RAM_SEL),
 	ADRENO_REG_DEFINE(ADRENO_REG_VPC_DEBUG_RAM_READ,
@@ -609,6 +656,10 @@ static unsigned int a4xx_register_offsets[ADRENO_REG_REGISTER_MAX] = {
 	ADRENO_REG_DEFINE(ADRENO_REG_RBBM_RBBM_CTL, A4XX_RBBM_RBBM_CTL),
 	ADRENO_REG_DEFINE(ADRENO_REG_RBBM_SW_RESET_CMD, A4XX_RBBM_SW_RESET_CMD),
 	ADRENO_REG_DEFINE(ADRENO_REG_UCHE_INVALIDATE0, A4XX_UCHE_INVALIDATE0),
+	ADRENO_REG_DEFINE(ADRENO_REG_RBBM_PERFCTR_LOAD_VALUE_LO,
+				A4XX_RBBM_PERFCTR_LOAD_VALUE_LO),
+	ADRENO_REG_DEFINE(ADRENO_REG_RBBM_PERFCTR_LOAD_VALUE_HI,
+				A4XX_RBBM_PERFCTR_LOAD_VALUE_HI),
 };
 
 const struct adreno_reg_offsets a4xx_reg_offsets = {
@@ -621,6 +672,17 @@ static struct adreno_perfcount_register a4xx_perfcounters_cp[] = {
 		A4XX_RBBM_PERFCTR_CP_0_HI, 0, A4XX_CP_PERFCTR_CP_SEL_0 },
 	{ KGSL_PERFCOUNTER_NOT_USED, 0, 0, A4XX_RBBM_PERFCTR_CP_1_LO,
 		A4XX_RBBM_PERFCTR_CP_1_HI, 1, A4XX_CP_PERFCTR_CP_SEL_1 },
+	/*
+	 * The selector registers for 3, 5, and 7 are swizzled on the hardware.
+	 * CP_4 and CP_6 are duped to SEL_2 and SEL_3 so we don't enable them
+	 * here
+	 */
+	{ KGSL_PERFCOUNTER_NOT_USED, 0, 0, A4XX_RBBM_PERFCTR_CP_3_LO,
+		A4XX_RBBM_PERFCTR_CP_3_HI, 3, A4XX_CP_PERFCTR_CP_SEL_2 },
+	{ KGSL_PERFCOUNTER_NOT_USED, 0, 0, A4XX_RBBM_PERFCTR_CP_5_LO,
+		A4XX_RBBM_PERFCTR_CP_5_HI, 5, A4XX_CP_PERFCTR_CP_SEL_3 },
+	{ KGSL_PERFCOUNTER_NOT_USED, 0, 0, A4XX_RBBM_PERFCTR_CP_7_LO,
+		A4XX_RBBM_PERFCTR_CP_7_HI, 7, A4XX_CP_PERFCTR_CP_SEL_4 },
 };
 
 static struct adreno_perfcount_register a4xx_perfcounters_rbbm[] = {
@@ -1174,6 +1236,8 @@ struct adreno_gpudev adreno_a4xx_gpudev = {
 	.start = a4xx_start,
 	.perfcounter_enable = a3xx_perfcounter_enable,
 	.perfcounter_read = a3xx_perfcounter_read,
+	.perfcounter_save = a3xx_perfcounter_save,
+	.perfcounter_restore = a3xx_perfcounter_restore,
 	.fault_detect_start = a3xx_fault_detect_start,
 	.fault_detect_stop = a3xx_fault_detect_stop,
 	.invalid_countables = a4xx_perfctr_invalid_countables,

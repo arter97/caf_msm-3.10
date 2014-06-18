@@ -478,6 +478,9 @@ struct rq {
 	u64 avg_idle;
 #endif
 
+	int cur_freq, max_freq, min_freq;
+	u64 cumulative_runnable_avg;
+
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
 	u64 prev_irq_time;
 #endif
@@ -648,6 +651,23 @@ extern int group_balance_cpu(struct sched_group *sg);
 
 #include "stats.h"
 #include "auto_group.h"
+
+extern unsigned int sched_ravg_window;
+extern unsigned int pct_task_load(struct task_struct *p);
+extern void init_new_task_load(struct task_struct *p);
+
+static inline void
+inc_cumulative_runnable_avg(struct rq *rq, struct task_struct *p)
+{
+	rq->cumulative_runnable_avg += p->ravg.demand;
+}
+
+static inline void
+dec_cumulative_runnable_avg(struct rq *rq, struct task_struct *p)
+{
+	rq->cumulative_runnable_avg -= p->ravg.demand;
+	BUG_ON((s64)rq->cumulative_runnable_avg < 0);
+}
 
 #ifdef CONFIG_CGROUP_SCHED
 

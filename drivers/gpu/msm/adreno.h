@@ -21,6 +21,7 @@
 #include <mach/ocmem.h>
 
 #include "a3xx_reg.h"
+#include "a4xx_reg.h"
 
 #define DEVICE_3D_NAME "kgsl-3d"
 #define DEVICE_3D0_NAME "kgsl-3d0"
@@ -38,6 +39,7 @@
 
 /* Adreno core features */
 #define ADRENO_USES_OCMEM BIT(0)
+#define IOMMU_FLUSH_TLB_ON_MAP BIT(1)
 
 /* Flags to control command packet settings */
 #define KGSL_CMD_FLAGS_NONE             0
@@ -320,6 +322,7 @@ enum adreno_regs {
 	ADRENO_REG_CP_MEQ_ADDR,
 	ADRENO_REG_CP_MEQ_DATA,
 	ADRENO_REG_CP_HW_FAULT,
+	ADRENO_REG_CP_PROTECT_STATUS,
 	ADRENO_REG_SCRATCH_ADDR,
 	ADRENO_REG_SCRATCH_UMSK,
 	ADRENO_REG_SCRATCH_REG2,
@@ -337,6 +340,8 @@ enum adreno_regs {
 	ADRENO_REG_RBBM_INT_CLEAR_CMD,
 	ADRENO_REG_RBBM_SW_RESET_CMD,
 	ADRENO_REG_RBBM_CLOCK_CTL,
+	ADRENO_REG_RBBM_AHB_ME_SPLIT_STATUS,
+	ADRENO_REG_RBBM_AHB_PFP_SPLIT_STATUS,
 	ADRENO_REG_VPC_DEBUG_RAM_SEL,
 	ADRENO_REG_VPC_DEBUG_RAM_READ,
 	ADRENO_REG_VSC_PIPE_DATA_ADDRESS_0,
@@ -356,6 +361,8 @@ enum adreno_regs {
 	ADRENO_REG_TP0_CHICKEN,
 	ADRENO_REG_RBBM_RBBM_CTL,
 	ADRENO_REG_UCHE_INVALIDATE0,
+	ADRENO_REG_RBBM_PERFCTR_LOAD_VALUE_LO,
+	ADRENO_REG_RBBM_PERFCTR_LOAD_VALUE_HI,
 	ADRENO_REG_REGISTER_MAX,
 };
 
@@ -542,7 +549,8 @@ struct log_field {
 #define  KGSL_FT_DISABLE                  4
 #define  KGSL_FT_TEMP_DISABLE             5
 #define  KGSL_FT_THROTTLE                 6
-#define  KGSL_FT_DEFAULT_POLICY (BIT(KGSL_FT_REPLAY) + BIT(KGSL_FT_SKIPIB) \
+#define  KGSL_FT_SKIPCMD                  7
+#define  KGSL_FT_DEFAULT_POLICY (BIT(KGSL_FT_REPLAY) + BIT(KGSL_FT_SKIPCMD) \
 				+ BIT(KGSL_FT_THROTTLE))
 
 /* This internal bit is used to skip the PM dump on replayed command batches */
@@ -562,7 +570,8 @@ struct log_field {
 	{ BIT(KGSL_FT_SKIPFRAME), "skipframe" }, \
 	{ BIT(KGSL_FT_DISABLE), "disable" }, \
 	{ BIT(KGSL_FT_TEMP_DISABLE), "temp" }, \
-	{ BIT(KGSL_FT_THROTTLE), "throttle"}
+	{ BIT(KGSL_FT_THROTTLE), "throttle"}, \
+	{ BIT(KGSL_FT_SKIPCMD), "skipcmd" }
 
 extern struct adreno_gpudev adreno_a3xx_gpudev;
 extern struct adreno_gpudev adreno_a4xx_gpudev;
@@ -609,8 +618,6 @@ void *adreno_snapshot(struct kgsl_device *device, void *snapshot, int *remain,
 void adreno_dispatcher_start(struct kgsl_device *device);
 int adreno_dispatcher_init(struct adreno_device *adreno_dev);
 void adreno_dispatcher_close(struct adreno_device *adreno_dev);
-int adreno_dispatcher_idle(struct adreno_device *adreno_dev,
-		unsigned int timeout);
 void adreno_dispatcher_irq_fault(struct kgsl_device *device);
 void adreno_dispatcher_stop(struct adreno_device *adreno_dev);
 
@@ -623,6 +630,10 @@ void adreno_dispatcher_pause(struct adreno_device *adreno_dev);
 void adreno_dispatcher_queue_context(struct kgsl_device *device,
 	struct adreno_context *drawctxt);
 int adreno_reset(struct kgsl_device *device);
+
+void adreno_fault_skipcmd_detached(struct kgsl_device *device,
+					 struct adreno_context *drawctxt,
+					 struct kgsl_cmdbatch *cmdbatch);
 
 int adreno_perfcounter_get_groupid(struct adreno_device *adreno_dev,
 					const char *name);
@@ -782,6 +793,11 @@ static inline int adreno_add_read_cmds(struct kgsl_device *device,
 	*cmds++ = val;
 	*cmds++ = 0xFFFFFFFF;
 	*cmds++ = 0xFFFFFFFF;
+
+	/* WAIT_REG_MEM turns back on protected mode - push it off */
+	*cmds++ = cp_type3_packet(CP_SET_PROTECTED_MODE, 1);
+	*cmds++ = 0;
+
 	cmds += __adreno_add_idle_indirect_cmds(cmds, nop_gpuaddr);
 	return cmds - start;
 }
@@ -827,6 +843,11 @@ static inline int adreno_wait_reg_mem(unsigned int *cmds, unsigned int addr,
 	*cmds++ = val; /* ref val */
 	*cmds++ = mask;
 	*cmds++ = interval;
+
+	/* WAIT_REG_MEM turns back on protected mode - push it off */
+	*cmds++ = cp_type3_packet(CP_SET_PROTECTED_MODE, 1);
+	*cmds++ = 0;
+
 	return cmds - start;
 }
 /*
@@ -1000,18 +1021,22 @@ static inline void adreno_set_protected_registers(struct kgsl_device *device,
 	unsigned int *index, unsigned int reg, int mask_len)
 {
 	unsigned int val;
+	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
 
 	/* There are only 16 registers available */
 	BUG_ON(*index >= 16);
 
-	val = 0x60000000 | ((mask_len & 0x1F) << 24) | ((reg << 2) & 0x1FFFF);
+	val = 0x60000000 | ((mask_len & 0x1F) << 24) | ((reg << 2) & 0xFFFFF);
 
 	/*
 	 * Write the protection range to the next available protection
 	 * register
 	 */
 
-	kgsl_regwrite(device, A3XX_CP_PROTECT_REG_0 + *index, val);
+	if (adreno_is_a4xx(adreno_dev))
+		kgsl_regwrite(device, A4XX_CP_PROTECT_REG_0 + *index, val);
+	else if (adreno_is_a3xx(adreno_dev))
+		kgsl_regwrite(device, A3XX_CP_PROTECT_REG_0 + *index, val);
 	*index = *index + 1;
 }
 

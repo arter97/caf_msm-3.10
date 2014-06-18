@@ -377,6 +377,10 @@ int kgsl_mmu_init(struct kgsl_device *device)
 					PAGE_SIZE);
 	if (status)
 		return status;
+
+	/* Mark the setstate memory as read only */
+	mmu->setstate_memory.flags |= KGSL_MEMFLAGS_GPUREADONLY;
+
 	kgsl_sharedmem_set(device, &mmu->setstate_memory, 0, 0,
 				mmu->setstate_memory.size);
 
@@ -665,6 +669,7 @@ kgsl_mmu_map(struct kgsl_pagetable *pagetable,
 
 	KGSL_STATS_ADD(size, pagetable->stats.mapped,
 		       pagetable->stats.max_mapped);
+	pagetable->stats.entries++;
 
 	spin_unlock(&pagetable->lock);
 	memdesc->priv |= KGSL_MEMDESC_MAPPED;

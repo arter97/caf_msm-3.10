@@ -109,6 +109,13 @@ enum msm_vfe_inputmux {
 	EXTERNAL_READ,
 };
 
+enum msm_vfe_stats_composite_group {
+	STATS_COMPOSITE_GRP_NONE,
+	STATS_COMPOSITE_GRP_1,
+	STATS_COMPOSITE_GRP_2,
+	STATS_COMPOSITE_GRP_MAX,
+};
+
 struct msm_vfe_pix_cfg {
 	struct msm_vfe_camif_cfg camif_cfg;
 	enum msm_vfe_inputmux input_mux;
@@ -184,6 +191,11 @@ enum msm_vfe_axi_stream_update_type {
 	UPDATE_STREAM_REQUEST_FRAMES,
 };
 
+enum msm_vfe_iommu_type {
+	IOMMU_ATTACH,
+	IOMMU_DETACH,
+};
+
 struct msm_vfe_axi_stream_cfg_update_info {
 	uint32_t stream_handle;
 	uint32_t output_format;
@@ -196,6 +208,11 @@ struct msm_vfe_axi_stream_update_cmd {
 	uint32_t num_streams;
 	enum msm_vfe_axi_stream_update_type update_type;
 	struct msm_vfe_axi_stream_cfg_update_info update_info[MAX_NUM_STREAM];
+};
+
+struct msm_vfe_smmu_attach_cmd {
+	uint32_t security_mode;
+	uint32_t iommu_attach_mode;
 };
 
 enum msm_isp_stats_type {
@@ -246,6 +263,7 @@ enum msm_vfe_reg_cfg_type {
 	VFE_READ_DMI_32BIT,
 	VFE_READ_DMI_64BIT,
 	GET_MAX_CLK_RATE,
+	GET_ISP_ID,
 };
 
 struct msm_vfe_cfg_cmd2 {
@@ -444,5 +462,8 @@ struct msm_isp_event_data {
 
 #define VIDIOC_MSM_VFE_REG_LIST_CFG \
 	_IOWR('V', BASE_VIDIOC_PRIVATE+14, struct msm_vfe_cfg_cmd_list)
+
+#define VIDIOC_MSM_ISP_SMMU_ATTACH \
+	_IOWR('V', BASE_VIDIOC_PRIVATE+15, struct msm_vfe_smmu_attach_cmd)
 
 #endif /* __MSMB_ISP__ */

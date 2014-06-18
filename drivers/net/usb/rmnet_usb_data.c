@@ -467,8 +467,7 @@ static int rmnet_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 		break;
 
 	default:
-		dev_err(&unet->intf->dev, "[%s] error: "
-			"rmnet_ioct called for unsupported cmd[%d]",
+		dev_dbg(&unet->intf->dev, "[%s] error: rmnet_ioctl called for unsupported cmd[0x%x]\n",
 			dev->name, cmd);
 		return -EINVAL;
 	}
@@ -713,7 +712,8 @@ static const struct usb_device_id vidpids[] = {
 	{ USB_DEVICE_INTERFACE_NUMBER(0x05c6, 0x904c, 8),
 	.driver_info = (unsigned long)&rmnet_info,
 	},
-	{ USB_DEVICE_INTERFACE_NUMBER(0x05c6, 0x9075, 6), /*mux over hsic mdm*/
+	/* mux over hsic mdm */
+	{ USB_DEVICE_INTERFACE_NUMBER(0x05c6, 0x9075, 6),
 	.driver_info = (unsigned long)&rmnet_info,
 	},
 	{ USB_DEVICE_INTERFACE_NUMBER(0x05c6, 0x908E, 8),
@@ -731,10 +731,20 @@ static const struct usb_device_id vidpids[] = {
 	{ USB_DEVICE_INTERFACE_NUMBER(0x05c6, 0x9079, 8),
 	.driver_info = (unsigned long)&rmnet_usb_info,
 	},
-	{ USB_DEVICE_INTERFACE_NUMBER(0x05c6, 0x908A, 6), /*mux over hsic mdm*/
+	/* mux over hsic mdm */
+	{ USB_DEVICE_INTERFACE_NUMBER(0x05c6, 0x908A, 6),
 	.driver_info = (unsigned long)&rmnet_info,
 	},
-	{ USB_DEVICE_INTERFACE_NUMBER(0x05c6, 0x90A0, 6), /*mux over hsic mdm*/
+	/* mux over hsic mdm */
+	{ USB_DEVICE_INTERFACE_NUMBER(0x05c6, 0x909F, 6),
+	.driver_info = (unsigned long)&rmnet_info,
+	},
+	/* mux over hsic mdm */
+	{ USB_DEVICE_INTERFACE_NUMBER(0x05c6, 0x90A0, 6),
+	.driver_info = (unsigned long)&rmnet_info,
+	},
+	/* mux over hsic mdm */
+	{ USB_DEVICE_INTERFACE_NUMBER(0x05c6, 0x90A4, 8),
 	.driver_info = (unsigned long)&rmnet_info,
 	},
 

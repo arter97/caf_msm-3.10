@@ -62,8 +62,14 @@ int msm_vidc_poll(void *instance, struct file *filp,
 		struct poll_table_struct *wait)
 {
 	struct msm_vidc_inst *inst = instance;
-	struct vb2_queue *outq = &inst->bufq[OUTPUT_PORT].vb2_bufq;
-	struct vb2_queue *capq = &inst->bufq[CAPTURE_PORT].vb2_bufq;
+	struct vb2_queue *outq = NULL;
+	struct vb2_queue *capq = NULL;
+
+	if (!inst)
+		return -EINVAL;
+
+	outq = &inst->bufq[OUTPUT_PORT].vb2_bufq;
+	capq = &inst->bufq[CAPTURE_PORT].vb2_bufq;
 
 	poll_wait(filp, &inst->event_handler.wait, wait);
 	poll_wait(filp, &capq->done_wq, wait);
@@ -77,6 +83,9 @@ int msm_vidc_wait(void *instance)
 {
 	struct msm_vidc_inst *inst = instance;
 	int rc = 0;
+
+	if (!inst)
+		return -EINVAL;
 
 	wait_event(inst->kernel_event_queue, (rc = get_poll_flags(inst)));
 	return rc;
@@ -832,6 +841,10 @@ EXPORT_SYMBOL(msm_vidc_release_buffers);
 int msm_vidc_encoder_cmd(void *instance, struct v4l2_encoder_cmd *enc)
 {
 	struct msm_vidc_inst *inst = instance;
+	if (!inst || !inst->core || !enc) {
+		dprintk(VIDC_ERR, "%s invalid params\n", __func__);
+		return -EINVAL;
+	}
 	if (inst->session_type == MSM_VIDC_ENCODER)
 		return msm_venc_cmd(instance, enc);
 	return -EINVAL;
@@ -841,6 +854,10 @@ EXPORT_SYMBOL(msm_vidc_encoder_cmd);
 int msm_vidc_decoder_cmd(void *instance, struct v4l2_decoder_cmd *dec)
 {
 	struct msm_vidc_inst *inst = instance;
+	if (!inst || !inst->core || !dec) {
+		dprintk(VIDC_ERR, "%s invalid params\n", __func__);
+		return -EINVAL;
+	}
 	if (inst->session_type == MSM_VIDC_DECODER)
 		return msm_vdec_cmd(instance, dec);
 	return -EINVAL;
@@ -1245,7 +1262,6 @@ void *msm_vidc_open(int core_id, int session_type)
 	INIT_LIST_HEAD(&inst->pendingq);
 	INIT_LIST_HEAD(&inst->internalbufs);
 	INIT_LIST_HEAD(&inst->persistbufs);
-	INIT_LIST_HEAD(&inst->ctrl_clusters);
 	INIT_LIST_HEAD(&inst->registered_bufs);
 	INIT_LIST_HEAD(&inst->outputbufs);
 	INIT_LIST_HEAD(&inst->pending_getpropq);

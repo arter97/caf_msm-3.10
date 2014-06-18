@@ -1001,6 +1001,8 @@ static void dwc3_prepare_trbs(struct dwc3_ep *dep, bool starting)
 	list_for_each_entry_safe(req, n, &dep->request_list, list) {
 		unsigned	length;
 		dma_addr_t	dma;
+		bool		last_req = list_is_last(&req->list,
+							&dep->request_list);
 		last_one = false;
 
 		if (req->request.num_mapped_sgs > 0) {
@@ -1017,8 +1019,7 @@ static void dwc3_prepare_trbs(struct dwc3_ep *dep, bool starting)
 
 				if (i == (request->num_mapped_sgs - 1) ||
 						sg_is_last(s)) {
-					if (list_is_last(&req->list,
-							&dep->request_list))
+					if (last_req)
 						last_one = true;
 					chain = false;
 				}
@@ -1036,7 +1037,9 @@ static void dwc3_prepare_trbs(struct dwc3_ep *dep, bool starting)
 				if (last_one)
 					break;
 			}
-			dbg_queue(dep->number, &req->request, 0);
+			dbg_queue(dep->number, &req->request, trbs_left);
+			if (last_one)
+				break;
 		} else {
 			struct dwc3_request	*req1;
 			int maxpkt_size = usb_endpoint_maxp(dep->endpoint.desc);
@@ -1059,7 +1062,7 @@ static void dwc3_prepare_trbs(struct dwc3_ep *dep, bool starting)
 			}
 
 			/* Is this the last request? */
-			if (list_is_last(&req->list, &dep->request_list))
+			if (last_req)
 				last_one = 1;
 
 			dwc3_prepare_one_trb(dep, req, dma, length,
@@ -1718,10 +1721,18 @@ static void dwc3_gadget_enable_irq(struct dwc3 *dwc)
 			DWC3_DEVTEN_CMDCMPLTEN |
 			DWC3_DEVTEN_ERRTICERREN |
 			DWC3_DEVTEN_WKUPEVTEN |
-			DWC3_DEVTEN_ULSTCNGEN |
 			DWC3_DEVTEN_CONNECTDONEEN |
 			DWC3_DEVTEN_USBRSTEN |
 			DWC3_DEVTEN_DISCONNEVTEN);
+
+	/*
+	 * Enable SUSPENDEVENT(BIT:6) for version 230A and above
+	 * else enable USB Link change event (BIT:3) for older version
+	 */
+	if (dwc->revision < DWC3_REVISION_230A)
+		reg |= DWC3_DEVTEN_ULSTCNGEN;
+	else if (dwc->enable_suspend_event)
+		reg |= DWC3_DEVTEN_SUSPEND;
 
 	dwc3_writel(dwc->regs, DWC3_DEVTEN, reg);
 }
@@ -2185,6 +2196,13 @@ static int dwc3_cleanup_done_reqs(struct dwc3 *dwc, struct dwc3_ep *dep,
 				ret = 1;
 		}
 		dwc3_gadget_giveback(dep, req, status);
+
+		/* EP possibly disabled during giveback? */
+		if (!(dep->flags & DWC3_EP_ENABLED)) {
+			dev_dbg(dwc->dev, "%s disabled while handling ep event\n",
+					dep->name);
+			return 0;
+		}
 
 		if (ret)
 			break;
@@ -2794,18 +2812,22 @@ static void dwc3_gadget_linksts_change_interrupt(struct dwc3 *dwc,
 		}
 	}
 
-	if (next == DWC3_LINK_STATE_U0) {
-		if (dwc->link_state == DWC3_LINK_STATE_U3) {
-			dbg_event(0xFF, "RESUME", 0);
-			dwc->gadget_driver->resume(&dwc->gadget);
-		}
-	} else if (next == DWC3_LINK_STATE_U3) {
+	dwc->link_state = next;
+
+	dev_vdbg(dwc->dev, "%s link %d\n", __func__, dwc->link_state);
+}
+
+static void dwc3_gadget_suspend_interrupt(struct dwc3 *dwc,
+			unsigned int evtinfo)
+{
+	enum dwc3_link_state    next = evtinfo & DWC3_LINK_STATE_MASK;
+
+	if (next == DWC3_LINK_STATE_U3) {
 		dbg_event(0xFF, "SUSPEND", 0);
 		dwc->gadget_driver->suspend(&dwc->gadget);
 	}
 
 	dwc->link_state = next;
-
 	dev_vdbg(dwc->dev, "%s link %d\n", __func__, dwc->link_state);
 }
 
@@ -2854,8 +2876,14 @@ static void dwc3_gadget_interrupt(struct dwc3 *dwc,
 	case DWC3_DEVICE_EVENT_LINK_STATUS_CHANGE:
 		dwc3_gadget_linksts_change_interrupt(dwc, event->event_info);
 		break;
-	case DWC3_DEVICE_EVENT_EOPF:
-		dev_vdbg(dwc->dev, "End of Periodic Frame\n");
+	case DWC3_DEVICE_EVENT_SUSPEND:
+		if (dwc->revision < DWC3_REVISION_230A) {
+			dev_vdbg(dwc->dev, "End of Periodic Frame\n");
+		} else {
+			dev_vdbg(dwc->dev, "U3/L1-L2 Suspend Event\n");
+			dbg_event(0xFF, "SUSPEND", 0);
+			dwc3_gadget_suspend_interrupt(dwc, event->event_info);
+		}
 		break;
 	case DWC3_DEVICE_EVENT_SOF:
 		dev_vdbg(dwc->dev, "Start of Periodic Frame\n");

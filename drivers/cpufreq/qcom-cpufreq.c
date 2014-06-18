@@ -50,6 +50,7 @@ static struct cpufreq_frequency_table *freq_table;
 static unsigned int *l2_khz;
 static bool is_sync;
 static unsigned long *mem_bw;
+static bool hotplug_ready;
 
 struct cpufreq_work_struct {
 	struct work_struct work;
@@ -294,43 +295,48 @@ static int msm_cpufreq_cpu_callback(struct notifier_block *nfb,
 	unsigned int cpu = (unsigned long)hcpu;
 	int rc;
 
-	/* Fail hotplug until cpufreq is ready to handle it */
-	if (!cpu_clk[0])
+	/* Fail hotplug until this driver can get CPU clocks */
+	if (!hotplug_ready)
 		return NOTIFY_BAD;
 
 	switch (action & ~CPU_TASKS_FROZEN) {
-	case CPU_ONLINE:
-		per_cpu(cpufreq_suspend, cpu).device_suspended = 0;
-		break;
-	case CPU_DOWN_PREPARE:
-		mutex_lock(&per_cpu(cpufreq_suspend, cpu).suspend_mutex);
-		per_cpu(cpufreq_suspend, cpu).device_suspended = 1;
-		mutex_unlock(&per_cpu(cpufreq_suspend, cpu).suspend_mutex);
-		break;
-	case CPU_DOWN_FAILED:
-		per_cpu(cpufreq_suspend, cpu).device_suspended = 0;
-		break;
 	/*
 	 * Scale down clock/power of CPU that is dead and scale it back up
 	 * before the CPU is brought up.
 	 */
 	case CPU_DEAD:
-	case CPU_UP_CANCELED:
 		clk_disable_unprepare(cpu_clk[cpu]);
 		clk_disable_unprepare(l2_clk);
 		update_l2_bw(NULL);
 		break;
+	case CPU_UP_CANCELED:
+		clk_unprepare(cpu_clk[cpu]);
+		clk_unprepare(l2_clk);
+		update_l2_bw(NULL);
+		break;
 	case CPU_UP_PREPARE:
-		rc = clk_prepare_enable(l2_clk);
+		rc = clk_prepare(l2_clk);
 		if (rc < 0)
 			return NOTIFY_BAD;
-		rc = clk_prepare_enable(cpu_clk[cpu]);
+		rc = clk_prepare(cpu_clk[cpu]);
 		if (rc < 0) {
-			clk_disable_unprepare(l2_clk);
+			clk_unprepare(l2_clk);
 			return NOTIFY_BAD;
 		}
 		update_l2_bw(&cpu);
 		break;
+
+	case CPU_STARTING:
+		rc = clk_enable(l2_clk);
+		if (rc < 0)
+			return NOTIFY_BAD;
+		rc = clk_enable(cpu_clk[cpu]);
+		if (rc) {
+			clk_disable(l2_clk);
+			return NOTIFY_BAD;
+		}
+		break;
+
 	default:
 		break;
 	}
@@ -552,6 +558,7 @@ static int __init msm_cpufreq_probe(struct platform_device *pdev)
 
 	if (!cpu_clk[0])
 		return -ENODEV;
+	hotplug_ready = true;
 
 	ret = cpufreq_parse_dt(dev);
 	if (ret)

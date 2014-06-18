@@ -324,16 +324,26 @@ static int _ringbuffer_bootstrap_ucode(struct adreno_ringbuffer *rb,
 	pfp_size = (adreno_dev->pfp_fw_size - pfp_idx);
 
 	/*
-	 * Below set of commands register with PFP that 6f is the
-	 * opcode for bootstrapping
+	 * Overwrite the first entry in the jump table with the special
+	 * bootstrap opcode
 	 */
-	adreno_writereg(adreno_dev, ADRENO_REG_CP_PFP_UCODE_ADDR, 0x200);
-	adreno_writereg(adreno_dev, ADRENO_REG_CP_PFP_UCODE_DATA, 0x6f0005);
+
+	if (adreno_is_a4xx(adreno_dev)) {
+		adreno_writereg(adreno_dev, ADRENO_REG_CP_PFP_UCODE_ADDR,
+			0x400);
+		adreno_writereg(adreno_dev, ADRENO_REG_CP_PFP_UCODE_DATA,
+			 0x6f0009);
+		bootstrap_size = (pm4_size + pfp_size + 5 + 6);
+	} else {
+		adreno_writereg(adreno_dev, ADRENO_REG_CP_PFP_UCODE_ADDR,
+			0x200);
+		adreno_writereg(adreno_dev, ADRENO_REG_CP_PFP_UCODE_DATA,
+			 0x6f0005);
+		bootstrap_size = (pm4_size + pfp_size + 5);
+	}
 
 	/* clear ME_HALT to start micro engine */
 	adreno_writereg(adreno_dev, ADRENO_REG_CP_ME_CNTL, 0);
-
-	bootstrap_size = (pm4_size + pfp_size + 5);
 
 	cmds = adreno_ringbuffer_allocspace(rb, NULL, bootstrap_size);
 	if (cmds == NULL)
@@ -349,12 +359,50 @@ static int _ringbuffer_bootstrap_ucode(struct adreno_ringbuffer *rb,
 	GSL_RB_WRITE(rb->device, cmds, cmds_gpu, pfp_addr);
 	GSL_RB_WRITE(rb->device, cmds, cmds_gpu, pm4_size);
 	GSL_RB_WRITE(rb->device, cmds, cmds_gpu, pm4_addr);
-	for (i = pfp_idx; i < adreno_dev->pfp_fw_size; i++)
-		GSL_RB_WRITE(rb->device, cmds, cmds_gpu, adreno_dev->pfp_fw[i]);
-	for (i = pm4_idx; i < adreno_dev->pm4_fw_size; i++)
-		GSL_RB_WRITE(rb->device, cmds, cmds_gpu, adreno_dev->pm4_fw[i]);
 
-	adreno_ringbuffer_submit(rb);
+/**
+ * Theory of operation:
+ *
+ * In A4x, we cannot have the PFP executing instructions while its instruction
+ * RAM is loading. We load the PFP's instruction RAM using type-0 writes
+ * from the ME.
+ *
+ * To make sure the PFP is not fetching instructions at the same time,
+ * we put it in a one-instruction loop:
+ *    mvc (ME), (ringbuffer)
+ * which executes repeatedly until all of the data has been moved from
+ * the ring buffer to the ME.
+ */
+	if (adreno_is_a4xx(adreno_dev)) {
+		for (i = pm4_idx; i < adreno_dev->pm4_fw_size; i++)
+			GSL_RB_WRITE(rb->device, cmds, cmds_gpu,
+					adreno_dev->pm4_fw[i]);
+		for (i = pfp_idx; i < adreno_dev->pfp_fw_size; i++)
+			GSL_RB_WRITE(rb->device, cmds, cmds_gpu,
+					adreno_dev->pfp_fw[i]);
+
+		GSL_RB_WRITE(rb->device, cmds, cmds_gpu,
+			cp_type3_packet(CP_REG_RMW, (3)));
+		GSL_RB_WRITE(rb->device, cmds, cmds_gpu,
+					0x20000000 + A4XX_CP_RB_WPTR);
+		GSL_RB_WRITE(rb->device, cmds, cmds_gpu, 0xffffffff);
+		GSL_RB_WRITE(rb->device, cmds, cmds_gpu, 2);
+		GSL_RB_WRITE(rb->device, cmds, cmds_gpu,
+			cp_type3_packet(CP_INTERRUPT, (1)));
+		GSL_RB_WRITE(rb->device, cmds, cmds_gpu, 0);
+		rb->wptr = rb->wptr - 2;
+		adreno_ringbuffer_submit(rb);
+		rb->wptr = rb->wptr + 2;
+	} else {
+		for (i = pfp_idx; i < adreno_dev->pfp_fw_size; i++)
+			GSL_RB_WRITE(rb->device, cmds, cmds_gpu,
+					adreno_dev->pfp_fw[i]);
+		for (i = pm4_idx; i < adreno_dev->pm4_fw_size; i++)
+			GSL_RB_WRITE(rb->device, cmds, cmds_gpu,
+					adreno_dev->pm4_fw[i]);
+		adreno_ringbuffer_submit(rb);
+	}
+
 	/* idle device to validate bootstrap */
 	return adreno_idle(device);
 }
@@ -724,7 +772,7 @@ adreno_ringbuffer_addcmds(struct adreno_ringbuffer *rb,
 
 	/* Add any IB required for profiling if it is enabled */
 	if (profile_ready)
-		adreno_profile_preib_processing(rb->device, context_id,
+		adreno_profile_preib_processing(rb->device, drawctxt,
 				&flags, &ringcmds, &rcmd_gpu);
 
 	/* start-of-pipeline timestamp */
@@ -1156,6 +1204,10 @@ void adreno_ringbuffer_set_constraint(struct kgsl_device *device,
 					context->pwr_constraint.type;
 			device->pwrctrl.constraint.hint.
 					pwrlevel.level = constraint;
+			/* Trace the constraint being set by the driver */
+			trace_kgsl_constraint(device,
+					device->pwrctrl.constraint.type,
+					constraint, 1);
 		}
 
 		device->pwrctrl.constraint.expires = jiffies +
@@ -1188,6 +1240,29 @@ int adreno_ringbuffer_submitcmd(struct adreno_device *adreno_dev,
 
 	/* process any profiling results that are available into the log_buf */
 	adreno_profile_process_results(device);
+
+	/*
+	 * If SKIP CMD flag is set for current context
+	 * a) set SKIPCMD as fault_recovery for current commandbatch
+	 * b) store context's commandbatch fault_policy in current
+	 *    commandbatch fault_policy and clear context's commandbatch
+	 *    fault_policy
+	 * c) force preamble for commandbatch
+	 */
+	if (test_bit(ADRENO_CONTEXT_SKIP_CMD, &drawctxt->priv) &&
+		(!test_bit(CMDBATCH_FLAG_SKIP, &cmdbatch->priv))) {
+
+		set_bit(KGSL_FT_SKIPCMD, &cmdbatch->fault_recovery);
+		cmdbatch->fault_policy = drawctxt->fault_policy;
+		set_bit(CMDBATCH_FLAG_FORCE_PREAMBLE, &cmdbatch->priv);
+
+		/* if context is detached print fault recovery */
+		adreno_fault_skipcmd_detached(device, drawctxt, cmdbatch);
+
+		/* clear the drawctxt flags */
+		clear_bit(ADRENO_CONTEXT_SKIP_CMD, &drawctxt->priv);
+		drawctxt->fault_policy = 0;
+	}
 
 	/*When preamble is enabled, the preamble buffer with state restoration
 	commands are stored in the first node of the IB chain. We can skip that

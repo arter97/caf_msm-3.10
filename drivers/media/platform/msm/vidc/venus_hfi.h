@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -155,8 +155,12 @@ struct on_chip_mem {
 
 struct venus_resources {
 	struct msm_vidc_fw fw;
-	struct venus_bus_info bus_info;
 	struct on_chip_mem ocmem;
+};
+
+enum venus_hfi_state {
+	VENUS_STATE_DEINIT = 1,
+	VENUS_STATE_INIT,
 };
 
 struct venus_hfi_device {
@@ -165,7 +169,7 @@ struct venus_hfi_device {
 	u32 intr_status;
 	u32 device_id;
 	u32 clk_load;
-	u32 bus_load[MSM_VIDC_MAX_DEVICES];
+	struct vidc_bus_vote_data *bus_load;
 	u32 clocks_enabled;
 	u32 power_enabled;
 	struct mutex read_lock;
@@ -190,6 +194,7 @@ struct venus_hfi_device {
 	u32 irq;
 	struct venus_resources resources;
 	struct msm_vidc_platform_resources *res;
+	enum venus_hfi_state state;
 };
 
 void venus_hfi_delete_device(void *device);

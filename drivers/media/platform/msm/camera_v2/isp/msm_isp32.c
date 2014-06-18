@@ -369,7 +369,7 @@ static long msm_vfe32_reset_hardware(struct vfe_device *vfe_dev)
 {
 	init_completion(&vfe_dev->reset_complete);
 	msm_camera_io_w_mb(0x3FF, vfe_dev->vfe_base + 0x4);
-	return wait_for_completion_interruptible_timeout(
+	return wait_for_completion_timeout(
 	   &vfe_dev->reset_complete, msecs_to_jiffies(50));
 }
 
@@ -1104,6 +1104,7 @@ static struct v4l2_subdev_internal_ops msm_vfe32_internal_ops = {
 
 struct msm_vfe_hardware_info vfe32_hw_info = {
 	.num_iommu_ctx = 2,
+	.num_iommu_secure_ctx = 0,
 	.vfe_clk_idx = VFE32_CLK_IDX,
 	.vfe_ops = {
 		.irq_ops = {

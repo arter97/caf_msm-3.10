@@ -16,12 +16,6 @@
 		uart1 = &blsp2_uart4;
 	};
 
-	memory {
-		fb_mem: fb_region@0 {
-			reg = <0 0 0 0x1d00000>;
-		};
-	};
-
 	bt_qca6174 {
 		compatible = "qca,qca6174";
 		qca,bt-reset-gpio = <&pma8084_gpios 4 0>; /* BT_EN */
@@ -137,7 +131,7 @@
 		qcom,dock-hub-reset-gpio = <&msmgpio 65 0>;
 		qcom,dock-enable-gpio = <&msmgpio 93 0>;
 		qcom,dock-eth-reset-gpio = <&msmgpio 94 0>;
-		status = "disabled";
+		qcom,usb-host = <&usb3_sec>;
 	};
 };
 
@@ -161,14 +155,17 @@
 	qcom,mdss-dsi-bl-pmic-pwm-frequency = <50>;
 	qcom,mdss-dsi-bl-pmic-bank-select = <2>;
 	qcom,mdss-dsi-pwm-gpio = <&pma8084_gpios 7 0>;
+	qcom,cont-splash-enabled;
 };
 
 &dsi_dual_jdi_cmd_1 {
+	qcom,cont-splash-enabled;
 };
 
 
 &mdss_mdp {
 	qcom,mdss-pref-prim-intf = "dsi";
+	vdd-cx-supply = <&pma8084_s2_corner>;
 };
 
 &mdss_hdmi_tx {
@@ -198,6 +195,7 @@
 };
 
 &blsp2_uart4 {
+	qcom,no-suspend-delay;
 	status = "ok";
 };
 
@@ -337,6 +335,18 @@
 &usb3 {
 	vbus_dwc3-supply = <&usb0_vreg>;
 	qcom,charging-disabled;
+};
+
+&usb3_sec {
+	status = "ok";
+};
+
+&hsphy1 {
+	status = "ok";
+};
+
+&ssphy1 {
+	status = "ok";
 };
 
 &pma8084_gpios {

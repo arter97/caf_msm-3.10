@@ -27,7 +27,6 @@
 
 #include "msm_buf_mgr.h"
 
-#define MAX_IOMMU_CTX 2
 #define MAX_NUM_WM 7
 #define MAX_NUM_RDI 3
 #define MAX_NUM_RDI_MASTER 3
@@ -44,6 +43,7 @@
 #define VFE_PONG_FLAG 0x0
 
 #define VFE_MAX_CFG_TIMEOUT 3000
+#define STATS_COMP_BIT_MASK 0xFF0000
 
 struct vfe_device;
 struct msm_vfe_axi_stream;
@@ -205,6 +205,8 @@ struct msm_vfe_ops {
 
 struct msm_vfe_hardware_info {
 	int num_iommu_ctx;
+	/* secure iommu ctx nums */
+	int num_iommu_secure_ctx;
 	int vfe_clk_idx;
 	struct msm_vfe_ops vfe_ops;
 	struct msm_vfe_axi_hardware_info *axi_hw_info;
@@ -374,7 +376,7 @@ struct msm_vfe_stats_stream {
 struct msm_vfe_stats_shared_data {
 	struct msm_vfe_stats_stream stream_info[MSM_ISP_STATS_MAX];
 	uint8_t num_active_stream;
-	atomic_t stats_comp_mask;
+	atomic_t stats_comp_mask[MAX_NUM_STATS_COMP_MASK];
 	uint16_t stream_handle_cnt;
 	atomic_t stats_update;
 };
@@ -412,6 +414,8 @@ struct vfe_device {
 	void __iomem *vfe_vbif_base;
 
 	struct device *iommu_ctx[MAX_IOMMU_CTX];
+	/*Add secure context banks*/
+	struct device *iommu_secure_ctx[MAX_IOMMU_CTX];
 
 	struct regulator *fs_vfe;
 	struct clk *vfe_clk[7];

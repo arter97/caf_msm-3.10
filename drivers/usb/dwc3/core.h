@@ -71,6 +71,8 @@
 #define DWC3_DEVICE_EVENT_WAKEUP		4
 #define DWC3_DEVICE_EVENT_HIBER_REQ		5
 #define DWC3_DEVICE_EVENT_EOPF			6
+/* For version 2.30a and above */
+#define DWC3_DEVICE_EVENT_SUSPEND		6
 #define DWC3_DEVICE_EVENT_SOF			7
 #define DWC3_DEVICE_EVENT_ERRATIC_ERROR		9
 #define DWC3_DEVICE_EVENT_CMD_CMPL		10
@@ -289,6 +291,8 @@
 #define DWC3_DEVTEN_ERRTICERREN		(1 << 9)
 #define DWC3_DEVTEN_SOFEN		(1 << 7)
 #define DWC3_DEVTEN_EOPFEN		(1 << 6)
+/* For version 2.30a and above*/
+#define DWC3_DEVTEN_SUSPEND		(1 << 6)
 #define DWC3_DEVTEN_HIBERNATIONREQEVTEN	(1 << 5)
 #define DWC3_DEVTEN_WKUPEVTEN		(1 << 4)
 #define DWC3_DEVTEN_ULSTCNGEN		(1 << 3)
@@ -447,7 +451,7 @@ struct dwc3_event_buffer {
 #define DWC3_EP_DIRECTION_TX	true
 #define DWC3_EP_DIRECTION_RX	false
 
-#define DWC3_TRB_NUM		32
+#define DWC3_TRB_NUM		1024
 #define DWC3_TRB_MASK		(DWC3_TRB_NUM - 1)
 
 /**
@@ -829,6 +833,7 @@ struct dwc3 {
 	bool			nominal_elastic_buffer;
 	bool			core_reset_after_phy_init;
 	bool			err_evt_seen;
+	bool			enable_suspend_event;
 };
 
 /* -------------------------------------------------------------------------- */

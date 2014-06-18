@@ -92,9 +92,10 @@ static void rmnet_vnd_add_qos_header(struct sk_buff *skb,
 		qmi8h = (struct qmi_qos_hdr8_s *)
 			skb_push(skb, sizeof(struct qmi_qos_hdr8_s));
 		/* Flags are 0 always */
-		qmi8h->version_flags =  0;
+		qmi8h->hdr.version = 0;
+		qmi8h->hdr.flags = 0;
 		memset(qmi8h->reserved, 0, sizeof(qmi8h->reserved));
-		qmi8h->flow_id = skb->mark;
+		qmi8h->hdr.flow_id = skb->mark;
 	} else {
 		LOGD("%s(): Bad QoS version configured\n", __func__);
 	}
@@ -477,8 +478,6 @@ static void rmnet_vnd_setup(struct net_device *dev)
 	dev_conf = (struct rmnet_vnd_private_s *) netdev_priv(dev);
 	memset(dev_conf, 0, sizeof(struct rmnet_vnd_private_s));
 
-	/* keep the default flags, just add NOARP */
-	dev->flags |= IFF_NOARP;
 	dev->netdev_ops = &rmnet_data_vnd_ops;
 	dev->mtu = RMNET_DATA_DFLT_PACKET_SIZE;
 	dev->needed_headroom = RMNET_DATA_NEEDED_HEADROOM;
@@ -610,22 +609,32 @@ int rmnet_vnd_create_dev(int id, struct net_device **new_device,
 int rmnet_vnd_free_dev(int id)
 {
 	struct rmnet_logical_ep_conf_s *epconfig_l;
+	struct net_device *dev;
 
+	rtnl_lock();
 	if ((id < 0) || (id >= RMNET_DATA_MAX_VND) || !rmnet_devices[id]) {
+		rtnl_unlock();
 		LOGM("Invalid id [%d]", id);
 		return RMNET_CONFIG_NO_SUCH_DEVICE;
 	}
 
 	epconfig_l = rmnet_vnd_get_le_config(rmnet_devices[id]);
-		if (epconfig_l && epconfig_l->refcount)
-			return RMNET_CONFIG_DEVICE_IN_USE;
+	if (epconfig_l && epconfig_l->refcount) {
+		rtnl_unlock();
+		return RMNET_CONFIG_DEVICE_IN_USE;
+	}
 
-	unregister_netdev(rmnet_devices[id]);
-	free_netdev(rmnet_devices[id]);
-	rtnl_lock();
+	dev = rmnet_devices[id];
 	rmnet_devices[id] = 0;
 	rtnl_unlock();
-	return 0;
+
+	if (dev) {
+		unregister_netdev(dev);
+		free_netdev(dev);
+		return 0;
+	} else {
+		return RMNET_CONFIG_NO_SUCH_DEVICE;
+	}
 }
 
 /**
@@ -1022,4 +1031,22 @@ fcdone:
 	read_unlock(&dev_conf->flow_map_lock);
 
 	return error;
+}
+
+/**
+ * rmnet_vnd_get_by_id() - Get VND by array index ID
+ * @id: Virtual network deice id [0:RMNET_DATA_MAX_VND]
+ *
+ * Return:
+ *      - 0 if no device or ID out of range
+ *      - otherwise return pointer to VND net_device struct
+ */
+struct net_device *rmnet_vnd_get_by_id(int id)
+{
+	if (id < 0 || id >= RMNET_DATA_MAX_VND) {
+		pr_err("Bug; VND ID out of bounds");
+		BUG();
+		return 0;
+	}
+	return rmnet_devices[id];
 }

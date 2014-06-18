@@ -14,6 +14,7 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/slab.h>
+#include <linux/cpu.h>
 #include <linux/platform_device.h>
 #include <linux/dma-mapping.h>
 #include <linux/pm_runtime.h>
@@ -53,6 +54,11 @@
 #include "gadget.h"
 #include "dbm.h"
 #include "debug.h"
+
+/* cpu to fix usb interrupt */
+static int cpu_to_affin;
+module_param(cpu_to_affin, int, S_IRUGO|S_IWUSR);
+MODULE_PARM_DESC(cpu_to_affin, "affin usb irq to this cpu");
 
 /* ADC threshold values */
 static int adc_low_threshold = 700;
@@ -189,6 +195,10 @@ struct dwc3_msm {
 	struct completion ext_chg_wait;
 	unsigned int scm_dev_id;
 	bool suspend_resume_no_support;
+	bool enable_suspend_event;
+
+	unsigned int		irq_to_affin;
+	struct notifier_block	dwc3_cpu_notifier;
 };
 
 #define USB_HSPHY_3P3_VOL_MIN		3050000 /* uV */
@@ -597,6 +607,11 @@ static int dwc3_msm_ep_queue(struct usb_ep *ep,
 
 	dev_vdbg(dwc->dev, "%s: queing request %p to ep %s length %d\n",
 			__func__, request, ep->name, request->length);
+
+	dbm_event_buffer_config(mdwc->dbm,
+		dwc3_msm_read_reg(mdwc->base, DWC3_GEVNTADRLO(0)),
+		dwc3_msm_read_reg(mdwc->base, DWC3_GEVNTADRHI(0)),
+		dwc3_msm_read_reg(mdwc->base, DWC3_GEVNTSIZ(0)));
 
 	/*
 	 * We must obtain the lock of the dwc3 core driver,
@@ -1035,13 +1050,19 @@ static void dwc3_block_reset_usb_work(struct work_struct *w)
 			DWC3_DEVTEN_CMDCMPLTEN |
 			DWC3_DEVTEN_ERRTICERREN |
 			DWC3_DEVTEN_WKUPEVTEN |
-			DWC3_DEVTEN_ULSTCNGEN |
 			DWC3_DEVTEN_CONNECTDONEEN |
 			DWC3_DEVTEN_USBRSTEN |
 			DWC3_DEVTEN_DISCONNEVTEN);
+	/*
+	 * Enable SUSPENDEVENT(BIT:6) for version 230A and above
+	 * else enable USB Link change event (BIT:3) for older version
+	 */
+	if (dwc3_msm_read_reg(mdwc->base, DWC3_GSNPSID) < DWC3_REVISION_230A)
+		reg |= DWC3_DEVTEN_ULSTCNGEN;
+	else if (mdwc->enable_suspend_event)
+		reg |= DWC3_DEVTEN_SUSPEND;
+
 	dwc3_msm_write_reg(mdwc->base, DWC3_DEVTEN, reg);
-
-
 }
 
 static void dwc3_chg_enable_secondary_det(struct dwc3_msm *mdwc)
@@ -1907,6 +1928,22 @@ static irqreturn_t dwc3_pmic_id_irq(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
+static int dwc3_cpu_notifier_cb(struct notifier_block *nfb,
+		unsigned long action, void *hcpu)
+{
+	uint32_t cpu = (uintptr_t)hcpu;
+	struct dwc3_msm *mdwc =
+			container_of(nfb, struct dwc3_msm, dwc3_cpu_notifier);
+
+	if (cpu == cpu_to_affin && action == CPU_ONLINE) {
+		pr_debug("%s: cpu online:%u irq:%d\n", __func__,
+				cpu_to_affin, mdwc->irq_to_affin);
+		irq_set_affinity(mdwc->irq_to_affin, get_cpu_mask(cpu));
+	}
+
+	return NOTIFY_OK;
+}
+
 static void dwc3_adc_notification(enum qpnp_tm_state state, void *ctx)
 {
 	struct dwc3_msm *mdwc = ctx;
@@ -2308,6 +2345,10 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 
 	mdwc->suspend_resume_no_support = of_property_read_bool(node,
 				"qcom,no-suspend-resume");
+
+	mdwc->enable_suspend_event = of_property_read_bool(node,
+				"qcom,suspend_event_enable");
+
 	/*
 	 * DWC3 has separate IRQ line for OTG events (ID/BSV) and for
 	 * DP and DM linestate transitions during low power mode.
@@ -2351,16 +2392,6 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 					dev_err(&pdev->dev, "irqreq IDINT failed\n");
 					goto disable_ref_clk;
 				}
-
-				local_irq_save(flags);
-				/* Update initial ID state */
-				mdwc->id_state =
-					!!irq_read_line(mdwc->pmic_id_irq);
-				if (mdwc->id_state == DWC3_ID_GROUND)
-					queue_work(system_nrt_wq,
-							&mdwc->id_work);
-				local_irq_restore(flags);
-				enable_irq_wake(mdwc->pmic_id_irq);
 			}
 		}
 
@@ -2533,7 +2564,8 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 	dwc = platform_get_drvdata(mdwc->dwc3);
 	if (dwc && dwc->dotg)
 		mdwc->otg_xceiv = dwc->dotg->otg.phy;
-
+	if (dwc)
+		dwc->enable_suspend_event = mdwc->enable_suspend_event;
 	/* Register with OTG if present */
 	if (mdwc->otg_xceiv) {
 		/* Skip charger detection for simulator targets */
@@ -2574,12 +2606,28 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 			dev_err(&pdev->dev, "Fail to setup dwc3 setup cdev\n");
 	}
 
+	mdwc->irq_to_affin = platform_get_irq(mdwc->dwc3, 0);
+	mdwc->dwc3_cpu_notifier.notifier_call = dwc3_cpu_notifier_cb;
+
+	if (cpu_to_affin)
+		register_cpu_notifier(&mdwc->dwc3_cpu_notifier);
+
 	device_init_wakeup(mdwc->dev, 1);
 	pm_stay_awake(mdwc->dev);
 	dwc3_msm_debugfs_init(mdwc);
 
 	pm_runtime_set_active(mdwc->dev);
 	pm_runtime_enable(mdwc->dev);
+
+	/* Update initial ID state */
+	if (mdwc->pmic_id_irq) {
+		local_irq_save(flags);
+		mdwc->id_state = !!irq_read_line(mdwc->pmic_id_irq);
+		if (mdwc->id_state == DWC3_ID_GROUND)
+			queue_work(system_nrt_wq, &mdwc->id_work);
+		local_irq_restore(flags);
+		enable_irq_wake(mdwc->pmic_id_irq);
+	}
 
 	if (of_property_read_bool(node, "qcom,reset_hsphy_sleep_clk_on_init")) {
 		ret = clk_reset(mdwc->hsphy_sleep_clk, CLK_RESET_ASSERT);
@@ -2643,7 +2691,11 @@ static int dwc3_msm_remove(struct platform_device *pdev)
 {
 	struct dwc3_msm	*mdwc = platform_get_drvdata(pdev);
 
+	if (cpu_to_affin)
+		unregister_cpu_notifier(&mdwc->dwc3_cpu_notifier);
+
 	pm_runtime_disable(mdwc->dev);
+	pm_runtime_set_suspended(mdwc->dev);
 	device_wakeup_disable(mdwc->dev);
 
 	if (mdwc->ext_chg_device) {
@@ -2661,6 +2713,8 @@ static int dwc3_msm_remove(struct platform_device *pdev)
 		dwc3_start_chg_det(&mdwc->charger, false);
 	if (mdwc->usb_psy.dev)
 		power_supply_unregister(&mdwc->usb_psy);
+	if (mdwc->hs_phy)
+		mdwc->hs_phy->flags &= ~PHY_HOST_MODE;
 
 	platform_device_put(mdwc->dwc3);
 	device_for_each_child(&pdev->dev, NULL, dwc3_msm_remove_children);
@@ -2668,6 +2722,9 @@ static int dwc3_msm_remove(struct platform_device *pdev)
 	if (!IS_ERR_OR_NULL(mdwc->vbus_otg))
 		regulator_disable(mdwc->vbus_otg);
 
+	disable_irq_wake(mdwc->hs_phy_irq);
+
+	clk_disable_unprepare(mdwc->utmi_clk);
 	clk_disable_unprepare(mdwc->core_clk);
 	clk_disable_unprepare(mdwc->iface_clk);
 	clk_disable_unprepare(mdwc->sleep_clk);

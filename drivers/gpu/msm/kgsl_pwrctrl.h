@@ -30,6 +30,15 @@
 /* Only two supported levels, min & max */
 #define KGSL_CONSTRAINT_PWR_MAXLEVELS 2
 
+/* Symbolic table for the constraint type */
+#define KGSL_CONSTRAINT_TYPES \
+	{ KGSL_CONSTRAINT_NONE, "None" }, \
+	{ KGSL_CONSTRAINT_PWRLEVEL, "Pwrlevel" }
+/* Symbolic table for the constraint sub type */
+#define KGSL_CONSTRAINT_PWRLEVEL_SUBTYPES \
+	{ KGSL_CONSTRAINT_PWR_MIN, "Min" }, \
+	{ KGSL_CONSTRAINT_PWR_MAX, "Max" }
+
 struct platform_device;
 
 struct kgsl_clk_stats {
@@ -90,7 +99,7 @@ struct kgsl_pwrctrl {
 	unsigned long ctrl_flags;
 	struct kgsl_pwrlevel pwrlevels[KGSL_MAX_PWRLEVELS];
 	unsigned int active_pwrlevel;
-	int thermal_pwrlevel;
+	unsigned int thermal_pwrlevel;
 	unsigned int default_pwrlevel;
 	unsigned int init_pwrlevel;
 	unsigned int wakeup_maxpwrlevel;

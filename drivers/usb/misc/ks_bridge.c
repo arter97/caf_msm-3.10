@@ -29,6 +29,7 @@
 #include <linux/cdev.h>
 #include <linux/list.h>
 #include <linux/wait.h>
+#include <linux/poll.h>
 
 #define DRIVER_DESC	"USB host ks bridge driver"
 #define DRIVER_VERSION	"1.0"
@@ -391,11 +392,33 @@ static int ksb_fs_open(struct inode *ip, struct file *fp)
 	return 0;
 }
 
+static unsigned int ksb_fs_poll(struct file *file, poll_table *wait)
+{
+	struct ks_bridge	*ksb = file->private_data;
+	unsigned long		flags;
+	int			ret = 0;
+
+	if (!test_bit(USB_DEV_CONNECTED, &ksb->flags))
+		return POLLERR;
+
+	poll_wait(file, &ksb->ks_wait_q, wait);
+	if (!test_bit(USB_DEV_CONNECTED, &ksb->flags))
+		return POLLERR;
+
+	spin_lock_irqsave(&ksb->lock, flags);
+	if (!list_empty(&ksb->to_ks_list))
+		ret = POLLIN | POLLRDNORM;
+	spin_unlock_irqrestore(&ksb->lock, flags);
+
+	return ret;
+}
+
 static int ksb_fs_release(struct inode *ip, struct file *fp)
 {
 	struct ks_bridge	*ksb = fp->private_data;
 
-	dev_dbg(ksb->device, ":%s", ksb->id_info.name);
+	if (test_bit(USB_DEV_CONNECTED, &ksb->flags))
+		dev_dbg(ksb->device, ":%s", ksb->id_info.name);
 	dbg_log_event(ksb, "FS-RELEASE", 0, 0);
 
 	clear_bit(FILE_OPENED, &ksb->flags);
@@ -410,6 +433,7 @@ static const struct file_operations ksb_fops = {
 	.write = ksb_fs_write,
 	.open = ksb_fs_open,
 	.release = ksb_fs_release,
+	.poll = ksb_fs_poll,
 };
 
 static struct ksb_dev_info ksb_fboot_dev[] = {
@@ -449,7 +473,11 @@ static const struct usb_device_id ksb_usb_ids[] = {
 	.driver_info = (unsigned long)&ksb_efs_hsic_dev, },
 	{ USB_DEVICE_INTERFACE_NUMBER(0x5c6, 0x909E, 3),
 	.driver_info = (unsigned long)&ksb_efs_hsic_dev, },
+	{ USB_DEVICE_INTERFACE_NUMBER(0x5c6, 0x909F, 2),
+	.driver_info = (unsigned long)&ksb_efs_hsic_dev, },
 	{ USB_DEVICE_INTERFACE_NUMBER(0x5c6, 0x90A0, 2),
+	.driver_info = (unsigned long)&ksb_efs_hsic_dev, },
+	{ USB_DEVICE_INTERFACE_NUMBER(0x5c6, 0x90A4, 3),
 	.driver_info = (unsigned long)&ksb_efs_hsic_dev, },
 
 	{} /* terminating entry */
@@ -531,8 +559,11 @@ static void ksb_rx_cb(struct urb *urb)
 				&& urb->status != -EPROTO)
 			pr_err_ratelimited("%s: urb failed with err:%d",
 					ksb->id_info.name, urb->status);
-		ksb_free_data_pkt(pkt);
-		goto done;
+
+		if (!urb->actual_length) {
+			ksb_free_data_pkt(pkt);
+			goto done;
+		}
 	}
 
 	usb_mark_last_busy(ksb->udev);
@@ -664,6 +695,8 @@ ksb_usb_probe(struct usb_interface *ifc, const struct usb_device_id *id)
 	case 0x909C:
 	case 0x909D:
 	case 0x909E:
+	case 0x909F:
+	case 0x90A4:
 		ksb = __ksb[EFS_HSIC_BRIDGE_INDEX];
 		break;
 	case 0x9079:

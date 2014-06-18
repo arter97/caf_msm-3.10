@@ -49,7 +49,7 @@ struct mdss_mdp_writeback_ctx {
 	struct mdss_mdp_format_params *dst_fmt;
 	u16 width;
 	u16 height;
-	struct mdss_mdp_img_rect dst_rect;
+	struct mdss_rect dst_rect;
 
 	u8 rot90;
 	u32 bwc_mode;
@@ -313,14 +313,11 @@ static int mdss_mdp_writeback_prepare_rot(struct mdss_mdp_ctl *ctl, void *arg)
 		return -EINVAL;
 	}
 
-	if (ctx->bwc_mode || (ctx->rot90 &&
-			((mdata->mdp_rev < MDSS_MDP_HW_REV_102)
-			|| !fmt->is_yuv)))
-		format = mdss_mdp_get_rotator_dst_format(rot->format, 1,
-			ctx->bwc_mode);
+	if (ctx->bwc_mode || ctx->rot90)
+		format = mdss_mdp_get_rotator_dst_format(rot->format,
+				ctx->rot90, ctx->bwc_mode);
 	else
-		format = mdss_mdp_get_rotator_dst_format(rot->format, 0,
-			ctx->bwc_mode);
+		format = rot->format;
 
 	if (ctx->rot90) {
 		ctx->opmode |= BIT(5); /* ROT 90 */
@@ -475,7 +472,7 @@ static int mdss_mdp_writeback_display(struct mdss_mdp_ctl *ctl, void *arg)
 {
 	struct mdss_mdp_writeback_ctx *ctx;
 	struct mdss_mdp_writeback_arg *wb_args;
-	u32 flush_bits, val, off;
+	u32 flush_bits, val, bit_off, reg_off;
 	int ret;
 
 	if (!ctl || !ctl->mdata)
@@ -496,11 +493,16 @@ static int mdss_mdp_writeback_display(struct mdss_mdp_ctl *ctl, void *arg)
 			ctx->wr_lim = ctl->mdata->rotator_ot_limit;
 		else
 			ctx->wr_lim = MDSS_DEFAULT_OT_SETTING;
-		off = (ctx->xin_id % 4) * 8;
-		val = readl_relaxed(ctl->mdata->vbif_base + VBIF_WR_LIM_CONF);
-		val &= ~(0xFF << off);
-		val |= (ctx->wr_lim) << off;
-		writel_relaxed(val, ctl->mdata->vbif_base + VBIF_WR_LIM_CONF);
+
+		reg_off = (ctx->xin_id / 4) * 4;
+		bit_off = (ctx->xin_id % 4) * 8;
+
+		val = readl_relaxed(ctl->mdata->vbif_base + VBIF_WR_LIM_CONF +
+			reg_off);
+		val &= ~(0xFF << bit_off);
+		val |= (ctx->wr_lim) << bit_off;
+		writel_relaxed(val, ctl->mdata->vbif_base + VBIF_WR_LIM_CONF +
+			reg_off);
 	}
 
 	wb_args = (struct mdss_mdp_writeback_arg *) arg;
@@ -575,8 +577,6 @@ int mdss_mdp_writeback_start(struct mdss_mdp_ctl *ctl)
 
 int mdss_mdp_writeback_display_commit(struct mdss_mdp_ctl *ctl, void *arg)
 {
-	int ret = 0;
-
 	if (ctl->shared_lock && !mutex_is_locked(ctl->shared_lock)) {
 		pr_err("shared mutex is not locked before commit on ctl=%d\n",
 			ctl->num);
@@ -590,10 +590,5 @@ int mdss_mdp_writeback_display_commit(struct mdss_mdp_ctl *ctl, void *arg)
 			ctl->mixer_right->params_changed++;
 	}
 
-	ret = mdss_mdp_display_commit(ctl, arg);
-
-	if (!IS_ERR_VALUE(ret))
-		mdss_mdp_display_wait4comp(ctl);
-
-	return ret;
+	return mdss_mdp_display_commit(ctl, arg);
 }

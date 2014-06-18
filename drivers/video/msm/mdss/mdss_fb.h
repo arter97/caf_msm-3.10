@@ -21,6 +21,7 @@
 #include <linux/notifier.h>
 
 #include "mdss_panel.h"
+#include "mdss_mdp_splash_logo.h"
 
 #define MDSS_LPAE_CHECK(phys)	\
 	((sizeof(phys) > sizeof(unsigned long)) ? ((phys >> 32) & 0xFF) : (0))
@@ -35,8 +36,6 @@
 /* Display op timeout should be greater than total timeout */
 #define WAIT_DISP_OP_TIMEOUT ((WAIT_FENCE_FIRST_TIMEOUT + \
 		WAIT_FENCE_FINAL_TIMEOUT) * MDP_MAX_FENCE_FD)
-
-#define SPLASH_THREAD_WAIT_TIMEOUT 3
 
 #ifndef MAX
 #define  MAX(x, y) (((x) > (y)) ? (x) : (y))
@@ -72,11 +71,6 @@ enum mdp_notify_event {
 	MDP_NOTIFY_FRAME_TIMEOUT,
 };
 
-enum mdp_splash_event {
-	MDP_CREATE_SPLASH_OV = 0,
-	MDP_REMOVE_SPLASH_OV,
-};
-
 struct disp_info_type_suspend {
 	int op_enable;
 	int panel_power_on;
@@ -89,6 +83,7 @@ struct disp_info_notify {
 	struct mutex lock;
 	int value;
 	int is_suspend;
+	int ref_count;
 };
 
 struct msm_sync_pt_data {
@@ -124,8 +119,7 @@ struct msm_mdp_interface {
 	int (*kickoff_fnc)(struct msm_fb_data_type *mfd,
 					struct mdp_display_commit *data);
 	int (*ioctl_handler)(struct msm_fb_data_type *mfd, u32 cmd, void *arg);
-	void (*dma_fnc)(struct msm_fb_data_type *mfd, struct mdp_overlay *req,
-				int image_len, int *pipe_ndx);
+	void (*dma_fnc)(struct msm_fb_data_type *mfd);
 	int (*cursor_update)(struct msm_fb_data_type *mfd,
 				struct fb_cursor *cursor);
 	int (*lut_update)(struct msm_fb_data_type *mfd, struct fb_cmap *cmap);
@@ -134,7 +128,7 @@ struct msm_mdp_interface {
 	int (*update_ad_input)(struct msm_fb_data_type *mfd);
 	int (*panel_register_done)(struct mdss_panel_data *pdata);
 	u32 (*fb_stride)(u32 fb_index, u32 xres, int bpp);
-	int (*splash_fnc) (struct msm_fb_data_type *mfd, int *index, int req);
+	int (*splash_init_fnc)(struct msm_fb_data_type *mfd);
 	struct msm_sync_pt_data *(*get_sync_fnc)(struct msm_fb_data_type *mfd,
 				const struct mdp_buf_sync *buf_sync);
 	void *private1;
@@ -146,9 +140,15 @@ struct msm_mdp_interface {
 					/ (2 * max_bright);\
 					} while (0)
 
+struct mdss_fb_file_info {
+	struct file *file;
+	struct list_head list;
+};
+
 struct mdss_fb_proc_info {
 	int pid;
 	u32 ref_cnt;
+	struct list_head file_list;
 	struct list_head list;
 };
 
@@ -199,7 +199,6 @@ struct msm_fb_data_type {
 	u32 bl_updated;
 	u32 bl_level_old;
 	struct mutex bl_lock;
-	struct mutex lock;
 
 	struct platform_device *pdev;
 
@@ -216,12 +215,16 @@ struct msm_fb_data_type {
 	/* for non-blocking */
 	struct task_struct *disp_thread;
 	atomic_t commits_pending;
+	atomic_t kickoff_pending;
 	wait_queue_head_t commit_wait_q;
 	wait_queue_head_t idle_wait_q;
+	wait_queue_head_t kickoff_wait_q;
 	bool shutdown_pending;
 
-	struct task_struct *splash_thread;
-	bool splash_logo_enabled;
+	struct msm_fb_splash_info splash_info;
+
+	wait_queue_head_t ioctl_q;
+	atomic_t ioctl_ref_cnt;
 
 	struct msm_fb_backup_type msm_fb_backup;
 	struct completion power_set_comp;
@@ -229,6 +232,12 @@ struct msm_fb_data_type {
 
 	u32 dcm_state;
 	struct list_head proc_list;
+	struct ion_client *fb_ion_client;
+	struct ion_handle *fb_ion_handle;
+
+	bool mdss_fb_split_stored;
+
+	u32 wait_for_kickoff;
 };
 
 static inline void mdss_fb_update_notify_update(struct msm_fb_data_type *mfd)
@@ -258,6 +267,7 @@ void mdss_fb_signal_timeline(struct msm_sync_pt_data *sync_pt_data);
 struct sync_fence *mdss_fb_sync_get_fence(struct sw_sync_timeline *timeline,
 				const char *fence_name, int val);
 int mdss_fb_register_mdp_instance(struct msm_mdp_interface *mdp);
+int mdss_fb_alloc_fb_ion_memory(struct msm_fb_data_type *mfd);
 int mdss_fb_dcm(struct msm_fb_data_type *mfd, int req_state);
 int mdss_fb_suspres_panel(struct device *dev, void *data);
 int mdss_fb_do_ioctl(struct fb_info *info, unsigned int cmd,
