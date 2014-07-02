@@ -41,9 +41,11 @@
 #include "wcd9xxx-resmgr.h"
 #include "wcd9xxx-common.h"
 
-#define WCD9XXX_JACK_MASK (SND_JACK_HEADSET | SND_JACK_OC_HPHL | \
-			   SND_JACK_OC_HPHR | SND_JACK_LINEOUT | \
-			   SND_JACK_UNSUPPORTED | SND_JACK_MICROPHONE2)
+#define WCD9XXX_JACK_HP_MASK (SND_JACK_HEADPHONE | SND_JACK_OC_HPHL | \
+		  	      SND_JACK_OC_HPHR | SND_JACK_LINEOUT | \
+			      SND_JACK_UNSUPPORTED)
+#define WCD9XXX_JACK_MIC_MASK (SND_JACK_MICROPHONE | SND_JACK_MICROPHONE2 | \
+			       SND_JACK_UNSUPPORTED)
 #define WCD9XXX_JACK_BUTTON_MASK (SND_JACK_BTN_0 | SND_JACK_BTN_1 | \
 				  SND_JACK_BTN_2 | SND_JACK_BTN_3 | \
 				  SND_JACK_BTN_4 | SND_JACK_BTN_5 | \
@@ -577,10 +579,12 @@ static void wcd9xxx_codec_switch_cfilt_mode(struct wcd9xxx_mbhc *mbhc,
 static void wcd9xxx_jack_report(struct wcd9xxx_mbhc *mbhc,
 				struct snd_soc_jack *jack, int status, int mask)
 {
-	if (jack == &mbhc->headset_jack) {
+	if (jack == &mbhc->microphone_jack) {
 		wcd9xxx_resmgr_cond_update_cond(mbhc->resmgr,
 						WCD9XXX_COND_HPH_MIC,
 						status & SND_JACK_MICROPHONE);
+	}
+	if (jack == &mbhc->headphone_jack) {
 		wcd9xxx_resmgr_cond_update_cond(mbhc->resmgr,
 						WCD9XXX_COND_HPH,
 						status & SND_JACK_HEADPHONE);
@@ -598,8 +602,8 @@ static void __hphocp_off_report(struct wcd9xxx_mbhc *mbhc, u32 jack_status,
 	codec = mbhc->codec;
 	if (mbhc->hph_status & jack_status) {
 		mbhc->hph_status &= ~jack_status;
-		wcd9xxx_jack_report(mbhc, &mbhc->headset_jack,
-				    mbhc->hph_status, WCD9XXX_JACK_MASK);
+		wcd9xxx_jack_report(mbhc, &mbhc->headphone_jack,
+				    mbhc->hph_status, WCD9XXX_JACK_HP_MASK);
 		snd_soc_update_bits(codec, WCD9XXX_A_RX_HPH_OCP_CTL, 0x10,
 				    0x00);
 		snd_soc_update_bits(codec, WCD9XXX_A_RX_HPH_OCP_CTL, 0x10,
@@ -867,8 +871,10 @@ static void wcd9xxx_report_plug(struct wcd9xxx_mbhc *mbhc, int insertion,
 		mbhc->zl = mbhc->zr = 0;
 		pr_debug("%s: Reporting removal %d(%x)\n", __func__,
 			 jack_type, mbhc->hph_status);
-		wcd9xxx_jack_report(mbhc, &mbhc->headset_jack, mbhc->hph_status,
-				    WCD9XXX_JACK_MASK);
+		wcd9xxx_jack_report(mbhc, &mbhc->headphone_jack, mbhc->hph_status,
+				    WCD9XXX_JACK_HP_MASK);
+		wcd9xxx_jack_report(mbhc, &mbhc->microphone_jack, mbhc->hph_status,
+				     WCD9XXX_JACK_MIC_MASK);
 		wcd9xxx_set_and_turnoff_hph_padac(mbhc);
 		hphrocp_off_report(mbhc, SND_JACK_OC_HPHR);
 		hphlocp_off_report(mbhc, SND_JACK_OC_HPHL);
@@ -895,8 +901,10 @@ static void wcd9xxx_report_plug(struct wcd9xxx_mbhc *mbhc, int insertion,
 			pr_debug("%s: Reporting removal (%x)\n",
 				 __func__, mbhc->hph_status);
 			mbhc->zl = mbhc->zr = 0;
-			wcd9xxx_jack_report(mbhc, &mbhc->headset_jack,
-					    0, WCD9XXX_JACK_MASK);
+			wcd9xxx_jack_report(mbhc, &mbhc->headphone_jack,
+					    0, WCD9XXX_JACK_HP_MASK);
+			wcd9xxx_jack_report(mbhc, &mbhc->microphone_jack,
+					    0, WCD9XXX_JACK_MIC_MASK);
 			mbhc->hph_status &= ~(SND_JACK_HEADSET |
 						SND_JACK_LINEOUT |
 						SND_JACK_ANC_HEADPHONE);
@@ -931,8 +939,14 @@ static void wcd9xxx_report_plug(struct wcd9xxx_mbhc *mbhc, int insertion,
 
 		pr_debug("%s: Reporting insertion %d(%x)\n", __func__,
 			 jack_type, mbhc->hph_status);
-		wcd9xxx_jack_report(mbhc, &mbhc->headset_jack,
-				    mbhc->hph_status, WCD9XXX_JACK_MASK);
+		wcd9xxx_jack_report(mbhc, &mbhc->headphone_jack,
+				    mbhc->hph_status, WCD9XXX_JACK_HP_MASK);
+		if ((jack_type & SND_JACK_MICROPHONE) ||
+		    (jack_type & SND_JACK_MICROPHONE2) ||
+		    (jack_type & SND_JACK_UNSUPPORTED)) {
+			wcd9xxx_jack_report(mbhc, &mbhc->microphone_jack,
+					    mbhc->hph_status, WCD9XXX_JACK_MIC_MASK);
+		}
 		wcd9xxx_clr_and_turnon_hph_padac(mbhc);
 	}
 	/* Setup insert detect */
@@ -3795,9 +3809,9 @@ static irqreturn_t wcd9xxx_hphl_ocp_irq(int irq, void *data)
 			wcd9xxx_disable_irq(mbhc->resmgr->core_res,
 					  mbhc->intr_ids->hph_left_ocp);
 			mbhc->hph_status |= SND_JACK_OC_HPHL;
-			wcd9xxx_jack_report(mbhc, &mbhc->headset_jack,
+			wcd9xxx_jack_report(mbhc, &mbhc->headphone_jack,
 					    mbhc->hph_status,
-					    WCD9XXX_JACK_MASK);
+					    WCD9XXX_JACK_HP_MASK);
 		}
 	} else {
 		pr_err("%s: Bad wcd9xxx private data\n", __func__);
@@ -3825,8 +3839,8 @@ static irqreturn_t wcd9xxx_hphr_ocp_irq(int irq, void *data)
 		wcd9xxx_disable_irq(mbhc->resmgr->core_res,
 				    mbhc->intr_ids->hph_right_ocp);
 		mbhc->hph_status |= SND_JACK_OC_HPHR;
-		wcd9xxx_jack_report(mbhc, &mbhc->headset_jack,
-				    mbhc->hph_status, WCD9XXX_JACK_MASK);
+		wcd9xxx_jack_report(mbhc, &mbhc->headphone_jack,
+				    mbhc->hph_status, WCD9XXX_JACK_HP_MASK);
 	}
 
 	return IRQ_HANDLED;
@@ -5233,9 +5247,16 @@ int wcd9xxx_mbhc_init(struct wcd9xxx_mbhc *mbhc, struct wcd9xxx_resmgr *resmgr,
 		return -EINVAL;
 	}
 
-	if (mbhc->headset_jack.jack == NULL) {
-		ret = snd_soc_jack_new(codec, "Headset Jack", WCD9XXX_JACK_MASK,
-				       &mbhc->headset_jack);
+	if (mbhc->headphone_jack.jack == NULL) {
+		ret = snd_soc_jack_new(codec, "Headphone Jack", WCD9XXX_JACK_HP_MASK,
+				       &mbhc->headphone_jack);
+		if (ret) {
+			pr_err("%s: Failed to create new jack\n", __func__);
+			return ret;
+		}
+
+		ret = snd_soc_jack_new(codec, "Headset Mic Jack", WCD9XXX_JACK_MIC_MASK,
+				       &mbhc->microphone_jack);
 		if (ret) {
 			pr_err("%s: Failed to create new jack\n", __func__);
 			return ret;

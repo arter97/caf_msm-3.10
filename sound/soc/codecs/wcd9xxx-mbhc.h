@@ -352,7 +352,8 @@ struct wcd9xxx_mbhc {
 
 	bool insert_detect_level_insert;
 
-	struct snd_soc_jack headset_jack;
+	struct snd_soc_jack headphone_jack;
+	struct snd_soc_jack microphone_jack;
 	struct snd_soc_jack button_jack;
 
 	struct notifier_block nblock;

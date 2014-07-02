@@ -40,6 +40,8 @@ static int multimedia_startup(struct snd_pcm_substream *substream,
 	snd_pcm_hw_constraint_list(substream->runtime, 0,
 		SNDRV_PCM_HW_PARAM_RATE,
 		&constraints_sample_rates);
+	snd_pcm_hw_constraint_minmax(substream->runtime,
+		SNDRV_PCM_HW_PARAM_BUFFER_SIZE, 8, 4096);
 	return 0;
 }
 
