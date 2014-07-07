@@ -360,12 +360,16 @@ struct hc_driver {
 	int	(*disable_usb3_lpm_timeout)(struct usb_hcd *,
 			struct usb_device *, enum usb3_link_state state);
 	int	(*find_raw_port_number)(struct usb_hcd *, int);
+	/* if hcd needs to finish ep cleanup asap after HC halt failiure */
+	void (*halt_failed_cleanup)(struct usb_hcd *);
 
 	/* to log submission/completion events*/
 	void	(*log_urb)(struct urb *urb, char *event, unsigned extra);
 	void	(*dump_regs)(struct usb_hcd *);
 	void	(*set_autosuspend_delay)(struct usb_device *);
 	void	(*reset_sof_bug_handler)(struct usb_hcd *hcd, u32 val);
+	void	(*set_autosuspend)(struct usb_hcd *hcd, int enable_autosuspend);
+	void	(*udev_enum_done)(struct usb_hcd *hcd);
 };
 
 extern int usb_hcd_link_urb_to_ep(struct usb_hcd *hcd, struct urb *urb);

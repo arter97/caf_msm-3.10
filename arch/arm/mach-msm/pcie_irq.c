@@ -188,7 +188,7 @@ static void handle_wake_func(struct work_struct *work)
 				"PCIe: The link status of RC%d is up. Check if it is really up.\n",
 					dev->rc_idx);
 
-			if (msm_pcie_confirm_linkup(dev)) {
+			if (msm_pcie_confirm_linkup(dev, false, true)) {
 				PCIE_DBG(dev,
 					"PCIe: The link status of RC%d is really up; so ignore wake IRQ.\n",
 					dev->rc_idx);
@@ -307,7 +307,7 @@ static void handle_linkdown_func(struct work_struct *work)
 
 	mutex_lock(&dev->recovery_lock);
 
-	if (msm_pcie_confirm_linkup(dev))
+	if (msm_pcie_confirm_linkup(dev, true, true))
 		PCIE_DBG(dev,
 			"PCIe: The link status of RC%d is up now, indicating recovery has been done.\n",
 			dev->rc_idx);
@@ -445,6 +445,8 @@ void arch_teardown_msi_irqs(struct pci_dev *dev)
 
 	PCIE_DBG(pcie_dev, "RC:%d EP: vendor_id:0x%x device_id:0x%x\n",
 		pcie_dev->rc_idx, dev->vendor, dev->device);
+
+	pcie_dev->use_msi = false;
 
 	list_for_each_entry(entry, &dev->msi_list, list) {
 		int i, nvec;
@@ -641,6 +643,8 @@ int arch_setup_msi_irqs(struct pci_dev *dev, int nvec, int type)
 		if (ret > 0)
 			return -ENOSPC;
 	}
+
+	pcie_dev->use_msi = true;
 
 	return 0;
 }

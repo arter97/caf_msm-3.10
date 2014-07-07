@@ -1413,7 +1413,7 @@ void update_task_ravg(struct task_struct *p, struct rq *rq, int update_sum)
 	int new_window;
 	u64 wallclock = sched_clock();
 
-	if (sched_ravg_window < min_sched_ravg_window)
+	if (is_idle_task(p) || (sched_ravg_window < min_sched_ravg_window))
 		return;
 
 	do {
@@ -1457,7 +1457,8 @@ void update_task_ravg(struct task_struct *p, struct rq *rq, int update_sum)
 			if (!update_sum)
 				p->ravg.window_start = wallclock;
 			else
-				p->ravg.window_start += n * window_size;
+				p->ravg.window_start += (u64)n *
+							 (u64)window_size;
 			BUG_ON(p->ravg.window_start > wallclock);
 			if (update_sum)
 				update_history(rq, p, window_size, n);

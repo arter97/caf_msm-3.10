@@ -970,12 +970,16 @@ void mxhci_hsic_shutdown(struct usb_hcd *hcd)
 int mxhci_hsic_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 		u16 wIndex, char *buf, u16 wLength)
 {
-	struct mxhci_hsic_hcd *mxhci = hcd_to_hsic(hcd->primary_hcd);
+	struct mxhci_hsic_hcd *mxhci;
 	int ret = 0;
 	u32 status;
 
 	ret = xhci_hub_control(hcd, typeReq, wValue, wIndex, buf, wLength);
 
+	if (!hcd->primary_hcd)
+		return ret;
+
+	mxhci = hcd_to_hsic(hcd->primary_hcd);
 	status = get_unaligned_le32(buf);
 
 	if (typeReq == GetPortStatus) {
@@ -993,6 +997,62 @@ int mxhci_hsic_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 		}
 	}
 	return ret;
+}
+
+void mxhci_hsic_udev_enum_done(struct usb_hcd *hcd)
+{
+	struct mxhci_hsic_hcd *mxhci = hcd_to_hsic(hcd->primary_hcd);
+
+	if (mxhci->host_ready) {
+		/* after device enum lower host ready gpio */
+		gpio_direction_output(mxhci->host_ready, 0);
+		xhci_dbg_log_event(&dbg_hsic, NULL,  "host ready set low",
+					gpio_get_value(mxhci->host_ready));
+	}
+}
+
+/*
+ * When stop ep command times out due to controller halt failure
+ * no point waiting till XHCI_STOP_EP_CMD_TIMEOUT to giveback urbs.
+ * Kick stop ep command watchdog to finish endpoint related cleanup
+ * as early as possible.
+ */
+static void mxhci_hsic_ep_cleanup(struct usb_hcd *hcd)
+{
+	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
+	struct xhci_virt_ep *temp_ep;
+	int i, j;
+	unsigned long flags;
+	int locked;
+	bool kick_wdog = false;
+
+	locked = spin_trylock_irqsave(&xhci->lock, flags);
+	if (xhci->xhc_state & XHCI_STATE_DYING)
+		goto unlock;
+
+	for (i = 0; i < MAX_HC_SLOTS; i++) {
+		if (!xhci->devs[i])
+			continue;
+		for (j = 0; j < 31; j++) {
+			temp_ep = &xhci->devs[i]->eps[j];
+			/* find first ep with pending stop ep cmd */
+			if (temp_ep->stop_cmds_pending) {
+				kick_wdog = true;
+				/* kick stop ep cmd watchdog asap */
+				mod_timer(&temp_ep->stop_cmd_timer, jiffies);
+				goto unlock;
+			}
+		}
+	}
+unlock:
+	/*
+	 * if no stop ep cmd pending set xhci state to halted so that
+	 * xhci_urb_dequeue() gives back urb right away.
+	 */
+	if (!kick_wdog)
+		xhci->xhc_state |= XHCI_STATE_HALTED;
+	if (locked)
+		spin_unlock_irqrestore(&xhci->lock, flags);
 }
 
 static struct hc_driver mxhci_hsic_hc_driver = {
@@ -1030,6 +1090,7 @@ static struct hc_driver mxhci_hsic_hc_driver = {
 	.address_device =	xhci_address_device,
 	.update_hub_device =	xhci_update_hub_device,
 	.reset_device =		xhci_discover_or_reset_device,
+	.halt_failed_cleanup =	mxhci_hsic_ep_cleanup,
 
 	/*
 	 * scheduling support
@@ -1046,6 +1107,7 @@ static struct hc_driver mxhci_hsic_hc_driver = {
 	.log_urb =		xhci_hsic_log_urb,
 
 	.set_autosuspend_delay = mxhci_hsic_set_autosuspend_delay,
+	.udev_enum_done =	mxhci_hsic_udev_enum_done,
 };
 
 static ssize_t config_imod_store(struct device *pdev,

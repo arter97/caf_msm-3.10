@@ -48,7 +48,7 @@ static int32_t msm_actuator_piezo_set_default_focus(
 	struct msm_camera_i2c_reg_setting reg_setting;
 	CDBG("Enter\n");
 
-	if (a_ctrl->curr_step_pos != 0) {
+	if (a_ctrl->curr_step_pos != 0 || !a_ctrl->valid_position) {
 		a_ctrl->i2c_tbl_index = 0;
 		a_ctrl->func_tbl->actuator_parse_i2c_params(a_ctrl,
 			a_ctrl->initial_code, 0, 0);
@@ -67,6 +67,7 @@ static int32_t msm_actuator_piezo_set_default_focus(
 		}
 		a_ctrl->i2c_tbl_index = 0;
 		a_ctrl->curr_step_pos = 0;
+		a_ctrl->valid_position = 1;
 	}
 	CDBG("Exit\n");
 	return rc;
@@ -193,6 +194,7 @@ static int32_t msm_actuator_init_focus(struct msm_actuator_ctrl_t *a_ctrl,
 	}
 
 	a_ctrl->curr_step_pos = 0;
+	a_ctrl->valid_position = 0;
 	CDBG("Exit\n");
 	return rc;
 }
@@ -270,6 +272,7 @@ static int32_t msm_actuator_piezo_move_focus(
 	}
 	a_ctrl->i2c_tbl_index = 0;
 	a_ctrl->curr_step_pos = dest_step_position;
+	a_ctrl->valid_position = 1;
 	CDBG("Exit\n");
 	return rc;
 }
@@ -300,7 +303,7 @@ static int32_t msm_actuator_move_focus(
 
 	CDBG("called, dir %d, num_steps %d\n", dir, num_steps);
 
-	if (dest_step_pos == a_ctrl->curr_step_pos)
+	if (dest_step_pos == a_ctrl->curr_step_pos && a_ctrl->valid_position)
 		return rc;
 
 	if ((sign_dir > MSM_ACTUATOR_MOVE_SIGNED_NEAR) ||
@@ -353,6 +356,7 @@ static int32_t msm_actuator_move_focus(
 			a_ctrl->curr_region_index += sign_dir;
 		}
 		a_ctrl->curr_step_pos = target_step_pos;
+		a_ctrl->valid_position = 1;
 	}
 
 	move_params->curr_lens_pos = curr_lens_pos;
@@ -371,6 +375,53 @@ static int32_t msm_actuator_move_focus(
 	return rc;
 }
 
+
+static int32_t msm_actuator_park_lens(struct msm_actuator_ctrl_t *a_ctrl)
+{
+	int32_t rc = 0;
+	uint16_t next_lens_pos = 0;
+	struct msm_camera_i2c_reg_setting reg_setting;
+
+	a_ctrl->i2c_tbl_index = 0;
+	if ((a_ctrl->curr_step_pos > a_ctrl->total_steps) ||
+		(!a_ctrl->park_lens.max_step) ||
+		(!a_ctrl->step_position_table)) {
+		pr_err("%s:%d Failed to park lens.\n",
+			__func__, __LINE__);
+		return 0;
+	}
+
+	if (a_ctrl->park_lens.max_step > a_ctrl->max_code_size)
+		a_ctrl->park_lens.max_step = a_ctrl->max_code_size;
+
+	next_lens_pos = a_ctrl->step_position_table[a_ctrl->curr_step_pos];
+	while (next_lens_pos) {
+		next_lens_pos = (next_lens_pos > a_ctrl->park_lens.max_step) ?
+			(next_lens_pos - a_ctrl->park_lens.max_step) : 0;
+		a_ctrl->func_tbl->actuator_parse_i2c_params(a_ctrl,
+			next_lens_pos, a_ctrl->park_lens.hw_params,
+			a_ctrl->park_lens.damping_delay);
+
+		reg_setting.reg_setting = a_ctrl->i2c_reg_tbl;
+		reg_setting.size = a_ctrl->i2c_tbl_index;
+		reg_setting.data_type = a_ctrl->i2c_data_type;
+
+		rc = a_ctrl->i2c_client.i2c_func_tbl->
+			i2c_write_table_w_microdelay(
+			&a_ctrl->i2c_client, &reg_setting);
+		if (rc < 0) {
+			pr_err("%s Failed I2C write Line %d\n",
+				__func__, __LINE__);
+			return rc;
+		}
+		a_ctrl->i2c_tbl_index = 0;
+		/* Use typical damping time delay to avoid tick sound */
+		usleep_range(10000, 12000);
+	}
+
+	return 0;
+}
+
 static int32_t msm_actuator_init_step_table(struct msm_actuator_ctrl_t *a_ctrl,
 	struct msm_actuator_set_info_t *set_info)
 {
@@ -385,6 +436,7 @@ static int32_t msm_actuator_init_step_table(struct msm_actuator_ctrl_t *a_ctrl,
 	for (; data_size > 0; data_size--)
 		max_code_size *= 2;
 
+	a_ctrl->max_code_size = max_code_size;
 	kfree(a_ctrl->step_position_table);
 	a_ctrl->step_position_table = NULL;
 
@@ -440,7 +492,7 @@ static int32_t msm_actuator_set_default_focus(
 	int32_t rc = 0;
 	CDBG("Enter\n");
 
-	if (a_ctrl->curr_step_pos != 0)
+	if (a_ctrl->curr_step_pos != 0 || !a_ctrl->valid_position)
 		rc = a_ctrl->func_tbl->actuator_move_focus(a_ctrl, move_params);
 	CDBG("Exit\n");
 	return rc;
@@ -476,6 +528,13 @@ static int32_t msm_actuator_power_down(struct msm_actuator_ctrl_t *a_ctrl)
 	int32_t rc = 0;
 	CDBG("Enter\n");
 	if (a_ctrl->actuator_state != ACTUATOR_POWER_DOWN) {
+
+		if (a_ctrl->func_tbl && a_ctrl->func_tbl->actuator_park_lens) {
+			rc = a_ctrl->func_tbl->actuator_park_lens(a_ctrl);
+			if (rc < 0)
+				pr_err("%s:%d Lens park failed.\n",
+					__func__, __LINE__);
+		}
 		if (a_ctrl->vcm_enable) {
 			rc = gpio_direction_output(a_ctrl->vcm_pwd, 0);
 			if (!rc)
@@ -494,6 +553,7 @@ static int32_t msm_actuator_power_down(struct msm_actuator_ctrl_t *a_ctrl)
 		a_ctrl->i2c_reg_tbl = NULL;
 		a_ctrl->i2c_tbl_index = 0;
 		a_ctrl->actuator_state = ACTUATOR_POWER_DOWN;
+		a_ctrl->valid_position = 0;
 	}
 	CDBG("Exit\n");
 	return rc;
@@ -653,12 +713,16 @@ static int32_t msm_actuator_set_param(struct msm_actuator_ctrl_t *a_ctrl,
 		}
 	}
 
+	/* Park lens data */
+	a_ctrl->park_lens = set_info->actuator_params.park_lens;
+
 	a_ctrl->initial_code = set_info->af_tuning_params.initial_code;
 	if (a_ctrl->func_tbl->actuator_init_step_table)
 		rc = a_ctrl->func_tbl->
 			actuator_init_step_table(a_ctrl, set_info);
 
 	a_ctrl->curr_step_pos = 0;
+	a_ctrl->valid_position = 0;
 	a_ctrl->curr_region_index = 0;
 	a_ctrl->actuator_state = ACTUATOR_POWER_UP;
 	CDBG("Exit\n");
@@ -859,6 +923,8 @@ static int32_t msm_actuator_power_up(struct msm_actuator_ctrl_t *a_ctrl)
 			gpio_direction_output(a_ctrl->vcm_pwd, 1);
 		}
 	}
+
+	a_ctrl->valid_position = 0;
 	CDBG("Exit\n");
 	return rc;
 }
@@ -930,6 +996,7 @@ static int32_t msm_actuator_i2c_probe(struct i2c_client *client,
 	act_ctrl_t->i2c_driver = &msm_actuator_i2c_driver;
 	act_ctrl_t->i2c_client.client = client;
 	act_ctrl_t->curr_step_pos = 0,
+	act_ctrl_t->valid_position = 0;
 	act_ctrl_t->curr_region_index = 0,
 	/* Set device type as I2C */
 	act_ctrl_t->act_device_type = MSM_CAMERA_I2C_DEVICE;
@@ -1103,6 +1170,7 @@ static struct msm_actuator msm_vcm_actuator_table = {
 		.actuator_init_focus = msm_actuator_init_focus,
 		.actuator_parse_i2c_params = msm_actuator_parse_i2c_params,
 		.actuator_set_position = msm_actuator_set_position,
+		.actuator_park_lens = msm_actuator_park_lens,
 	},
 };
 
@@ -1116,6 +1184,7 @@ static struct msm_actuator msm_piezo_actuator_table = {
 			msm_actuator_piezo_set_default_focus,
 		.actuator_init_focus = msm_actuator_init_focus,
 		.actuator_parse_i2c_params = msm_actuator_parse_i2c_params,
+		.actuator_park_lens = NULL,
 	},
 };
 

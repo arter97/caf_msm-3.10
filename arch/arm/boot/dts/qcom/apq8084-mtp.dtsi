@@ -174,7 +174,17 @@
 	status = "ok";
 };
 
+&hsphy0 {
+	qcom,hsphy-init = <0x00D194E4>;
+};
+
 &xhci_hsic_host {
+	status = "ok";
+};
+
+&uart6 {
+	qcom,inject-rx-on-wakeup;
+	qcom,rx-char-to-inject = <0xfd>;
 	status = "ok";
 };
 
