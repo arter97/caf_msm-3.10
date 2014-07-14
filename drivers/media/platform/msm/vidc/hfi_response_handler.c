@@ -1305,6 +1305,37 @@ static void hfi_process_session_get_seq_hdr_done(
 	callback(SESSION_GET_SEQ_HDR_DONE, &data_done);
 }
 
+static void hfi_process_session_parse_seq_hdr_done(
+	msm_vidc_callback callback, u32 device_id,
+	struct hfi_msg_session_parse_sequence_header_done_packet *pkt)
+{
+	struct msm_vidc_cb_cmd_done cmd_done = {0};
+	struct hfi_frame_size *frame_sz;
+	if (!pkt) {
+		dprintk(VIDC_ERR, "bad packet : null\n");
+		return;
+	}
+	dprintk(VIDC_DBG, "RECEIVED:SESSION_PARSE_SEQ_HDR_DONE[%u]",
+		pkt->session_id);
+	cmd_done.session_id =
+		((struct hal_session *) pkt->session_id)->session_id;
+	cmd_done.status = hfi_map_err_status((u32)pkt->error_type);
+	if (pkt->rg_property_data[0] != HFI_PROPERTY_PARAM_FRAME_SIZE) {
+		dprintk(VIDC_ERR, "Unknown response param %d\n",
+			pkt->rg_property_data[0]);
+	}
+	cmd_done.size = sizeof(struct hfi_frame_size);
+	frame_sz = (struct hfi_frame_size *) &pkt->rg_property_data[1];
+	cmd_done.data = (void*)(&pkt->rg_property_data[1]);
+	if (!cmd_done.data) {
+		dprintk(VIDC_ERR, "bad data in packet : null\n");
+		return;
+	}
+	dprintk(VIDC_DBG, "parse_seq_hdr_done: status: %d, w %d, h %d\n",
+			cmd_done.status, frame_sz->width, frame_sz->height);
+	callback(SESSION_PARSE_SEQ_HDR_DONE, &cmd_done);
+}
+
 static void hfi_process_sys_get_prop_image_version(
 		struct hfi_msg_sys_property_info_packet *pkt)
 {
@@ -1488,6 +1519,13 @@ u32 hfi_process_msg_packet(
 			hfi_process_session_get_seq_hdr_done(
 			callback, device_id, (struct
 			hfi_msg_session_get_sequence_header_done_packet*)
+						msg_hdr);
+		break;
+	case HFI_MSG_SESSION_PARSE_SEQUENCE_HEADER_DONE:
+		if (!validate_session_pkt(sessions, sess, session_lock))
+			hfi_process_session_parse_seq_hdr_done(
+			callback, device_id, (struct
+			hfi_msg_session_parse_sequence_header_done_packet*)
 						msg_hdr);
 		break;
 	case HFI_MSG_SESSION_RELEASE_BUFFERS_DONE:

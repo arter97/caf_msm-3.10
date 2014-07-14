@@ -830,6 +830,44 @@ int msm_vdec_qbuf(struct msm_vidc_inst *inst, struct v4l2_buffer *b)
 {
 	struct buf_queue *q = NULL;
 	int rc = 0;
+	struct vidc_seq_hdr codec_config;
+	struct hfi_device *hdev;
+	struct msm_vidc_core *core = NULL;
+	unsigned long buf_addr = 0;
+
+	if (!inst || !inst->core || !inst->core->device) {
+		dprintk(VIDC_ERR,
+			"Invalid video instance for buffer: %p\n", b);
+		return -EINVAL;
+	}
+
+	core = inst->core;
+	hdev = core->device;
+	if ((b->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) &&
+		(!inst->seq_hdr_sent)) {
+
+		if (b->memory == V4L2_MEMORY_USERPTR)
+			buf_addr = b->m.planes[0].m.userptr;
+
+		codec_config.seq_hdr_len = b->m.planes[0].bytesused;
+		codec_config.seq_hdr = (u8 *)buf_addr;
+		dprintk(VIDC_DBG, "sending seq hdr to fw %d \n", codec_config.seq_hdr_len);
+		init_completion(
+			&inst->completions[SESSION_MSG_INDEX(SESSION_PARSE_SEQ_HDR_DONE)]);
+		rc = call_hfi_op(hdev, session_parse_seq_hdr, (void *)
+				inst->session, &codec_config);
+		inst->seq_hdr_sent = true;
+		if (rc) {
+			dprintk(VIDC_WARN, "error in parsing seq hdr cmd");
+		}else {
+			rc = wait_for_completion_timeout(
+				&inst->completions[SESSION_MSG_INDEX(SESSION_PARSE_SEQ_HDR_DONE)],
+				msecs_to_jiffies(msm_vidc_hw_rsp_timeout));
+			if (rc)
+				dprintk(VIDC_WARN, "timed out waiting for seq_hdr_done");
+		}
+	}
+
 	q = msm_comm_get_vb2q(inst, b->type);
 	if (!q) {
 		dprintk(VIDC_ERR, "Failed to find buffer queue for type = %d\n"
@@ -932,6 +970,14 @@ int msm_vdec_g_fmt(struct msm_vidc_inst *inst, struct v4l2_format *f)
 				"%s: session not supported\n", __func__);
 				goto exit;
 			}
+		}
+		if (inst->seq_hdr_sent &&
+				(inst->prop.width[CAPTURE_PORT] == 0 ||
+				inst->prop.height[CAPTURE_PORT] == 0)) {
+			dprintk(VIDC_DBG,
+				"Seq hdr not present in first input, using defaults\n");
+			inst->prop.width[CAPTURE_PORT] = DEFAULT_WIDTH;
+			inst->prop.height[CAPTURE_PORT] = DEFAULT_HEIGHT;
 		}
 		f->fmt.pix_mp.height = inst->prop.height[CAPTURE_PORT];
 		f->fmt.pix_mp.width = inst->prop.width[CAPTURE_PORT];

@@ -21,6 +21,7 @@
 #include "msm_vidc_common.h"
 #include "vidc_hfi_api.h"
 #include "msm_vidc_debug.h"
+#include "vidc_hfi_helper.h"
 
 #define IS_ALREADY_IN_STATE(__p, __d) ({\
 	int __rc = (__p >= __d);\
@@ -1435,6 +1436,23 @@ static void handle_fbd(enum command_response cmd, void *data)
 	}
 }
 
+static void  handle_parse_seq_hdr_done(enum command_response cmd, void *data)
+{
+	struct msm_vidc_cb_cmd_done *response = data;
+	struct hfi_frame_size *frame_sz;
+	struct msm_vidc_inst *inst;
+	dprintk(VIDC_DBG, "handle_parse_seq_hdr_done \n");
+	if (!response || !response->data) {
+		dprintk(VIDC_ERR, "Invalid response from vidc_hal\n");
+		return;
+	}
+        frame_sz = (struct hfi_frame_size*)response->data;
+	inst = (struct msm_vidc_inst *)response->session_id;
+	inst->prop.width[CAPTURE_PORT] = frame_sz->width;
+	inst->prop.height[CAPTURE_PORT] = frame_sz->height;
+	dprintk(VIDC_DBG, "New height and width %d * %d \n", frame_sz->width, frame_sz->height);
+}
+
 static void  handle_seq_hdr_done(enum command_response cmd, void *data)
 {
 	struct msm_vidc_cb_data_done *response = data;
@@ -1516,6 +1534,9 @@ void handle_cmd_response(enum command_response cmd, void *data)
 		break;
 	case SESSION_GET_SEQ_HDR_DONE:
 		handle_seq_hdr_done(cmd, data);
+		break;
+	case SESSION_PARSE_SEQ_HDR_DONE:
+		handle_parse_seq_hdr_done(cmd, data);
 		break;
 	case SYS_WATCHDOG_TIMEOUT:
 		handle_sys_error(cmd, data);
