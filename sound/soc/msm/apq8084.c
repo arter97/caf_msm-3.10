@@ -155,7 +155,7 @@ static struct wcd9xxx_mbhc_config mbhc_cfg = {
 	.mclk_rate = TAIKO_EXT_CLK_RATE,
 	.gpio = 0,
 	.gpio_irq = 0,
-	.gpio_level_insert = 1,
+	.gpio_level_insert = 0,
 	.detect_extn_cable = true,
 	.micbias_enable_flags = 1 << MBHC_MICBIAS_ENABLE_THRESHOLD_HEADSET,
 	.insert_detect = true,
@@ -560,9 +560,7 @@ static int apq8084_liquid_ext_spk_power_amp_on(u32 spk)
 		    (apq8084_ext_spk_pamp & LO_3_SPK_AMP) &&
 		    (apq8084_ext_spk_pamp & LO_2_SPK_AMP) &&
 		    (apq8084_ext_spk_pamp & LO_4_SPK_AMP))
-			if (ext_spk_amp_gpio >= 0 &&
-			    apq8084_liquid_dock_dev &&
-			    apq8084_liquid_dock_dev->dock_plug_det == 0)
+			if (ext_spk_amp_gpio >= 0)
 				apq8084_liquid_ext_spk_power_amp_enable(1);
 	} else  {
 		pr_err("%s: Invalid external speaker ampl. spk = 0x%x\n",
@@ -589,9 +587,7 @@ static void apq8084_liquid_ext_spk_power_amp_off(u32 spk)
 			__func__, spk);
 		apq8084_ext_spk_pamp &= ~spk;
 		if (!apq8084_ext_spk_pamp) {
-			if (ext_spk_amp_gpio >= 0 &&
-				apq8084_liquid_dock_dev != NULL &&
-				apq8084_liquid_dock_dev->dock_plug_det == 0)
+			if (ext_spk_amp_gpio >= 0)
 				apq8084_liquid_ext_spk_power_amp_enable(0);
 		}
 	} else  {
