@@ -193,6 +193,12 @@ static struct msm_gpiomux_config msm_synaptics_configs[] __initdata = {
 };
 
 static struct gpiomux_setting gpio_spi_config = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_2MA,
+	.pull = GPIOMUX_PULL_NONE,
+};
+
+static struct gpiomux_setting gpio_spi_active_config = {
 	.func = GPIOMUX_FUNC_1,
 	.drv = GPIOMUX_DRV_6MA,
 	.pull = GPIOMUX_PULL_NONE,
@@ -399,38 +405,58 @@ static struct msm_gpiomux_config msm_sbc_blsp_configs[] __initdata = {
 
 static struct msm_gpiomux_config msm_lucas2_blsp_configs[] __initdata = {
 	{
-		.gpio      = 2,		/* BLSP1 QUP0 I2C_SDA */
+		.gpio      = 0,		/* BLSP1 QUP0 SPI_DATA_MOSI */
 		.settings = {
-			[GPIOMUX_SUSPENDED] = &gpio_i2c_config,
+			[GPIOMUX_ACTIVE] = &gpio_spi_active_config,
+			[GPIOMUX_SUSPENDED] = &gpio_spi_config,
 		},
 	},
 	{
-		.gpio      = 3,		/* BLSP1 QUP0 I2C_SCL */
+		.gpio      = 1,		/* BLSP1 QUP0 SPI_DATA_MISO */
 		.settings = {
-			[GPIOMUX_SUSPENDED] = &gpio_i2c_config,
+			[GPIOMUX_ACTIVE] = &gpio_spi_active_config,
+			[GPIOMUX_SUSPENDED] = &gpio_spi_config,
+		},
+	},
+	{
+		.gpio      = 2,		/* BLSP1 QUP0 SPI_CS_N */
+		.settings = {
+			[GPIOMUX_ACTIVE] = &gpio_spi_active_config,
+			[GPIOMUX_SUSPENDED] = &gpio_spi_config,
+		},
+	},
+	{
+		.gpio      = 3,		/* BLSP1 QUP0 SPI_CLK */
+		.settings = {
+			[GPIOMUX_ACTIVE] = &gpio_spi_active_config,
+			[GPIOMUX_SUSPENDED] = &gpio_spi_config,
 		},
 	},
 	{
 		.gpio      = 4,		/* BLSP1 QUP1 SPI_DATA_MOSI */
 		.settings = {
+			[GPIOMUX_ACTIVE] = &gpio_spi_active_config,
 			[GPIOMUX_SUSPENDED] = &gpio_spi_config,
 		},
 	},
 	{
 		.gpio      = 5,		/* BLSP1 QUP1 SPI_DATA_MISO */
 		.settings = {
+			[GPIOMUX_ACTIVE] = &gpio_spi_active_config,
 			[GPIOMUX_SUSPENDED] = &gpio_spi_config,
 		},
 	},
 	{
 		.gpio      = 6,		/* BLSP1 QUP1 SPI_CS_N */
 		.settings = {
+			[GPIOMUX_ACTIVE] = &gpio_spi_active_config,
 			[GPIOMUX_SUSPENDED] = &gpio_spi_config,
 		},
 	},
 	{
 		.gpio      = 7,		/* BLSP1 QUP1 SPI_CLK */
 		.settings = {
+			[GPIOMUX_ACTIVE] = &gpio_spi_active_config,
 			[GPIOMUX_SUSPENDED] = &gpio_spi_config,
 		},
 	},
