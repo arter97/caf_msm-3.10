@@ -346,7 +346,7 @@
 		reg-names = "edp_base", "mmss_cc_base";
 		vdda-supply = <&pma8084_l12>;
 		gpio-panel-en = <&msmgpio 137 0>;
-		gpio-lvl-en = <&msmgpio 91 0>;		/* to receive hpd */
+		gpio-lvl-en = <&msmgpio 86 0>;		/* to receive hpd */
 		qcom,mdss-fb-map = <&mdss_fb0>;
 		gpio-panel-hpd = <&msmgpio 103 0>;
 		qcom,panel-lpg-channel = <2>; /* pma8084 gpio #7, LPG Channel 3 */

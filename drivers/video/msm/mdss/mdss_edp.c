@@ -499,8 +499,8 @@ void mdss_edp_config_ctrl(struct mdss_edp_drv_pdata *ep)
 
 static void mdss_edp_sw_mvid_nvid(struct mdss_edp_drv_pdata *ep)
 {
-	edp_write(ep->base + 0x14, 0x13b); /* EDP_SOFTWARE_MVID */
-	edp_write(ep->base + 0x18, 0x266); /* EDP_SOFTWARE_NVID */
+	edp_write(ep->base + 0x14, 0x109); /* EDP_SOFTWARE_MVID */
+	edp_write(ep->base + 0x18, 0x1fa); /* EDP_SOFTWARE_NVID */
 }
 
 static void mdss_edp_timing_cfg(struct mdss_edp_drv_pdata *ep)
@@ -583,6 +583,8 @@ int mdss_edp_on(struct mdss_panel_data *pdata)
 			panel_data);
 
 	pr_debug("%s:+, cont_splash=%d\n", __func__, edp_drv->cont_splash);
+
+	edp_drv->delay_link_train = 1;
 
 	if (!edp_drv->cont_splash) { /* vote for clocks */
 		mdss_edp_phy_pll_reset(edp_drv);
