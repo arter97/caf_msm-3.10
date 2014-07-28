@@ -1908,7 +1908,7 @@ static void dwc3_id_work(struct work_struct *w)
 	}
 
 	if (!mdwc->ext_inuse) { /* notify OTG */
-		mdwc->ext_xceiv.id = mdwc->id_state;
+		mdwc->ext_xceiv.id = 0;
 		dwc3_resume_work(&mdwc->resume_work.work);
 	}
 }

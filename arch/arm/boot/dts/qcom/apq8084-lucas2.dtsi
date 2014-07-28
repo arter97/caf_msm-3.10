@@ -78,6 +78,13 @@
 		enable-active-high;
 		gpio = <&pma8084_gpios 8 0>;
 	};
+	
+	usb1_vreg: usb1_vreg {
+		compatible = "regulator-fixed";
+		regulator-name = "usb1_vreg";
+		enable-active-high;
+		gpio = <&pma8084_gpios 9 0>;
+	};
 
 	usb_detect {
 		compatible = "qcom,qpnp-usbdetect";
@@ -289,7 +296,9 @@
 };
 
 &usb3_sec {
+	vbus_dwc3-supply = <&usb1_vreg>;
 	status = "ok";
+	qcom,charging-disabled;
 };
 
 &hsphy1 {
