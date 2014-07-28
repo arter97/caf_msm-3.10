@@ -1730,10 +1730,9 @@ static int kgsl_drm_gem_one_info(int id, void *ptr, void *data)
 	struct kgsl_drm_gem_info_data *gem_info_data = data;
 	struct drm_kgsl_file_private *file_priv =
 				gem_info_data->filp->driver_priv;
-
 	seq_printf(gem_info_data->m, "%3d \t%3d \t%3d \t%2d \t\t%2d \t0x%08x"\
 				" \t0x%x \t%2d \t\t%2d \t\t%2d\n",
-				gem_info_data->filp->pid,
+				pid_vnr(gem_info_data->filp->pid),
 				file_priv->tgid,
 				id,
 				atomic_read(&obj->refcount.refcount),
@@ -1956,7 +1955,7 @@ static struct drm_driver driver = {
 	.patchlevel = DRIVER_PATCHLEVEL,
 };
 
-static int __devinit kgsl_drm_probe(struct platform_device *pdev)
+static int kgsl_drm_probe(struct platform_device *pdev)
 {
 	/* Only initialize once */
 	if (kgsl_drm_inited == DRM_KGSL_INITED)
