@@ -23,6 +23,7 @@
 #include <sound/soc.h>
 #include <sound/soc-dapm.h>
 #include <sound/pcm.h>
+#include <sound/tlv.h>
 #include <sound/initval.h>
 #include <sound/control.h>
 #include <sound/q6audio-v2.h>
@@ -35,6 +36,10 @@
 
 #include "msm-pcm-q6-v2.h"
 #include "msm-pcm-routing-v2.h"
+
+#define MSM_PCM_LR_VOL_MAX_STEPS	(0x2000)
+
+const DECLARE_TLV_DB_LINEAR(msm_pcm_rx_vol_gain, -MSM_PCM_LR_VOL_MAX_STEPS, 0);
 
 static struct audio_locks the_locks;
 
@@ -821,6 +826,87 @@ static struct snd_pcm_ops msm_pcm_ops = {
 	.mmap		= msm_pcm_mmap,
 };
 
+static int msm_pcm_set_volume(struct msm_audio *prtd, uint32_t volume)
+{
+	int rc = 0;
+	if (prtd && prtd->audio_client) {
+		rc = q6asm_set_lrgain(prtd->audio_client,
+				      volume & 0xFFFF, volume & 0xFFFF);
+		if (rc < 0) {
+			pr_err("%s: Send Volume command failed rc=%d\n",
+						__func__, rc);
+		}
+	}
+	return rc;
+}
+
+static int msm_pcm_volume_ctl_put(struct snd_kcontrol *kcontrol,
+				  struct snd_ctl_elem_value *ucontrol)
+{
+	int rc = 0;
+	struct snd_pcm_volume *vol = snd_kcontrol_chip(kcontrol);
+	struct snd_pcm_substream *substream =
+			 vol->pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream;
+	struct msm_audio *prtd;
+	int volume = ucontrol->value.integer.value[0];
+
+	pr_debug("%s: set volume request: %d\n", __func__, volume);
+	if (!substream)
+		return -ENODEV;
+	if (!substream->runtime)
+		return 0;
+	prtd = substream->runtime->private_data;
+	if (prtd) {
+		rc = msm_pcm_set_volume(prtd, volume);
+		prtd->volume = volume;
+		pr_debug("%s: set volume to %d\n", __func__, volume);
+	}
+
+	return rc;
+}
+
+static int msm_pcm_volume_ctl_get(struct snd_kcontrol *kcontrol,
+				  struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_pcm_volume *vol = snd_kcontrol_chip(kcontrol);
+	struct snd_pcm_substream *substream =
+			 vol->pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream;
+	struct msm_audio *prtd;
+
+	pr_debug("%s: get volume request\n", __func__);
+	if (!substream)
+		return -ENODEV;
+	if (!substream->runtime)
+		return 0;
+	prtd = substream->runtime->private_data;
+	if (prtd) {
+		ucontrol->value.integer.value[0] = prtd->volume;
+		pr_debug("%s: got volume: %d\n", __func__, prtd->volume);
+	}
+
+	return 0;
+}
+
+static int msm_pcm_add_controls(struct snd_soc_pcm_runtime *rtd)
+{
+	int ret = 0;
+	struct snd_pcm *pcm = rtd->pcm->streams[0].pcm;
+	struct snd_pcm_volume *volume_info;
+	struct snd_kcontrol *kctl;
+
+	dev_dbg(rtd->dev, "%s, Volume cntrl add\n", __func__);
+	ret = snd_pcm_add_volume_ctls(pcm, SNDRV_PCM_STREAM_PLAYBACK,
+				      NULL, 1, rtd->dai_link->be_id,
+				      &volume_info);
+	if (ret < 0)
+		return ret;
+	kctl = volume_info->kctl;
+	kctl->put = msm_pcm_volume_ctl_put;
+	kctl->get = msm_pcm_volume_ctl_get;
+	kctl->tlv.p = msm_pcm_rx_vol_gain;
+	return 0;
+}
+
 static int msm_pcm_chmap_ctl_put(struct snd_kcontrol *kcontrol,
 				struct snd_ctl_elem_value *ucontrol)
 {
@@ -890,6 +976,13 @@ static int msm_asoc_pcm_new(struct snd_soc_pcm_runtime *rtd)
 
 	if (!card->dev->coherent_dma_mask)
 		card->dev->coherent_dma_mask = DMA_BIT_MASK(32);
+
+	pr_debug("%s, Volume cntrl add\n", __func__);
+	ret = msm_pcm_add_controls(rtd);
+	if (ret < 0) {
+		pr_err("%s, kctl add failed\n", __func__);
+		return ret;
+	}
 
 	pr_debug("%s, Channel map cntrl add\n", __func__);
 	ret = snd_pcm_add_chmap_ctls(pcm, SNDRV_PCM_STREAM_PLAYBACK,

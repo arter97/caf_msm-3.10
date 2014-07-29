@@ -2668,12 +2668,19 @@ int snd_pcm_add_volume_ctls(struct snd_pcm *pcm, int stream,
 		return -ENOMEM;
 	}
 	knew.name = buf;
-	if (stream == SNDRV_PCM_STREAM_PLAYBACK)
-		snprintf(buf, size, "%s %d %s",
-			"Playback", pcm->device, "Volume");
-	else
-		snprintf(buf, size, "%s %d %s",
-			"Capture", pcm->device, "Volume");
+	if (pcm->device) {
+		if (stream == SNDRV_PCM_STREAM_PLAYBACK)
+			snprintf(buf, size, "%s %d %s",
+				"Playback", pcm->device, "Volume");
+		else
+			snprintf(buf, size, "%s %d %s",
+				"Capture", pcm->device, "Volume");
+	} else {
+		if (stream == SNDRV_PCM_STREAM_PLAYBACK)
+			snprintf(buf, size, "%s", "Master Playback Volume");
+		else
+			snprintf(buf, size, "%s", "Capture Volume");
+	}
 	knew.device = pcm->device;
 	knew.count = pcm->streams[stream].substream_count;
 	knew.private_value = private_value;
