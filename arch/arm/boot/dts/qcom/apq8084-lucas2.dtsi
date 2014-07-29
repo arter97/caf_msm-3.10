@@ -515,6 +515,7 @@
                 interrupt-parent = <&msmgpio>;
                 interrupts = <80 0x2>;
 		atmel,irq-gpio = <&msmgpio 80 0x00>;
+		wakeup-source;
 	};
 	trackpad-bootloader@25 {
 		reg=<0x25>;
@@ -522,6 +523,7 @@
                 interrupt-parent = <&msmgpio>;
                 interrupts = <80 0x2>;
 		atmel,irq-gpio = <&msmgpio 80 0x00>;
+		wakeup-source;
 	};
 };
 
