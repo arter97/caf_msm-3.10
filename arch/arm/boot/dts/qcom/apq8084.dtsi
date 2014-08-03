@@ -4331,7 +4331,7 @@
 		reg = <0xf9924000 0x1000>;
 		interrupt-names = "spi_irq";
 		interrupts = <0 96 0>;
-		spi-max-frequency = <1000000>;
+		spi-max-frequency = <4800000>;
 
 		qcom,use-pinctrl;
 		pinctrl-names = "default", "sleep";

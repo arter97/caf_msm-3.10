@@ -545,7 +545,7 @@
 		interrupt-parent = <&msmgpio>;
 
 		google,cros-ec-spi-msg-delay = <0>;
-		google,cros-ec-spi-cs = <2>;
+		google,cros-ec-spi-cs = <6>;
 
 		i2c_20: i2c-tunnel {
 			compatible = "google,cros-ec-i2c-tunnel";

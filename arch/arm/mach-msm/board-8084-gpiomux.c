@@ -18,6 +18,14 @@
 #include <mach/gpiomux.h>
 #include <soc/qcom/socinfo.h>
 
+/*Setting cs of spi1*/
+static struct gpiomux_setting spi1_ec = {
+	.func = GPIOMUX_FUNC_GPIO,
+	.drv = GPIOMUX_DRV_8MA,
+	.pull = GPIOMUX_PULL_NONE,
+	.dir = GPIOMUX_OUT_HIGH,
+};
+
 static struct gpiomux_setting ap2mdm_cfg = {
 	.func = GPIOMUX_FUNC_GPIO,
 	.drv = GPIOMUX_DRV_8MA,
@@ -84,6 +92,16 @@ static struct msm_gpiomux_config hap_lvl_shft_config[] __initdata = {
 			[GPIOMUX_ACTIVE] = &hap_lvl_shft_active_config,
 			[GPIOMUX_SUSPENDED] = &hap_lvl_shft_suspended_config,
 		},
+	},
+};
+
+static struct msm_gpiomux_config ec_configs[] __initdata = {
+	/* SPI0_CS */
+	{
+		.gpio = 6,
+		.settings = {
+			[GPIOMUX_SUSPENDED] = &spi1_ec,
+		}
 	},
 };
 
@@ -441,13 +459,6 @@ static struct msm_gpiomux_config msm_lucas2_blsp_configs[] __initdata = {
 	},
 	{
 		.gpio      = 5,		/* BLSP1 QUP1 SPI_DATA_MISO */
-		.settings = {
-			[GPIOMUX_ACTIVE] = &gpio_spi_active_config,
-			[GPIOMUX_SUSPENDED] = &gpio_spi_config,
-		},
-	},
-	{
-		.gpio      = 6,		/* BLSP1 QUP1 SPI_CS_N */
 		.settings = {
 			[GPIOMUX_ACTIVE] = &gpio_spi_active_config,
 			[GPIOMUX_SUSPENDED] = &gpio_spi_config,
@@ -1371,6 +1382,7 @@ void __init apq8084_init_gpiomux(void)
 			msm_gpiomux_install(msm_qca1530_cdp_configs,
 					ARRAY_SIZE(msm_qca1530_cdp_configs));
 	}
+	msm_gpiomux_install(ec_configs, ARRAY_SIZE(ec_configs));
 	msm_gpiomux_install_nowrite(msm_lcd_configs,
 			ARRAY_SIZE(msm_lcd_configs));
 	msm_gpiomux_install(apq8084_pri_ter_auxpcm_configs,

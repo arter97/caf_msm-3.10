@@ -56,7 +56,7 @@
 			qcom,pin-func = <1>;
 			label = "spi_0";
 			spi_0_active: spi_0_active {
-				drive-strength = <8>;
+				drive-strength = <6>;
 				bias-disable;
 			};
 			spi_0_sleep: spi_0_sleep {
@@ -66,12 +66,12 @@
 		};
 
 		spi_1 {
-			qcom,pins = <&gp 4>, <&gp 5>, <&gp 6>, <&gp 7>;
-			qcom,num-grp-pins = <4>;
+			qcom,pins = <&gp 4>, <&gp 5>, <&gp 7>;
+			qcom,num-grp-pins = <3>;
 			qcom,pin-func = <1>;
 			label = "spi_1";
 			spi_1_active: spi_1_active {
-				drive-strength = <6>;
+				drive-strength = <8>;
 				bias-disable;
 			};
 			spi_1_sleep: spi_1_sleep {
