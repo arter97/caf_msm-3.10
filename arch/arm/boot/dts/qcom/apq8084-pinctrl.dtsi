@@ -25,6 +25,19 @@
 				#gpio-cells = <2>;
 			};
 		};
+
+		ec_key_irq {
+			qcom,pins = <&gp 59>;
+			qcom,num-grp-pins = <1>;
+			qcom,pin-func = <0>;
+			label = "ec_key_irq";
+
+			ec_irq: ec_irq {
+				drive-strength = <2>;
+				bias-disable;
+			};
+		};
+
 		/* SDC pin type */
 		sdc: sdc {
 			qcom,pin-type-sdc;

@@ -14,6 +14,7 @@
 	aliases {
 		serial0 = &blsp2_uart1;
 		uart1 = &blsp2_uart4;
+		i2c20 = &i2c_20;
 	};
 
 	bt_qca6174 {
@@ -528,6 +529,46 @@
 };
 
 &spi_epm {
+};
+
+&spi_1 {
+	ec: cros-ec@0 {
+		compatible = "google,cros-ec-spi";
+		spi-max-frequency = <960000>;
+		num-cs = <0>;
+		reg = <0>;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&ec_irq>;
+
+		interrupts = <59 0x2>;
+		interrupt-parent = <&msmgpio>;
+
+		google,cros-ec-spi-msg-delay = <0>;
+		google,cros-ec-spi-cs = <2>;
+
+		i2c_20: i2c-tunnel {
+			compatible = "google,cros-ec-i2c-tunnel";
+			cell-index = <20>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			google,remote-bus = <0>;
+
+			charger: smb350-charger@2b {
+				compatible = "summit,smb350-charger";
+				reg = <0x2b>;
+				summit,fuel-gauge-name = "sbs-battery";
+			};
+
+			battery: sbs-battery@b {
+				compatible = "sbs,sbs-battery";
+				reg = <0xb>;
+				sbs,poll-retry-count = <1>;
+				sbs,i2c-retry-count = <2>;
+			};
+		};
+	};
 };
 
 &spmi_bus {
