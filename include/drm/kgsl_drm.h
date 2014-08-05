@@ -227,6 +227,7 @@ struct drm_kgsl_gem_get_ion_fd {
 struct drm_kgsl_gem_create_from_ion {
 	uint32_t ion_fd;
 	uint32_t handle;
+	uint32_t size;
 };
 
 struct drm_kgsl_gem_userdata {
