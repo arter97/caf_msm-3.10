@@ -1105,10 +1105,17 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 					BTN_TOUCH, 1);
 			input_report_key(rmi4_data->input_dev,
 					BTN_TOOL_FINGER, 1);
+
 			input_report_abs(rmi4_data->input_dev,
 					ABS_MT_POSITION_X, x);
 			input_report_abs(rmi4_data->input_dev,
 					ABS_MT_POSITION_Y, y);
+
+                        /*Report ABS_X & ABS_Y */
+			input_report_abs(rmi4_data->input_dev,
+					ABS_X, x);
+			input_report_abs(rmi4_data->input_dev,
+					ABS_Y, y);
 #ifdef REPORT_2D_W
 			input_report_abs(rmi4_data->input_dev,
 					ABS_MT_TOUCH_MAJOR, max(wx, wy));
@@ -2893,7 +2900,6 @@ static int synaptics_rmi4_probe(struct i2c_client *client,
 	set_bit(EV_KEY, rmi4_data->input_dev->evbit);
 	set_bit(EV_ABS, rmi4_data->input_dev->evbit);
 	set_bit(BTN_TOUCH, rmi4_data->input_dev->keybit);
-	set_bit(BTN_TOOL_FINGER, rmi4_data->input_dev->keybit);
 
 #ifdef INPUT_PROP_DIRECT
 	set_bit(INPUT_PROP_DIRECT, rmi4_data->input_dev->propbit);
@@ -2950,6 +2956,14 @@ static int synaptics_rmi4_probe(struct i2c_client *client,
 		rmi4_data->disp_miny = rmi4_data->board->disp_miny;
 	else
 		rmi4_data->disp_miny = 0;
+
+         /* For single touch */
+        input_set_abs_params(rmi4_data->input_dev,
+                        ABS_X, rmi4_data->disp_minx,
+                        rmi4_data->disp_maxx, 0, 0);
+        input_set_abs_params(rmi4_data->input_dev,
+                        ABS_Y, rmi4_data->disp_miny, rmi4_data->disp_maxy, 0, 0);
+         /* For single touch */
 
 	input_set_abs_params(rmi4_data->input_dev,
 			ABS_MT_POSITION_X, rmi4_data->disp_minx,
