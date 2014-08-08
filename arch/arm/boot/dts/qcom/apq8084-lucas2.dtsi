@@ -477,6 +477,12 @@
 	};
 
 	mpp@a700 { /* MPP 8 */
+		qcom,mode = <6>; /* Sink mode */
+		qcom,vin-sel =<2>; /* S4 1.8V */
+		qcom,src-sel = <0>; /* Constant */
+		qcom,master-en = <1>; /* Enabled */
+		qcom,cs-out = <7>; /* 40 mA sink */
+		qcom,invert = <1>; /* Invert = HIGH (always on) */
 	};
 };
 
