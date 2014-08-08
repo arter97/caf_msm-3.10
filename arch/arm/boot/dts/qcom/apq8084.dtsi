@@ -4349,12 +4349,11 @@
 		ranges;
 
 		interrupt-parent = <&usb3>;
-		interrupts = <0 1>;
+		interrupts = <0>;
 		#interrupt-cells = <1>;
 		interrupt-map-mask = <0x0 0xffffffff>;
-		interrupt-map = <0x0 0 &intc 0 133 0
-				 0x0 1 &spmi_bus 0x0 0x0 0x9 0x0>;
-		interrupt-names = "hs_phy_irq", "pmic_id_irq";
+		interrupt-map = <0x0 0 &intc 0 133 0>;
+		interrupt-names = "hs_phy_irq";
 
 		USB3_GDSC-supply = <&gdsc_usb30>;
 		qcom,dwc-usb3-msm-tx-fifo-size = <29696>;
