@@ -56,11 +56,10 @@
 			"DMIC6", "MIC BIAS3 External",
 			"MIC BIAS3 External", "Digital Mic6";
 
-		qcom,cdc-micbias2-headset-only;
-		qcom,hdmi-audio-rx;
-		qcom,ext-spk-amp-supply = <&hdmi_vreg>;
-		qcom,ext-spk-amp-gpio = <&pma8084_mpps 6 0>;
-		qcom,dock-plug-det-irq = <&msmgpio 142 0>;
+			qcom,cdc-micbias2-headset-only;
+			qcom,hdmi-audio-rx;
+			qcom,ext-spk-amp-supply = <&hdmi_vreg>;
+			qcom,ext-spk-amp-gpio = <&pma8084_mpps 6 0>;
 	};
 
 	qca1530_vreg: qca1530_vreg {
@@ -96,15 +95,6 @@
 		compatible = "gpio-keys";
 		input-name = "gpio-keys";
 
-		home {
-			label = "home";
-			gpios = <&pma8084_gpios 1 0x1>;
-			linux,input-type = <1>;
-			linux,code = <102>;
-			gpio-key,wakeup;
-			debounce-interval = <15>;
-		};
-
 		vol_up {
 			label = "volume_up";
 			gpios = <&pma8084_gpios 2 0x1>;
@@ -125,42 +115,9 @@
 		qca,xlna-current-level = <90000 100>;
 	};
 
-	liquid_dock {
-		compatible = "qcom,apq8084-dock";
-		qcom,dock-detect-gpio = <&msmgpio 103 0>;
-		qcom,dock-hub-reset-gpio = <&msmgpio 65 0>;
-		qcom,dock-enable-gpio = <&msmgpio 93 0>;
-		qcom,dock-eth-reset-gpio = <&msmgpio 94 0>;
-		qcom,usb-host = <&usb3_sec>;
-	};
 };
 
 #include "apq8084-mdss-panels.dtsi"
-
-&dsi_dual_jdi_video_0 {
-	qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_pwm";
-	qcom,mdss-dsi-bl-pmic-pwm-frequency = <50>;
-	qcom,mdss-dsi-bl-pmic-bank-select = <2>;
-	qcom,mdss-dsi-pwm-gpio = <&pma8084_gpios 7 0>;
-	qcom,cont-splash-enabled;
-};
-
-&dsi_dual_jdi_video_1 {
-	qcom,cont-splash-enabled;
-};
-
-
-&dsi_dual_jdi_cmd_0 {
-	qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_pwm";
-	qcom,mdss-dsi-bl-pmic-pwm-frequency = <50>;
-	qcom,mdss-dsi-bl-pmic-bank-select = <2>;
-	qcom,mdss-dsi-pwm-gpio = <&pma8084_gpios 7 0>;
-	qcom,cont-splash-enabled;
-};
-
-&dsi_dual_jdi_cmd_1 {
-	qcom,cont-splash-enabled;
-};
 
 &mdss_edp {
 	qcom,cont-splash-enabled;
@@ -171,23 +128,16 @@
 	vdd-cx-supply = <&pma8084_s2_corner>;
 };
 
-&mdss_hdmi_tx {
-        qcom,hdmi-tx-mux-lpm = <&msmgpio 27 0>;
-        qcom,hdmi-tx-mux-en = <&msmgpio 83 0>;
-        qcom,hdmi-tx-mux-sel = <&msmgpio 85 0>;
-};
-
 &mdss_fb0 {
 	qcom,memory-reservation-size = <0x1C20000>;
 };
 
 &mdss_dsi0 {
-	qcom,platform-enable-gpio = <&msmgpio 137 0>;
-	qcom,platform-bklight-en-gpio = <&msmgpio 86 0>;
+	status = "disabled";
 };
 
 &mdss_dsi1 {
-	qcom,dsi-pref-prim-pan = <&dsi_dual_jdi_video_1>;
+	status = "disabled";
 };
 
 &blsp2_uart1 {
@@ -806,23 +756,6 @@
 };
 
 &spi_epm {
-	epm-adc@1 {
-		compatible = "cy,epm-adc-cy8c5568lti-114";
-		reg = <1>;
-		interrupt-parent = <&msmgpio>;
-		spi-max-frequency = <960000>;
-		qcom,channels = <31>;
-		qcom,gain = <50 50 50 50 50 100 50 100 50 50
-				100 50 50 50 50 50 50 50 50 50
-				50 50 50 100 50 50 50 1 1 1
-				1>;
-		qcom,rsense = <50 100 500 10 25 1000 40 200 200 5
-				500 500 75 10 5 25 33 75 25 200
-				10 25 33 100 10 10 3 1000 1000 1000
-				1000>;
-		qcom,channel-type = <0xf0000000>;
-		qcom,epm-enable-gpio = <&msmgpio 92 0>;
-	};
 };
 
 &spmi_bus {
