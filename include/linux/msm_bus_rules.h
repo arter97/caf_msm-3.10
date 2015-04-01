@@ -40,9 +40,11 @@ struct rule_apply_rcm_info {
 struct bus_rule_type {
 	int num_src;
 	int *src_id;
-	int src_field;
-	int op;
-	u64 thresh;
+	int *src_field;
+	int *op;
+	int combo_op;
+	int num_thresh;
+	u64 *thresh;
 	int num_dst;
 	int *dst_node;
 	u64 dst_bw;
