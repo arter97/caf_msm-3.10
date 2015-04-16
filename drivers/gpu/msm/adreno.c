@@ -1412,7 +1412,7 @@ static ssize_t _ft_policy_store(struct device *dev,
 {
 	struct adreno_device *adreno_dev = _get_adreno_dev(dev);
 	int ret;
-	unsigned int temp;
+	unsigned int temp = 0;
 	if (adreno_dev == NULL)
 		return 0;
 

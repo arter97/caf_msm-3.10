@@ -1984,7 +1984,7 @@ static void wcnss_send_cal_rsp(unsigned char fw_status)
 void extract_cal_data(int len)
 {
 	int rc;
-	struct cal_data_params calhdr;
+	struct cal_data_params calhdr = {0};
 	unsigned char fw_status = WCNSS_RESP_FAIL;
 
 	if (len < sizeof(struct cal_data_params)) {
@@ -2100,7 +2100,7 @@ static void wcnssctrl_rx_handler(struct work_struct *worker)
 		pr_err("wcnss: incomplete header available len = %d\n", len);
 		return;
 	}
-
+	memset(buf,0, sizeof(buf));
 	rc = smd_read(penv->smd_ch, buf, sizeof(struct smd_msg_hdr));
 	if (rc < sizeof(struct smd_msg_hdr)) {
 		pr_err("wcnss: incomplete header read from smd\n");
@@ -2175,7 +2175,7 @@ static void wcnssctrl_rx_handler(struct work_struct *worker)
 			pr_err("wcnss: incomplete data read from smd\n");
 			return;
 		}
-		build[len] = 0;
+		//build[len] = 0;
 		pr_info("wcnss: build version %s\n", build);
 		break;
 

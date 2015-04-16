@@ -279,7 +279,7 @@ static int wfd_allocate_input_buffers(struct wfd_device *wfd_dev,
 	int i;
 	struct mem_region *enc_mregion, *mdp_mregion;
 	struct mem_region_pair *mpair;
-	int rc;
+	int rc = 0;
 	struct mdp_buf_info mdp_buf = {0};
 	struct mem_region_map mmap_context = {0};
 	mutex_lock(&inst->lock);
@@ -540,7 +540,6 @@ static void wfd_unregister_out_buf(struct wfd_inst *inst,
 
 static int wfd_vidbuf_buf_init(struct vb2_buffer *vb)
 {
-	int rc = 0;
 	struct vb2_queue *q = vb->vb2_queue;
 	struct file *priv_data = (struct file *)(q->drv_priv);
 	struct wfd_inst *inst = file_to_inst(priv_data);
@@ -548,6 +547,7 @@ static int wfd_vidbuf_buf_init(struct vb2_buffer *vb)
 		(struct wfd_device *)video_drvdata(priv_data);
 	struct mem_info *minfo = vb2_plane_cookie(vb, 0);
 	struct mem_region mregion;
+	int rc = 0;
 
 	if (!minfo || !inst) {
 		WFD_MSG_ERR("%s: invalid arguments\n", __func__);

@@ -1533,7 +1533,7 @@ EXPORT_SYMBOL(schedule_timeout_uninterruptible);
 static int __cpuinit init_timers_cpu(int cpu)
 {
 	int j;
-	struct tvec_base *base;
+	struct tvec_base *base = NULL;
 	static char __cpuinitdata tvec_base_done[NR_CPUS + 1];
 
 	if (!tvec_base_done[cpu]) {
@@ -1587,6 +1587,8 @@ static int __cpuinit init_timers_cpu(int cpu)
 #endif
 	}
 
+	if (!base)
+		return -ENOMEM;
 
 	for (j = 0; j < TVN_SIZE; j++) {
 		INIT_LIST_HEAD(base->tv5.vec + j);
