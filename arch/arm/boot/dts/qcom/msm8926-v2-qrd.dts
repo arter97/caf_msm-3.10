@@ -12,6 +12,9 @@
 
 /dts-v1/;
 #include "msm8926-v2.dtsi"
+#include "msm8926-w-memory.dtsi"
+#include "msm8226-w-qseecom.dtsi"
+#include "msm8926-w-sharedmem.dtsi"
 #include "msm8226-qrd.dtsi"
 
 / {
