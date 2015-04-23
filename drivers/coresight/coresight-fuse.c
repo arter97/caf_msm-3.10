@@ -124,7 +124,7 @@ EXPORT_SYMBOL(coresight_fuse_nidnt_access_disabled);
 bool coresight_fuse_access_disabled(void)
 {
 	struct fuse_drvdata *drvdata = fusedrvdata;
-	uint32_t config0, config1, config2;
+	uint32_t config0 = 0, config1 = 0, config2 = 0;
 	bool ret = false;
 
 	if (!drvdata)
@@ -192,7 +192,7 @@ EXPORT_SYMBOL(coresight_fuse_access_disabled);
 bool coresight_fuse_apps_access_disabled(void)
 {
 	struct fuse_drvdata *drvdata = fusedrvdata;
-	uint32_t config0, config1, config2;
+	uint32_t config0 = 0, config1 = 0, config2 = 0;
 	bool ret = false;
 
 	if (!drvdata)
