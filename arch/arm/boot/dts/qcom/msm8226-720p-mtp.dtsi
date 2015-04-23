@@ -449,10 +449,6 @@
 	qcom,dsi-pref-prim-pan = <&dsi_nt35590_720_vid>;
 };
 
-&dsi_nt35590_720_vid {
-	qcom,cont-splash-enabled;
-};
-
 &dsi_nt35590_720_cmd {
 	qcom,cont-splash-enabled;
 };
