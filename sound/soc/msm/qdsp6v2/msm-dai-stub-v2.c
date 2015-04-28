@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -242,6 +242,7 @@ static int msm_dai_stub_dev_probe(struct platform_device *pdev)
 	}
 
 	pdev->id = id;
+	dev_set_name(&pdev->dev, "%s.%d", "msm-dai-stub-dev", id);
 
 	pr_debug("%s: dev name %s, id:%d\n", __func__,
 		 dev_name(&pdev->dev), pdev->id);

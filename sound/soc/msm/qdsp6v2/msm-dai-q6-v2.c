@@ -1826,6 +1826,7 @@ static int msm_auxpcm_dev_probe(struct platform_device *pdev)
 	}
 
 	mutex_init(&dai_data->rlock);
+	dev_set_name(&pdev->dev, "%s.%d", "msm-dai-q6-auxpcm", pdev->id);
 	dev_dbg(&pdev->dev, "dev name %s\n", dev_name(&pdev->dev));
 
 	dev_set_drvdata(&pdev->dev, dai_data);
@@ -2902,6 +2903,7 @@ static int msm_dai_q6_mi2s_dev_probe(struct platform_device *pdev)
 		goto rtn;
 	}
 
+	dev_set_name(&pdev->dev, "%s.%d", "msm-dai-q6-mi2s", mi2s_intf);
 	pdev->id = mi2s_intf;
 
 	mi2s_pdata = kzalloc(sizeof(struct msm_mi2s_pdata), GFP_KERNEL);
@@ -2989,6 +2991,7 @@ static int msm_dai_q6_dev_probe(struct platform_device *pdev)
 	}
 
 	pdev->id = id;
+	dev_set_name(&pdev->dev, "%s.%d", "msm-dai-q6-dev", id);
 
 	pr_debug("%s: dev name %s, id:%d\n", __func__,
 		 dev_name(&pdev->dev), pdev->id);
@@ -3293,6 +3296,7 @@ static int msm_dai_q6_spdif_dev_probe(struct platform_device *pdev)
 	int rc;
 
 	pdev->id = AFE_PORT_ID_SPDIF_RX;
+	dev_set_name(&pdev->dev, "%s", "msm-dai-q6-spdif");
 
 	pr_debug("%s: dev name %s, id:%d\n", __func__,
 			dev_name(&pdev->dev), pdev->id);

@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -1638,6 +1638,8 @@ static int msm_pcm_probe(struct platform_device *pdev)
 		       __func__, rc);
 	}
 
+	if (pdev->dev.of_node)
+		dev_set_name(&pdev->dev, "%s", "msm-voip-dsp");
 
 	pr_debug("%s: dev name %s\n", __func__, dev_name(&pdev->dev));
 	rc = snd_soc_register_platform(&pdev->dev,

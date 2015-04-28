@@ -287,6 +287,15 @@ static struct snd_soc_codec_driver msm_hdmi_audio_codec_rx_soc_driver = {
 static int msm_hdmi_audio_codec_rx_plat_probe(
 		struct platform_device *pdev)
 {
+	if (pdev->dev.of_node) {
+		dev_dbg(&pdev->dev, "%s(): node full name = %s,  name = %s\n",
+			__func__, pdev->dev.of_node->full_name,
+			pdev->dev.of_node->name);
+		dev_set_name(&pdev->dev, "%s", "msm-hdmi-audio-codec-rx");
+	} else
+		dev_err(&pdev->dev, "%s(): platfrom data not from device tree\n",
+			__func__);
+
 	dev_dbg(&pdev->dev, "%s(): dev name %s\n", __func__,
 		dev_name(&pdev->dev));
 
