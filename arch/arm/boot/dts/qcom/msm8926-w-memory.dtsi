@@ -51,11 +51,11 @@
 			label = "adsp_pil_mem";
 		};
 
-		peripheral_mem: peripheral_region@1500000 {
+		peripheral_mem: peripheral_region@09000000 {
 			linux,reserve-contiguous-region;
 			linux,reserve-region;
 			linux,remove-completely;
-			reg = <0x01500000 0x600000>;
+			reg = <0x09000000 0x600000>;
 			label = "peripheral_mem";
 		};
 
@@ -75,6 +75,14 @@
 			label = "modem_efs";
 		};
 
+		adsp_venus_mem: adsp_venus_region@01600000 {
+			linux,reserve-contiguous-region;
+			linux,reserve-region;
+			linux,remove-completely;
+			reg = <0x01600000 0x500000>;
+			label = "adsp_venus_mem";
+		};
+
 	};
 };
 
@@ -83,7 +91,7 @@
 };
 
 &venus_pil {
-	/delete-property/ linux,contiguous-region;
+	linux,contiguous-region = <&adsp_venus_mem>;
 };
 
 &lpass_pil {
