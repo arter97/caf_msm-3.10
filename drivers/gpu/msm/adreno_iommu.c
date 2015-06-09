@@ -566,8 +566,8 @@ static unsigned int _adreno_iommu_set_pt_v2_a4xx(struct kgsl_device *device,
 }
 
 static unsigned int _adreno_iommu_set_pt_v2_a5xx(struct kgsl_device *device,
-					unsigned int *cmds_orig,
-					phys_addr_t pt_val)
+			unsigned int *cmds_orig,
+			phys_addr_t pt_val, struct adreno_ringbuffer *rb)
 {
 	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
 	uint64_t ttbr0 = 0;
@@ -586,6 +586,12 @@ static unsigned int _adreno_iommu_set_pt_v2_a5xx(struct kgsl_device *device,
 	*cmds++ = _lo_32(ttbr0);
 	*cmds++ = _hi_32(ttbr0);
 	*cmds++ = 0;
+
+	*cmds++ = cp_mem_packet(adreno_dev, CP_MEM_WRITE, 3, 1);
+	cmds += cp_gpuaddr(adreno_dev, cmds, (rb->pagetable_desc.gpuaddr +
+		offsetof(struct adreno_ringbuffer_pagetable_info, ttbr0)));
+	*cmds++ = _lo_32(ttbr0);
+	*cmds++ = _hi_32(ttbr0);
 
 	/* release all commands with wait_for_me */
 	cmds += cp_wait_for_me(adreno_dev, cmds);
@@ -622,7 +628,7 @@ unsigned int adreno_iommu_set_pt_generate_cmds(
 	if (kgsl_msm_supports_iommu_v2())
 		if (adreno_is_a5xx(adreno_dev))
 			cmds += _adreno_iommu_set_pt_v2_a5xx(device, cmds,
-						pt_val);
+						pt_val, rb);
 		else if (adreno_is_a4xx(adreno_dev))
 			cmds += _adreno_iommu_set_pt_v2_a4xx(device, cmds,
 						pt_val);
