@@ -6,7 +6,9 @@ and FSM9010) chipsets.
 Required properties:
 
 -compatible: should be "qcom,bbif-fsm9900" or "qcom,bbif-fsm9010"
--reg: specifies the base address of bbif registers.
+-reg: specifies the base address of bbif registers. Also, specifies
+fuse register address for fsm9010 only.
+-reg-names: The names given to the memory bank locations
 
 Optional properties:
 
@@ -24,5 +26,7 @@ Example 1:
 Example 2:
 	qcom,bbif@fd300000 {
 		compatible = "qcom,bbif-fsm9010";
-		reg = <0xfd300000 0x10000>;
+		reg-names = "bbif_base", "bbif_fuse";
+		reg = <0xfd300000 0x10000>,
+			<0xfc4b80d8 0x100>;
 	};

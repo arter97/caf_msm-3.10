@@ -82,10 +82,20 @@
 #define DAC_CFG1_VAL		0x00000d00
 #define BBIF_MAX_OFFSET		0x2000
 
+#define BBIF_MAX_FUSE_OFFSET	0x100
+#define RSB_CTRL_BITS           3
+#define RSB_MASK_BITS           0x00000007
+#define PHMM_ADC0_BITS          12
+#define PHMM_ADC4_BITS          3
+#define PHMM_ADC4_ADDR          0xf4
+#define L_SHIFT8                8
+
 /* CAL_SAR_DONE=bit[4], CAL_REF_DONE=bit[3], CAL_MACHINE=bit[2:1]*/
 #define DAC_CAL_DONE		0x1f
 
 void __iomem *bbif_base;
+void __iomem *bbif_fuse;
+void __iomem *bbif_misc_base;
 
 static void bbif_combodac_cfg(void)
 {
@@ -118,6 +128,35 @@ static void bbif_combodac_cfg(void)
 	}
 }
 
+static int bbif_fuse2rsb(int fval)
+{
+	int rsb = 0;
+
+	switch (fval) {
+	case 1:
+		rsb = 5 << L_SHIFT8;
+		break;
+	case 2:
+		rsb = 6 << L_SHIFT8;
+		break;
+	case 3:
+		rsb = 7 << L_SHIFT8;
+		break;
+	case 5:
+		rsb = 1 << L_SHIFT8;
+		break;
+	case 6:
+		rsb = 2 << L_SHIFT8;
+		break;
+	case 7:
+		rsb = 3 << L_SHIFT8;
+		break;
+	default:
+		rsb = 0;
+		break;
+	}
+	return rsb;
+}
 
 /*
  * File interface
@@ -139,8 +178,6 @@ static long bbif_ioctl(struct file *file,
 	unsigned int cmd, unsigned long arg)
 {
 	void __iomem *argp = (void __iomem *) arg;
-	void __iomem *bbif_adc_base;
-	bbif_adc_base = bbif_base + BBIF_MISC;
 
 	switch (cmd) {
 	case BBIF_IOCTL_GET: {
@@ -156,7 +193,7 @@ static long bbif_ioctl(struct file *file,
 			return -EFAULT;
 		}
 
-		param.value = __raw_readl(bbif_adc_base + param.offset);
+		param.value = __raw_readl(bbif_misc_base + param.offset);
 
 		if (copy_to_user(argp, &param, sizeof(param))) {
 			pr_err("%s: copy_to_user error\n", __func__);
@@ -177,7 +214,49 @@ static long bbif_ioctl(struct file *file,
 			return -EFAULT;
 		}
 
-		__raw_writel(param.value, bbif_adc_base + param.offset);
+		__raw_writel(param.value, bbif_misc_base + param.offset);
+		break;
+	}
+	case BBIF_IOCTL_CAL_GET: {
+		struct bbif_param param;
+
+		if (copy_from_user(&param, argp, sizeof(param))) {
+			pr_err("%s: copy_from_user error\n", __func__);
+			return -EFAULT;
+		}
+
+		if (param.offset > BBIF_MAX_FUSE_OFFSET) {
+			pr_err("%s: Exceeds max offset\n", __func__);
+			return -EFAULT;
+		}
+
+		param.value = __raw_readl(bbif_fuse + param.offset);
+
+		if (copy_to_user(argp, &param, sizeof(param))) {
+			pr_err("%s: copy_to_user error\n", __func__);
+			return -EFAULT;
+		}
+		break;
+	}
+	case BBIF_IOCTL_CAL_SET: {
+		struct bbif_param param;
+		unsigned int val;
+
+		if (copy_from_user(&param, argp, sizeof(param))) {
+			pr_err("%s: copy_from_user error\n", __func__);
+			return -EFAULT;
+		}
+
+		if (param.offset > BBIF_MAX_ADC) {
+			pr_err("%s: %d exceeds max ADC 5\n", __func__,
+				param.offset);
+			return -EFAULT;
+		}
+
+		val = __raw_readl(bbif_misc_base + BBIF_BBRX_CONFIG2_BASE +
+				param.offset * 4);
+		__raw_writel(val | (param.value << L_SHIFT8), bbif_misc_base +
+				BBIF_BBRX_CONFIG2_BASE + param.offset * 4);
 		break;
 	}
 	case BBIF_IOCTL_SET_ADC_BW: {
@@ -193,13 +272,13 @@ static long bbif_ioctl(struct file *file,
 			return -EFAULT;
 		}
 
-		__raw_writel(param.bbrx_test1, bbif_adc_base +
+		__raw_writel(param.bbrx_test1, bbif_misc_base +
 			BBIF_BBRX_TEST1_BASE + param.adc_number*4);
-		__raw_writel(param.bbrx_test1, bbif_adc_base +
+		__raw_writel(param.bbrx_test1, bbif_misc_base +
 			BBIF_BBRX_TEST2_BASE + param.adc_number*4);
-		__raw_writel(param.bbrx_test1, bbif_adc_base +
+		__raw_writel(param.bbrx_test1, bbif_misc_base +
 			BBIF_BBRX_TEST3_BASE + param.adc_number*4);
-		__raw_writel(param.bbrx_config, bbif_adc_base +
+		__raw_writel(param.bbrx_config, bbif_misc_base +
 			BBIF_BBRX_CONFIG_BASE + param.adc_number*4);
 		break;
 	}
@@ -232,17 +311,27 @@ static int bbif_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
 	struct resource *mem_res;
-	int ret;
-	int i;
-	void __iomem *bbif_misc_base;
+	int ret, r_data, i;
 
 	pr_debug("%s: Entry\n", __func__);
 
-	mem_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	mem_res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
+			"bbif_base");
+	if (IS_ERR(mem_res))
+		return PTR_ERR(mem_res);
 
 	bbif_base = devm_ioremap_resource(&pdev->dev, mem_res);
 	if (IS_ERR(bbif_base))
 		return PTR_ERR(bbif_base);
+
+	mem_res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
+			"bbif_fuse");
+	if (IS_ERR(mem_res))
+		return PTR_ERR(mem_res);
+
+	bbif_fuse = devm_ioremap_resource(&pdev->dev, mem_res);
+	if (IS_ERR(bbif_fuse))
+		return PTR_ERR(bbif_fuse);
 
 	ret = misc_register(bbif_misc_dev);
 
@@ -276,7 +365,17 @@ static int bbif_probe(struct platform_device *pdev)
 			BBIF_BBRX_TEST3_BASE + i*4);
 		__raw_writel(BBIF_CONFIG_1, bbif_misc_base +
 			BBIF_BBRX_CONFIG_BASE + i*4);
-		__raw_writel(BBIF_CONFIG_2, bbif_misc_base +
+
+		if (i == 4)
+			r_data = bbif_fuse2rsb((__raw_readl(bbif_fuse +
+				PHMM_ADC4_ADDR) >> PHMM_ADC4_BITS) &
+				RSB_MASK_BITS);
+		else
+			r_data = bbif_fuse2rsb((__raw_readl(bbif_fuse) >>
+				(PHMM_ADC0_BITS + (i * RSB_CTRL_BITS)))
+				& RSB_MASK_BITS);
+
+		__raw_writel(BBIF_CONFIG_2 | r_data, bbif_misc_base +
 			BBIF_BBRX_CONFIG2_BASE + i*4);
 		__raw_writel(BBIF_CONTROL_1, bbif_misc_base +
 			BBIF_BBRX_CONTROL_BASE + i*4);
