@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -49,8 +49,6 @@ extern int emac_hw_init_ephy(struct emac_hw *hw);
 extern int emac_hw_init_sgmii(struct emac_hw *hw);
 extern int emac_hw_reset_sgmii(struct emac_hw *hw);
 extern int emac_check_sgmii_link(struct emac_hw *hw, u32 *speed, bool *linkup);
-extern int emac_check_sgmii_autoneg(struct emac_hw *hw, u32 *speed,
-				    bool *linkup);
 extern int emac_hw_clear_sgmii_intr_status(struct emac_hw *hw, u32 irq_bits);
 extern void emac_hw_config_pow_save(struct emac_hw *hw, u32 speed, bool wol_en,
 				    bool rx_en);

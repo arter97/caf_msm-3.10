@@ -53,10 +53,10 @@ enum emac_clk_id {
 #define MHz(RATE)	(KHz(RATE) * 1000)
 
 enum emac_clk_rate {
-	EMC_CLK_RATE_2_5MHz	= KHz(2500),
-	EMC_CLK_RATE_19_2MHz	= KHz(19200),
-	EMC_CLK_RATE_25MHz	= MHz(25),
-	EMC_CLK_RATE_125MHz	= MHz(125),
+	EMC_CLK_RATE_2_5MHZ	= KHz(2500),
+	EMC_CLK_RATE_19_2MHZ	= KHz(19200),
+	EMC_CLK_RATE_25MHZ	= MHz(25),
+	EMC_CLK_RATE_125MHZ	= MHz(125),
 };
 
 #define EMAC_LINK_SPEED_UNKNOWN         0x0
@@ -214,11 +214,29 @@ enum emac_adapter_flags {
 #define TEST_N_SET_FLAG(OBJ, FLAG) \
 			test_and_set_bit(EMAC_FLAG_ ## FLAG,  &((OBJ)->flags))
 
+struct emac_adapter;
+struct emac_hw;
+
+struct emac_phy_ops {
+	int (*init)(struct emac_adapter *adpt);
+	void (*reset)(struct emac_adapter *adpt);
+	int (*init_ephy)(struct emac_hw *hw);
+	int (*link_setup_no_ephy)(struct emac_adapter *adpt, u32 speed,
+				  bool autoneg);
+	int (*link_check_no_ephy)(struct emac_adapter *adpt, u32 *speed,
+				  bool *link_up);
+	void (*irq_enable)(struct emac_adapter *adpt);
+	void (*irq_disable)(struct emac_adapter *adpt);
+	void (*tx_clk_set_rate)(struct emac_adapter *adpt);
+	void (*periodic_task)(struct emac_adapter *adpt);
+};
+
 struct emac_hw {
 	void __iomem *reg_addr[NUM_EMAC_REG_BASES];
 
 	u16     devid;
 	u16     revid;
+	struct emac_phy_ops	ops;
 
 	/* ring parameter */
 	u8      tpd_burst;
@@ -761,5 +779,10 @@ extern void emac_update_hw_stats(struct emac_adapter *adpt);
 extern int emac_resize_rings(struct net_device *netdev);
 extern int emac_up(struct emac_adapter *adpt);
 extern void emac_down(struct emac_adapter *adpt, u32 ctrl);
+int emac_clk_set_rate(struct emac_adapter *adpt, enum emac_clk_id id,
+		      enum emac_clk_rate rate);
+void emac_task_schedule(struct emac_adapter *adpt);
+void emac_check_lsc(struct emac_adapter *adpt);
+irqreturn_t emac_sgmii_v1_isr(int _irq, void *data);
 
 #endif /* _MSM_EMAC_H_ */

@@ -20,6 +20,8 @@
 
 #include "emac_hw.h"
 #include "emac_ptp.h"
+#include "emac_rgmii.h"
+#include "emac_sgmii_v1.h"
 
 #define RFD_PREF_LOW_TH     0x10
 #define RFD_PREF_UP_TH      0x10
@@ -29,9 +31,6 @@
 #define RXF_UOF_TH          0x1a0
 
 #define RXD_TH              0x100
-
-static int emac_hw_sgmii_setup_link(struct emac_hw *hw, u32 speed,
-				    bool autoneg, bool fc);
 
 /* RGMII specific macros */
 #define EMAC_RGMII_PLL_LOCK_TIMEOUT     (HZ / 1000) /* 1ms */
@@ -254,204 +253,9 @@ int emac_write_phy_reg(struct emac_hw *hw, u16 phy_addr,
 	return retval;
 }
 
-int emac_hw_init_sgmii(struct emac_hw *hw)
+int emac_hw_ack_phy_intr(struct emac_hw *hw)
 {
-	int i;
-
-	emac_hw_sgmii_setup_link(hw, hw->autoneg_advertised,
-				 hw->autoneg, !hw->disable_fc_autoneg);
-	/* PCS programming */
-	emac_reg_w32(hw, EMAC_SGMII_PHY, EMAC_SGMII_PHY_CDR_CTRL0,
-		     SGMII_CDR_MAX_CNT);
-	emac_reg_w32(hw, EMAC_SGMII_PHY, EMAC_SGMII_PHY_POW_DWN_CTRL0, PWRDN_B);
-	emac_reg_w32(hw, EMAC_SGMII_PHY, EMAC_SGMII_PHY_CMN_PWR_CTRL,
-		     BIAS_EN | SYSCLK_EN | CLKBUF_L_EN |
-		     PLL_TXCLK_EN | PLL_RXCLK_EN);
-	emac_reg_w32(hw, EMAC_SGMII_PHY, EMAC_SGMII_PHY_TX_PWR_CTRL,
-		     L0_TX_EN | L0_CLKBUF_EN | L0_TRAN_BIAS_EN);
-	emac_reg_w32(hw, EMAC_SGMII_PHY, EMAC_SGMII_PHY_RX_PWR_CTRL,
-		     L0_RX_SIGDET_EN |
-		     (1 << L0_RX_TERM_MODE_SHFT) | L0_RX_I_EN);
-	emac_reg_w32(hw, EMAC_SGMII_PHY, EMAC_SGMII_PHY_CMN_PWR_CTRL,
-		     BIAS_EN | PLL_EN | SYSCLK_EN | CLKBUF_L_EN |
-		     PLL_TXCLK_EN | PLL_RXCLK_EN);
-	emac_reg_w32(hw, EMAC_SGMII_PHY, EMAC_SGMII_PHY_LANE_CTRL1,
-		     L0_RX_EQ_EN | L0_RESET_TSYNC_EN | L0_DRV_LVL_BMSK);
-	wmb();
-
-	/* sysclk/refclk setting */
-	emac_reg_w32(hw, EMAC_QSERDES, EMAC_QSERDES_COM_SYSCLK_EN_SEL,
-		     SYSCLK_SEL_CMOS);
-	emac_reg_w32(hw, EMAC_QSERDES, EMAC_QSERDES_COM_SYS_CLK_CTRL,
-		     SYSCLK_CM | SYSCLK_AC_COUPLE);
-
-	/* PLL setting */
-	emac_reg_w32(hw, EMAC_QSERDES, EMAC_QSERDES_COM_PLL_IP_SETI,
-		     QSERDES_PLL_IPSETI);
-	emac_reg_w32(hw, EMAC_QSERDES, EMAC_QSERDES_COM_PLL_CP_SETI,
-		     QSERDES_PLL_CP_SETI);
-	emac_reg_w32(hw, EMAC_QSERDES, EMAC_QSERDES_COM_PLL_IP_SETP,
-		     QSERDES_PLL_IP_SETP);
-	emac_reg_w32(hw, EMAC_QSERDES, EMAC_QSERDES_COM_PLL_CP_SETP,
-		     QSERDES_PLL_CP_SETP);
-	emac_reg_w32(hw, EMAC_QSERDES, EMAC_QSERDES_COM_PLL_CRCTRL,
-		     QSERDES_PLL_CRCTRL);
-	emac_reg_w32(hw, EMAC_QSERDES, EMAC_QSERDES_COM_PLL_CNTRL,
-		     OCP_EN | PLL_DIV_FFEN | PLL_DIV_ORD);
-	emac_reg_w32(hw, EMAC_QSERDES, EMAC_QSERDES_COM_DEC_START1,
-		     DEC_START1_MUX | QSERDES_PLL_DEC);
-	emac_reg_w32(hw, EMAC_QSERDES, EMAC_QSERDES_COM_DEC_START2,
-		     DEC_START2_MUX | DEC_START2);
-	emac_reg_w32(hw, EMAC_QSERDES, EMAC_QSERDES_COM_DIV_FRAC_START1,
-		     DIV_FRAC_START1_MUX | QSERDES_PLL_DIV_FRAC_START1);
-	emac_reg_w32(hw, EMAC_QSERDES, EMAC_QSERDES_COM_DIV_FRAC_START2,
-		     DIV_FRAC_START2_MUX | QSERDES_PLL_DIV_FRAC_START2);
-	emac_reg_w32(hw, EMAC_QSERDES, EMAC_QSERDES_COM_DIV_FRAC_START3,
-		     DIV_FRAC_START3_MUX | QSERDES_PLL_DIV_FRAC_START3);
-	emac_reg_w32(hw, EMAC_QSERDES, EMAC_QSERDES_COM_PLLLOCK_CMP1,
-		     QSERDES_PLL_LOCK_CMP1);
-	emac_reg_w32(hw, EMAC_QSERDES, EMAC_QSERDES_COM_PLLLOCK_CMP2,
-		     QSERDES_PLL_LOCK_CMP2);
-	emac_reg_w32(hw, EMAC_QSERDES, EMAC_QSERDES_COM_PLLLOCK_CMP3,
-		     QSERDES_PLL_LOCK_CMP3);
-	emac_reg_w32(hw, EMAC_QSERDES, EMAC_QSERDES_COM_PLLLOCK_CMP_EN,
-		     PLLLOCK_CMP_EN);
-	emac_reg_w32(hw, EMAC_QSERDES, EMAC_QSERDES_COM_RESETSM_CNTRL,
-		     FRQ_TUNE_MODE);
-
-	/* CDR setting */
-	emac_reg_w32(hw, EMAC_QSERDES, EMAC_QSERDES_RX_CDR_CONTROL,
-		     SECONDORDERENABLE |
-		     (QSERDES_RX_CDR_CTRL1_THRESH << FIRSTORDER_THRESH_SHFT) |
-		     (QSERDES_RX_CDR_CTRL1_GAIN << SECONDORDERGAIN_SHFT));
-	emac_reg_w32(hw, EMAC_QSERDES, EMAC_QSERDES_RX_CDR_CONTROL2,
-		     SECONDORDERENABLE |
-		     (QSERDES_RX_CDR_CTRL2_THRESH << FIRSTORDER_THRESH_SHFT) |
-		     (QSERDES_RX_CDR_CTRL2_GAIN << SECONDORDERGAIN_SHFT));
-
-	/* TX/RX setting */
-	emac_reg_w32(hw, EMAC_QSERDES, EMAC_QSERDES_TX_BIST_MODE_LANENO,
-		     QSERDES_TX_BIST_MODE_LANENO);
-	emac_reg_w32(hw, EMAC_QSERDES, EMAC_QSERDES_TX_TX_DRV_LVL,
-		     TX_DRV_LVL_MUX | (QSERDES_TX_DRV_LVL << TX_DRV_LVL_SHFT));
-	emac_reg_w32(hw, EMAC_QSERDES, EMAC_QSERDES_TX_TRAN_DRVR_EMP_EN,
-		     EMP_EN_MUX | EMP_EN);
-	emac_reg_w32(hw, EMAC_QSERDES, EMAC_QSERDES_TX_TX_EMP_POST1_LVL,
-		     TX_EMP_POST1_LVL_MUX |
-		     (QSERDES_TX_EMP_POST1_LVL << TX_EMP_POST1_LVL_SHFT));
-	emac_reg_w32(hw, EMAC_QSERDES, EMAC_QSERDES_RX_RX_EQ_GAIN12,
-		     (QSERDES_RX_EQ_GAIN2 << RX_EQ_GAIN2_SHFT) |
-		     (QSERDES_RX_EQ_GAIN1 << RX_EQ_GAIN1_SHFT));
-	emac_reg_w32(hw, EMAC_QSERDES, EMAC_QSERDES_TX_LANE_MODE,
-		     QSERDES_TX_LANE_MODE);
-	wmb();
-
-	emac_reg_w32(hw, EMAC_SGMII_PHY, EMAC_SGMII_PHY_SERDES_START,
-		     SERDES_START);
-	wmb();
-
-	for (i = 0; i < SERDES_START_WAIT_TIMES; i++) {
-		if (emac_reg_r32(hw, EMAC_QSERDES, EMAC_QSERDES_COM_RESET_SM) &
-		    QSERDES_READY)
-			break;
-		usleep_range(100, 200);
-	}
-
-	if (i == SERDES_START_WAIT_TIMES) {
-		emac_err(emac_hw_get_adap(hw), "serdes failed to start\n");
-		return -EIO;
-	}
-
-	/* Mask out all the SGMII Interrupt */
-	emac_reg_w32(hw, EMAC_SGMII_PHY, EMAC_SGMII_PHY_INTERRUPT_MASK, 0);
-	wmb();
-
-	emac_hw_clear_sgmii_intr_status(hw, SGMII_PHY_INTERRUPT_ERR);
-
-	return 0;
-}
-
-int emac_hw_reset_sgmii(struct emac_hw *hw)
-{
-	/* It may take about 100ms to reset the SGMII PHY*/
-	emac_reg_update32(hw, EMAC_CSR, EMAC_EMAC_WRAPPER_CSR2,
-			  PHY_RESET, PHY_RESET);
-	wmb();
-	msleep(50);
-	emac_reg_update32(hw, EMAC_CSR, EMAC_EMAC_WRAPPER_CSR2, PHY_RESET, 0);
-	wmb();
-	msleep(50);
-
-	return emac_hw_init_sgmii(hw);
-}
-
-/* initialize RGMII PHY */
-static int emac_hw_init_rgmii(struct emac_hw *hw)
-{
-	u32 val;
-	unsigned long timeout;
-
-	emac_reg_update32(hw, EMAC_CSR, EMAC_EMAC_WRAPPER_CSR1, 0, FREQ_MODE);
-	emac_reg_w32(hw, EMAC_CSR, EMAC_EMAC_WRAPPER_CSR18,
-		     EMAC_RGMII_CORE_IE_C);
-	emac_reg_update32(hw, EMAC_CSR, EMAC_EMAC_WRAPPER_CSR2,
-			  RGMII_PHY_MODE_BMSK,
-			  (EMAC_RGMII_PHY_MODE << RGMII_PHY_MODE_SHFT));
-	emac_reg_update32(hw, EMAC_CSR, EMAC_EMAC_WRAPPER_CSR2, PHY_RESET, 0);
-	emac_reg_update32(hw, EMAC_CSR, EMAC_EMAC_WRAPPER_CSR3,
-			  PLL_L_VAL_5_0_BMSK,
-			  (EMAC_RGMII_PLL_L_VAL << PLL_L_VAL_5_0_SHFT));
-
-	/* reset PHY PLL and ensure PLL is reset */
-	emac_reg_update32(hw, EMAC_CSR, EMAC_EMAC_WRAPPER_CSR3, 0, PLL_RESET);
-	wmb();
-	udelay(10);
-
-	/* power down analog sections of PLL and ensure the same */
-	emac_reg_update32(hw, EMAC_CSR, EMAC_EMAC_WRAPPER_CSR3, 0, BYPASSNL);
-	wmb();
-	udelay(10);
-
-	emac_reg_update32(hw, EMAC_CSR, EMAC_EMAC_WRAPPER_CSR2, 0, CKEDGE_SEL);
-	emac_reg_update32(hw, EMAC_CSR, EMAC_EMAC_WRAPPER_CSR2,
-			  TX_ID_EN_L, RX_ID_EN_L);
-	emac_reg_update32(hw, EMAC_CSR, EMAC_EMAC_WRAPPER_CSR2,
-			  HDRIVE_BMSK, (0x0 << HDRIVE_SHFT));
-	emac_reg_update32(hw, EMAC_CSR, EMAC_EMAC_WRAPPER_CSR2, WOL_EN, 0);
-
-	/* reset PHY and ensure reset is complete */
-	emac_reg_update32(hw, EMAC_CSR, EMAC_EMAC_WRAPPER_CSR2, 0, PHY_RESET);
-	wmb();
-	udelay(10);
-
-	/* pull PHY out of reset and ensure PHY is normal */
-	emac_reg_update32(hw, EMAC_CSR, EMAC_EMAC_WRAPPER_CSR2, PHY_RESET, 0);
-	wmb();
-	udelay(1000);
-
-	/* pull PHY PLL out of reset and ensure PLL is working */
-	emac_reg_update32(hw, EMAC_CSR, EMAC_EMAC_WRAPPER_CSR3, PLL_RESET, 0);
-	wmb();
-	udelay(10);
-
-	emac_reg_update32(hw, EMAC_CSR, EMAC_EMAC_WRAPPER_CSR5,
-			  0, RMII_125_CLK_EN);
-	wmb();
-
-	/* wait for PLL to lock */
-	timeout = jiffies + EMAC_RGMII_PLL_LOCK_TIMEOUT;
-	do {
-		val = emac_reg_r32(hw, EMAC_CSR, EMAC_EMAC_WRAPPER_STATUS);
-		if (val & PLL_LOCK_DET)
-			break;
-		udelay(100);
-	} while (time_after_eq(timeout, jiffies));
-
-	if (time_after(jiffies, timeout)) {
-		emac_err(emac_hw_get_adap(hw), "PHY PLL lock failed\n");
-		return -EIO;
-	}
-
+	/* ack phy interrupt */
 	return 0;
 }
 
@@ -459,25 +263,19 @@ static int emac_hw_init_rgmii(struct emac_hw *hw)
 int emac_hw_init_phy(struct emac_hw *hw)
 {
 	struct emac_adapter *adpt = emac_hw_get_adap(hw);
-	int retval = 0;
 
 	spin_lock_init(&hw->mdio_lock);
 
 	hw->autoneg = true;
 	hw->autoneg_advertised = EMAC_LINK_SPEED_DEFAULT;
 
-	if (adpt->phy_mode == PHY_INTERFACE_MODE_SGMII)
-		retval = emac_hw_init_sgmii(hw);
-	else if (adpt->phy_mode == PHY_INTERFACE_MODE_RGMII)
-		retval = emac_hw_init_rgmii(hw);
-
-	return retval;
+	return adpt->hw.ops.init(adpt);
 }
 
 /* initialize external phy */
 int emac_hw_init_ephy(struct emac_hw *hw)
 {
-	u16 val, phy_id[2];
+	u16 phy_id[2];
 	int retval = 0;
 
 	if (emac_hw_get_adap(hw)->no_ephy == false) {
@@ -496,70 +294,7 @@ int emac_hw_init_ephy(struct emac_hw *hw)
 		emac_disable_mdio_autopoll(hw);
 	}
 
-	/* disable hibernation in case of rgmii phy */
-	if (emac_hw_get_adap(hw)->phy_mode == PHY_INTERFACE_MODE_RGMII) {
-		retval = emac_write_phy_reg(hw, hw->phy_addr,
-					    MII_DBG_ADDR, HIBERNATE_CTRL_REG);
-		if (retval)
-			return retval;
-
-		retval = emac_read_phy_reg(hw, hw->phy_addr,
-					   MII_DBG_DATA, &val);
-		if (retval)
-			return retval;
-
-		val &= ~HIBERNATE_EN;
-		retval = emac_write_phy_reg(hw, hw->phy_addr,
-					    MII_DBG_DATA, val);
-	}
-
-	return retval;
-}
-
-/* LINK */
-static int emac_hw_sgmii_setup_link(struct emac_hw *hw, u32 speed,
-				    bool autoneg, bool fc)
-{
-	u32 val;
-	u32 speed_cfg = 0;
-
-	val = emac_reg_r32(hw, EMAC_SGMII_PHY, EMAC_SGMII_PHY_AUTONEG_CFG2);
-
-	if (autoneg) {
-		val &= ~(FORCE_AN_RX_CFG | FORCE_AN_TX_CFG);
-		val |= AN_ENABLE;
-		emac_reg_w32(hw, EMAC_SGMII_PHY,
-			     EMAC_SGMII_PHY_AUTONEG_CFG2, val);
-		wmb();
-	} else {
-		switch (speed) {
-		case EMAC_LINK_SPEED_10_HALF:
-			speed_cfg = SPDMODE_10;
-			break;
-		case EMAC_LINK_SPEED_10_FULL:
-			speed_cfg = SPDMODE_10 | DUPLEX_MODE;
-			break;
-		case EMAC_LINK_SPEED_100_HALF:
-			speed_cfg = SPDMODE_100;
-			break;
-		case EMAC_LINK_SPEED_100_FULL:
-			speed_cfg = SPDMODE_100 | DUPLEX_MODE;
-			break;
-		case EMAC_LINK_SPEED_1GB_FULL:
-			speed_cfg = SPDMODE_1000 | DUPLEX_MODE;
-			break;
-		default:
-			return -EINVAL;
-		}
-		val &= ~AN_ENABLE;
-		emac_reg_w32(hw, EMAC_SGMII_PHY,
-			     EMAC_SGMII_PHY_SPEED_CFG1, speed_cfg);
-		emac_reg_w32(hw, EMAC_SGMII_PHY,
-			     EMAC_SGMII_PHY_AUTONEG_CFG2, val);
-		wmb();
-	}
-
-	return 0;
+	return hw->ops.init_ephy(hw);
 }
 
 static int emac_hw_setup_phy_link(struct emac_hw *hw, u32 speed, bool autoneg,
@@ -636,19 +371,8 @@ int emac_setup_phy_link(struct emac_hw *hw, u32 speed, bool autoneg, bool fc)
 	struct emac_adapter *adpt = emac_hw_get_adap(hw);
 	int retval = 0;
 
-	if (adpt->no_ephy == true) {
-		if (adpt->phy_mode == PHY_INTERFACE_MODE_SGMII) {
-			hw->autoneg = autoneg;
-			hw->autoneg_advertised = speed;
-			/* The AN_ENABLE and SPEED_CFG can't change on fly.
-			   The SGMII_PHY has to be re-initialized.
-			 */
-			return emac_hw_reset_sgmii(hw);
-		} else {
-			emac_err(adpt, "can't setup phy link without ephy\n");
-			return -ENOTSUPP;
-		}
-	}
+	if (adpt->no_ephy)
+		return adpt->hw.ops.link_setup_no_ephy(adpt, speed, autoneg);
 
 	if (emac_hw_setup_phy_link(hw, speed, autoneg, fc)) {
 		emac_err(adpt, "error when init phy speed and fc\n");
@@ -674,14 +398,8 @@ int emac_check_phy_link(struct emac_hw *hw, u32 *speed, bool *link_up)
 	u16 bmsr, pssr;
 	int retval;
 
-	if (adpt->no_ephy == true) {
-		if (adpt->phy_mode == PHY_INTERFACE_MODE_SGMII) {
-			return emac_check_sgmii_link(hw, speed, link_up);
-		} else {
-			emac_err(adpt, "can't check phy link without ephy\n");
-			return -ENOTSUPP;
-		}
-	}
+	if (adpt->no_ephy)
+		return hw->ops.link_check_no_ephy(adpt, speed, link_up);
 
 	retval = emac_read_phy_reg(hw, hw->phy_addr, MII_BMSR, &bmsr);
 	if (retval)
@@ -737,14 +455,8 @@ int emac_hw_get_lpa_speed(struct emac_hw *hw, u32 *speed)
 	u16 lpa, stat1000;
 	bool link;
 
-	if (adpt->no_ephy == true) {
-		if (adpt->phy_mode == PHY_INTERFACE_MODE_SGMII) {
-			return emac_check_sgmii_link(hw, speed, &link);
-		} else {
-			emac_err(adpt,  "can't get lpa speed without ephy\n");
-			return -ENOTSUPP;
-		}
-	}
+	if (adpt->no_ephy)
+		return hw->ops.link_check_no_ephy(adpt, speed, &link);
 
 	retval = emac_read_phy_reg(hw, hw->phy_addr, MII_LPA, &lpa);
 	retval |= emac_read_phy_reg(hw, hw->phy_addr, MII_STAT1000, &stat1000);
@@ -766,117 +478,6 @@ int emac_hw_get_lpa_speed(struct emac_hw *hw, u32 *speed)
 	return 0;
 }
 
-int emac_hw_clear_sgmii_intr_status(struct emac_hw *hw, u32 irq_bits)
-{
-	u32 status;
-	int i;
-
-	emac_reg_w32(hw, EMAC_SGMII_PHY, EMAC_SGMII_PHY_INTERRUPT_CLEAR,
-		     irq_bits);
-	emac_reg_w32(hw, EMAC_SGMII_PHY, EMAC_SGMII_PHY_IRQ_CMD,
-		     IRQ_GLOBAL_CLEAR);
-	wmb();
-
-	/* After set the IRQ_GLOBAL_CLEAR bit, the status clearing must
-	 * be confirmed before clear the bits in other registers.
-	 * It takes a few cycles for hw to clear the interrupt status.
-	 */
-	for (i = 0; i < SGMII_PHY_IRQ_CLR_WAIT_TIME; i++) {
-		udelay(1);
-		status = emac_reg_r32(hw, EMAC_SGMII_PHY,
-				      EMAC_SGMII_PHY_INTERRUPT_STATUS);
-		if (!(status & irq_bits))
-			break;
-	}
-	if (status & irq_bits) {
-		emac_err(emac_hw_get_adap(hw),
-			 "failed to clear SGMII irq: status 0x%x bits 0x%x\n",
-			 status, irq_bits);
-		return -EIO;
-	}
-
-	emac_reg_w32(hw, EMAC_SGMII_PHY, EMAC_SGMII_PHY_IRQ_CMD, 0);
-	emac_reg_w32(hw, EMAC_SGMII_PHY, EMAC_SGMII_PHY_INTERRUPT_CLEAR, 0);
-	wmb();
-
-	return 0;
-}
-
-int emac_check_sgmii_link(struct emac_hw *hw, u32 *speed, bool *link_up)
-{
-	u32 val;
-
-	val = emac_reg_r32(hw, EMAC_SGMII_PHY, EMAC_SGMII_PHY_AUTONEG_CFG2);
-	if (val & AN_ENABLE)
-		return emac_check_sgmii_autoneg(hw, speed, link_up);
-
-	val = emac_reg_r32(hw, EMAC_SGMII_PHY, EMAC_SGMII_PHY_SPEED_CFG1);
-	val &= DUPLEX_MODE | SPDMODE_BMSK;
-	switch (val) {
-	case DUPLEX_MODE | SPDMODE_1000:
-		*speed = EMAC_LINK_SPEED_1GB_FULL;
-		break;
-	case DUPLEX_MODE | SPDMODE_100:
-		*speed = EMAC_LINK_SPEED_100_FULL;
-		break;
-	case SPDMODE_100:
-		*speed = EMAC_LINK_SPEED_100_HALF;
-		break;
-	case DUPLEX_MODE | SPDMODE_10:
-		*speed = EMAC_LINK_SPEED_10_FULL;
-		break;
-	case SPDMODE_10:
-		*speed = EMAC_LINK_SPEED_10_HALF;
-		break;
-	default:
-		*speed = EMAC_LINK_SPEED_UNKNOWN;
-		break;
-	}
-	*link_up = true;
-	return 0;
-}
-
-int emac_check_sgmii_autoneg(struct emac_hw *hw, u32 *speed, bool *link_up)
-{
-	u32 status;
-
-	status = emac_reg_r32(hw, EMAC_SGMII_PHY,
-			      EMAC_SGMII_PHY_AUTONEG1_STATUS) & 0xff;
-	status <<= 8;
-	status |= emac_reg_r32(hw, EMAC_SGMII_PHY,
-			       EMAC_SGMII_PHY_AUTONEG0_STATUS) & 0xff;
-
-	if (!(status & TXCFG_LINK)) {
-		*link_up = false;
-		*speed = EMAC_LINK_SPEED_UNKNOWN;
-		return 0;
-	}
-
-	*link_up = true;
-
-	switch (status & TXCFG_MODE_BMSK) {
-	case TXCFG_1000_FULL:
-		*speed = EMAC_LINK_SPEED_1GB_FULL;
-		break;
-	case TXCFG_100_FULL:
-		*speed = EMAC_LINK_SPEED_100_FULL;
-		break;
-	case TXCFG_100_HALF:
-		*speed = EMAC_LINK_SPEED_100_HALF;
-		break;
-	case TXCFG_10_FULL:
-		*speed = EMAC_LINK_SPEED_10_FULL;
-		break;
-	case TXCFG_10_HALF:
-		*speed = EMAC_LINK_SPEED_10_HALF;
-		break;
-	default:
-		*speed = EMAC_LINK_SPEED_UNKNOWN;
-		break;
-	}
-	return 0;
-}
-
 /* INTR */
 void emac_hw_enable_intr(struct emac_hw *hw)
 {
@@ -891,10 +492,7 @@ void emac_hw_enable_intr(struct emac_hw *hw)
 		emac_reg_w32(hw, EMAC, irq_cmn->mask_reg, irq->mask);
 	}
 
-	if (adpt->phy_mode == PHY_INTERFACE_MODE_SGMII)
-		emac_reg_w32(hw, EMAC_SGMII_PHY,
-			     emac_irq_cmn_tbl[EMAC_SGMII_PHY_IRQ].mask_reg,
-			     adpt->irq[EMAC_SGMII_PHY_IRQ].mask);
+	hw->ops.irq_enable(adpt);
 
 	if (adpt->tstamp_en)
 		emac_reg_w32(hw, EMAC_1588, EMAC_P1588_PTP_EXPANDED_INT_MASK,
@@ -917,9 +515,7 @@ void emac_hw_disable_intr(struct emac_hw *hw)
 		emac_reg_w32(hw, EMAC_1588, EMAC_P1588_PTP_EXPANDED_INT_MASK,
 			     0);
 
-	if (adpt->phy_mode == PHY_INTERFACE_MODE_SGMII)
-		emac_reg_w32(hw, EMAC_SGMII_PHY,
-			     emac_irq_cmn_tbl[EMAC_SGMII_PHY_IRQ].mask_reg, 0);
+	hw->ops.irq_disable(adpt);
 
 	wmb();
 }
@@ -1017,7 +613,6 @@ void emac_hw_config_rss(struct emac_hw *hw)
 void emac_hw_config_mac_ctrl(struct emac_hw *hw)
 {
 	u32 mac;
-
 	mac = emac_reg_r32(hw, EMAC, EMAC_MAC_CTRL);
 
 	if (TEST_FLAG(hw, HW_VLANSTRIP_EN))
