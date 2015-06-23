@@ -21,6 +21,7 @@
 #include <linux/cpu.h>
 #include <linux/mutex.h>
 #include <linux/delay.h>
+#include <linux/debugfs.h>
 #include <linux/platform_device.h>
 #include <linux/pm_opp.h>
 #include <linux/regulator/consumer.h>
@@ -29,6 +30,7 @@
 #include <linux/clk/msm-clock-generic.h>
 #include <linux/suspend.h>
 #include <linux/regulator/rpm-smd-regulator.h>
+#include <linux/uaccess.h>
 #include <soc/qcom/clock-local2.h>
 #include <soc/qcom/clock-pll.h>
 
@@ -44,6 +46,18 @@
 #define APCS_PLL_CONFIG_CTL	0x14
 #define APCS_PLL_STATUS		0x1C
 
+/* Perf Boost offsets */
+#define BOOST_MODE_ENABLE		0x108
+#define CURRENT_PLL_CLUSTER_SOURCE	0x10C
+#define RATIO_REGISTERS_PLL_SRC0_CORE	0x110
+#define SLAVE_MODE_SETTINGS		0x130
+#define MASTER_MODE_SETTINGS		0x134
+#define BOOST_STATUS_DEBUG		0x138
+#define BOOST_STATUS			0x13C
+
+#define UPDATE_CHECK_MAX_LOOPS 5000
+#define NUM_CORES 4
+
 enum {
 	APCS_C0_PLL_BASE,
 	APCS_C1_PLL_BASE,
@@ -54,6 +68,9 @@ enum {
 
 static void __iomem *virt_bases[N_BASES];
 struct platform_device *cpu_clock_dev;
+static int boost_disable(struct clk *clk);
+static int boost_dcvs(struct clk *clk);
+static int boost_enable(struct clk *clk);
 
 static DEFINE_VDD_REGS_INIT(vdd_cpu_a72, 1);
 static DEFINE_VDD_REGS_INIT(vdd_cpu_a53, 1);
@@ -316,9 +333,23 @@ static struct mux_div_clk ccissmux = {
 	),
 };
 
+struct perf_boost_ratio {
+	u8 ratio_4c;
+	u8 ratio_3c;
+	u8 ratio_2c;
+	u8 ratio_1c;
+};
+
+struct perf_boost {
+	struct perf_boost_ratio ratio[NUM_CORES];
+	void __iomem *base;
+	bool enabled;
+};
+
 struct cpu_clk_8976 {
 	u32 cpu_reg_mask;
 	struct clk c;
+	struct perf_boost boost;
 };
 
 static enum handoff cpu_clk_8976_handoff(struct clk *c)
@@ -343,11 +374,33 @@ static struct clk_ops clk_ops_cpu = {
 	.handoff = cpu_clk_8976_handoff,
 };
 
+static int cpu_clk_8976_a72_set_rate(struct clk *c, unsigned long rate)
+{
+	int ret = 0;
+	unsigned long fmax = c->fmax[c->num_fmax - 1];
+
+	boost_disable(c);
+
+	ret = clk_set_rate(c->parent, rate);
+	if (!ret && rate == fmax) {
+		boost_dcvs(c);
+		boost_enable(c);
+	}
+
+	return ret;
+}
+
+static struct clk_ops clk_ops_a72_cpu = {
+	.set_rate = cpu_clk_8976_a72_set_rate,
+	.round_rate = cpu_clk_8976_round_rate,
+	.handoff = cpu_clk_8976_handoff,
+};
+
 static struct cpu_clk_8976 a72_clk = {
 	.cpu_reg_mask = 0x103,
 	.c = {
 		.parent = &a72ssmux.c,
-		.ops = &clk_ops_cpu,
+		.ops = &clk_ops_a72_cpu,
 		.vdd_class = &vdd_cpu_a72,
 		.dbg_name = "a72_clk",
 		CLK_INIT(a72_clk.c),
@@ -498,6 +551,11 @@ static struct clk *logical_cpu_to_clk(int cpu)
 	}
 
 	return NULL;
+}
+
+static inline struct cpu_clk_8976 *to_cpu_clk_8976(struct clk *c)
+{
+	return container_of(c, struct cpu_clk_8976, c);
 }
 
 static long corner_to_voltage(unsigned long corner, struct device *dev)
@@ -904,6 +962,319 @@ static int cpu_parse_devicetree(struct platform_device *pdev)
 	return 0;
 }
 
+static int boost_disable(struct clk *clk)
+{
+	struct cpu_clk_8976 *c = to_cpu_clk_8976(clk);
+	u32 regval;
+	int count;
+
+	if (!c->boost.enabled)
+		return 0;
+
+	/* Clear Boost Enable */
+	regval = readl_relaxed(c->boost.base + BOOST_MODE_ENABLE);
+	regval &= ~BIT(0);
+	writel_relaxed(regval, (c->boost.base + BOOST_MODE_ENABLE));
+
+	for (count = UPDATE_CHECK_MAX_LOOPS; count > 0; count--) {
+		if (!(readl_relaxed(c->boost.base + BOOST_STATUS)))
+			return 0;
+		udelay(1);
+	}
+
+	BUG_ON(count == 0);
+
+	return 0;
+}
+
+static int boost_enable(struct clk *clk)
+{
+	struct cpu_clk_8976 *c = to_cpu_clk_8976(clk);
+	u32 regval;
+
+	if (!c->boost.enabled)
+		return 0;
+
+	/* Boost Enable */
+	regval = readl_relaxed(c->boost.base + BOOST_MODE_ENABLE);
+	regval |= BIT(0);
+	writel_relaxed(regval, (c->boost.base + BOOST_MODE_ENABLE));
+
+	return 0;
+}
+
+
+static int boost_dcvs(struct clk *clk)
+{
+	struct cpu_clk_8976 *c = to_cpu_clk_8976(clk);
+	u32 val;
+	int i;
+
+	if (!c->boost.enabled)
+		return 0;
+
+	/* SRC0 boostable PLL */
+	writel_relaxed(BIT(0), (c->boost.base + CURRENT_PLL_CLUSTER_SOURCE));
+
+	for (i = 0; i < NUM_CORES; i++) {
+		val = (c->boost.ratio[i].ratio_4c) |
+			(c->boost.ratio[i].ratio_3c << 8) |
+			(c->boost.ratio[i].ratio_2c << 16) |
+			(c->boost.ratio[i].ratio_1c << 24);
+		writel_relaxed(val, ((c->boost.base +
+				RATIO_REGISTERS_PLL_SRC0_CORE) + 4 * i));
+	}
+
+	return 0;
+}
+
+static int parse_dt_pboost(struct platform_device *pdev, char *prop_name,
+	      struct clk *clk)
+{
+	struct device_node *node = pdev->dev.of_node;
+	struct cpu_clk_8976 *c = to_cpu_clk_8976(clk);
+	int prop_len, i;
+	u32 *array;
+
+	if (!of_find_property(node, prop_name, &prop_len)) {
+		dev_err(&pdev->dev, "missing %s\n", prop_name);
+		return -EINVAL;
+	}
+
+	prop_len /= sizeof(u32);
+	if (prop_len % 4) {
+		dev_err(&pdev->dev, "bad length %d\n", prop_len);
+		return -EINVAL;
+	}
+
+	prop_len /= 4;
+
+	array = devm_kzalloc(&pdev->dev,
+			prop_len * sizeof(u32) * 4, GFP_KERNEL);
+	if (!array)
+		return -ENOMEM;
+
+	of_property_read_u32_array(node, prop_name, array, prop_len * 4);
+	for (i = 0; i < prop_len; i++) {
+		c->boost.ratio[i].ratio_4c = array[4 * i];
+		c->boost.ratio[i].ratio_3c = array[4 * i + 1];
+		c->boost.ratio[i].ratio_2c = array[4 * i + 2];
+		c->boost.ratio[i].ratio_1c = array[4 * i + 3];
+	}
+
+	return 0;
+}
+
+#define MAX_DEBUG_BUF_LEN	500
+#define B_VAL(val, msb, lsb)	((val & BM(msb, lsb)) >> lsb)
+
+static DEFINE_MUTEX(debug_buf_mutex);
+static char debug_buf[MAX_DEBUG_BUF_LEN];
+static int cpu_core;
+
+static ssize_t perf_debug_ratio_set(struct file *file, const char __user *buf,
+					size_t count, loff_t *ppos)
+{
+	int filled;
+	struct clk *clk;
+	struct cpu_clk_8976 *c;
+	unsigned int ratio4c, ratio3c, ratio2c, ratio1c;
+
+	if (IS_ERR(file) || file == NULL) {
+		pr_err("Function Input Error %ld\n", PTR_ERR(file));
+		return -ENOMEM;
+	}
+
+	clk = file->private_data;
+	c = to_cpu_clk_8976(clk);
+
+	if (count < MAX_DEBUG_BUF_LEN) {
+		mutex_lock(&debug_buf_mutex);
+		if (copy_from_user(debug_buf, (void __user *) buf, count))
+			return -EFAULT;
+
+		debug_buf[count] = '\0';
+		filled = sscanf(debug_buf, "%d %d %d %d", &ratio4c, &ratio3c,
+				&ratio2c, &ratio1c);
+		mutex_unlock(&debug_buf_mutex);
+
+		/* check that user entered four numbers */
+		if (filled < 4) {
+			pr_err("Error: 'echo \"L values of each core > ratio\n");
+			return -EINVAL;
+		} else if (ratio4c == 0 || ratio3c == 0
+			|| ratio2c == 0 || ratio1c == 0) {
+			pr_err("Error, L values can not be 0\n");
+			return -EINVAL;
+		}
+	}
+
+	c->boost.ratio[cpu_core].ratio_4c = ratio4c;
+	c->boost.ratio[cpu_core].ratio_3c = ratio3c;
+	c->boost.ratio[cpu_core].ratio_2c = ratio2c;
+	c->boost.ratio[cpu_core].ratio_1c = ratio1c;
+
+	return count;
+}
+
+static ssize_t perf_debug_ratio_get(struct file *file, char __user *buf,
+					size_t count, loff_t *ppos)
+{
+	struct clk *clk;
+	struct cpu_clk_8976 *c;
+	int output = 0, rc = 0;
+
+	if (IS_ERR(file) || file == NULL) {
+		pr_err("Function Input Error %ld\n", PTR_ERR(file));
+		return -ENOMEM;
+	}
+
+	clk = file->private_data;
+	c = to_cpu_clk_8976(clk);
+
+	mutex_lock(&debug_buf_mutex);
+
+	output = snprintf(debug_buf, MAX_DEBUG_BUF_LEN-1, "%d %d %d %d\n",
+			c->boost.ratio[cpu_core].ratio_4c,
+			c->boost.ratio[cpu_core].ratio_3c,
+			c->boost.ratio[cpu_core].ratio_2c,
+			c->boost.ratio[cpu_core].ratio_1c);
+
+	rc = simple_read_from_buffer((void __user *) buf, output, ppos,
+					(void *) debug_buf, output);
+	mutex_unlock(&debug_buf_mutex);
+
+	return rc;
+}
+
+static const struct file_operations perf_boost_fops = {
+	.write	= perf_debug_ratio_set,
+	.open   = simple_open,
+	.read	= perf_debug_ratio_get,
+};
+
+static int perfb_debug_core_set(void *data, u64 val)
+{
+	if (val < NUM_CORES)
+		cpu_core = val;
+	else
+		pr_err("Number of cores cannot be more than %d\n",
+				(NUM_CORES - 1));
+
+	return 0;
+}
+
+static int perfb_debug_core_get(void *data, u64 *val)
+{
+	*val = cpu_core;
+
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(clock_perfb_fops, perfb_debug_core_get,
+			perfb_debug_core_set, "%lld\n");
+
+static ssize_t perf_debug_get(struct file *file, char __user *buf,
+					size_t count, loff_t *ppos)
+{
+	struct clk *clk;
+	struct cpu_clk_8976 *c;
+	u32 regval, hw_ver, wacc, clk_src, boost_fsm_src0, boost_ratio_src0;
+	int rc = 0, output = 0;
+
+	if (IS_ERR(file) || file == NULL) {
+		pr_err("Function Input Error %ld\n", PTR_ERR(file));
+		return -ENOMEM;
+	}
+
+	clk = file->private_data;
+	c = to_cpu_clk_8976(clk);
+
+	mutex_lock(&debug_buf_mutex);
+
+	regval = readl_relaxed(c->boost.base + BOOST_STATUS_DEBUG);
+
+	hw_ver = B_VAL(regval, 0, 0);
+	wacc = B_VAL(regval, 5, 1);
+	clk_src = B_VAL(regval, 7, 6);
+	boost_fsm_src0 = B_VAL(regval, 11, 8);
+	boost_ratio_src0 = B_VAL(regval, 19, 12);
+
+	output = snprintf(debug_buf, MAX_DEBUG_BUF_LEN-1,
+		"Hw Version: 0x%x : WACC: 0x%x : Clk src: 0x%x : FSM-SRC0: 0x%x:  Ratio-SRC0: 0x%x\n",
+			hw_ver, wacc, clk_src, boost_fsm_src0,
+			boost_ratio_src0);
+	rc = simple_read_from_buffer((void __user *) buf, output, ppos,
+					(void *) debug_buf, output);
+
+	mutex_unlock(&debug_buf_mutex);
+
+	return rc;
+}
+
+static const struct file_operations perf_boost_debug_fops = {
+	.read	= perf_debug_get,
+	.open   = simple_open,
+};
+
+static int perf_frequency_boost_init(struct platform_device *pdev,
+			struct clk *clk)
+{
+	struct cpu_clk_8976 *c = to_cpu_clk_8976(clk);
+	struct resource *res;
+	struct dentry *debugfs_base;
+	u32 regval;
+	int rc = 0;
+
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "perf_base");
+	if (!res) {
+		dev_info(&pdev->dev, "No performance Boost base defined!\n");
+		return -EINVAL;
+	}
+
+	c->boost.base = devm_ioremap(&pdev->dev, res->start,
+							resource_size(res));
+	if (!c->boost.base) {
+		dev_err(&pdev->dev, "Failed to ioremap Boost register\n");
+		return -ENOMEM;
+	}
+
+	rc = parse_dt_pboost(pdev, "qcom,pboost-ratio", clk);
+	if (rc)
+		return rc;
+
+	/* Clear the DROOP CODE  and set the default droop code */
+	regval = readl_relaxed(c->boost.base + SLAVE_MODE_SETTINGS);
+	regval &= ~0xF;
+	regval |= 0x1D;
+	writel_relaxed(regval, (c->boost.base + SLAVE_MODE_SETTINGS));
+
+	debugfs_base = debugfs_create_dir("performance_boost", NULL);
+	if (debugfs_base) {
+		if (!debugfs_create_file("core", S_IRUGO, debugfs_base,
+					NULL, &clock_perfb_fops))
+			goto debugfs_fail;
+		if (!debugfs_create_file("ratio", S_IRUGO, debugfs_base,
+					clk, &perf_boost_fops))
+			goto debugfs_fail;
+		if (!debugfs_create_file("status", S_IRUGO, debugfs_base,
+					clk, &perf_boost_debug_fops))
+			goto debugfs_fail;
+	} else {
+		dev_err(&pdev->dev, "Failed to create debugfs entry\n");
+		return -ENOMEM;
+	}
+
+	c->boost.enabled = true;
+
+	return rc;
+
+debugfs_fail:
+	dev_err(&pdev->dev, "Failed to create debugfs entry\n");
+	debugfs_remove_recursive(debugfs_base);
+	return -ENOMEM;
+}
+
 #define GLB_DIAG	0x0b11101c
 
 static int clock_cpu_probe(struct platform_device *pdev)
@@ -1001,6 +1372,16 @@ static int clock_cpu_probe(struct platform_device *pdev)
 		rc = clk_set_rate(&cci_clk.c, sys_apcsaux_clk_3.c.rate);
 		if (rc)
 			dev_err(&pdev->dev, "Can't set safe rate\n");
+	}
+
+	for_each_online_cpu(cpu) {
+		if (logical_cpu_to_clk(cpu) == &a72_clk.c) {
+			rc = perf_frequency_boost_init(pdev, &a72_clk.c);
+			if (rc)
+				dev_err(&pdev->dev,
+					"Failed to initialize Perf Boost\n");
+			break;
+		}
 	}
 
 	put_online_cpus();
