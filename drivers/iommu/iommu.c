@@ -31,6 +31,8 @@
 #include <linux/err.h>
 #include <linux/scatterlist.h>
 
+#include "iommu-debug.h"
+
 static struct kset *iommu_group_kset;
 static struct idr iommu_group_idr;
 static struct mutex iommu_group_mutex;
@@ -708,10 +710,16 @@ EXPORT_SYMBOL_GPL(iommu_domain_free);
 
 int iommu_attach_device(struct iommu_domain *domain, struct device *dev)
 {
+	int ret;
+
 	if (unlikely(domain->ops->attach_dev == NULL))
 		return -ENODEV;
 
-	return domain->ops->attach_dev(domain, dev);
+	ret = domain->ops->attach_dev(domain, dev);
+	if (!ret)
+		iommu_debug_attach_device(domain, dev);
+
+	return ret;
 }
 EXPORT_SYMBOL_GPL(iommu_attach_device);
 
@@ -720,6 +728,7 @@ void iommu_detach_device(struct iommu_domain *domain, struct device *dev)
 	if (unlikely(domain->ops->detach_dev == NULL))
 		return;
 
+	iommu_debug_detach_device(domain, dev);
 	domain->ops->detach_dev(domain, dev);
 }
 EXPORT_SYMBOL_GPL(iommu_detach_device);
