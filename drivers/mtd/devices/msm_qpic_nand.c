@@ -90,6 +90,7 @@ static dma_addr_t msm_nand_dma_map(struct device *dev, void *addr, size_t size,
 {
 	struct page *page;
 	unsigned long offset = (unsigned long)addr & ~PAGE_MASK;
+
 	if (virt_addr_valid(addr))
 		page = virt_to_page(addr);
 	else {
@@ -177,9 +178,7 @@ static int msm_nand_runtime_resume(struct device *dev)
 
 static void msm_nand_print_rpm_info(struct device *dev)
 {
-	pr_err("RPM: runtime_status=%d, usage_count=%d," \
-		" is_suspended=%d, disable_depth=%d, runtime_error=%d," \
-		" request_pending=%d, request=%d\n",
+	pr_err("RPM: runtime_status=%d, usage_count=%d, is_suspended=%d, disable_depth=%d, runtime_error=%d, request_pending=%d, request=%d\n",
 		dev->power.runtime_status, atomic_read(&dev->power.usage_count),
 		dev->power.is_suspended, dev->power.disable_depth,
 		dev->power.runtime_error, dev->power.request_pending,
@@ -569,7 +568,7 @@ static uint16_t msm_nand_flash_onfi_crc_check(uint8_t *buffer, uint16_t count)
 
 /*
  * Structure that contains NANDc register data for commands required
- * for reading ONFI paramter page.
+ * for reading ONFI parameter page.
  */
 struct msm_nand_flash_onfi_data {
 	struct msm_nand_common_cfgs cfg;
@@ -1408,6 +1407,7 @@ static int msm_nand_is_erased_page(struct mtd_info *mtd, loff_t from,
 	data.addr1 = (rw_params->page >> 16) & 0xff;
 	for (n = rw_params->start_sector; n < cwperpage; n++) {
 		struct sps_command_element *curr_ce, *start_ce;
+
 		dma_buffer->result[n].flash_status = 0xeeeeeeee;
 		dma_buffer->result[n].buffer_status = 0xeeeeeeee;
 		dma_buffer->result[n].erased_cw_status = 0xeeeeee00;
@@ -1615,11 +1615,14 @@ static int msm_nand_read_oob(struct mtd_info *mtd, loff_t from,
 
 	while (rw_params.page_count-- > 0) {
 		uint32_t cw_desc_cnt = 0;
+
 		erased_page = false;
 		data.addr0 = (rw_params.page << 16) | rw_params.oob_col;
 		data.addr1 = (rw_params.page >> 16) & 0xff;
+
 		for (n = rw_params.start_sector; n < cwperpage; n++) {
 			struct sps_command_element *curr_ce, *start_ce;
+
 			dma_buffer->result[n].flash_status = 0xeeeeeeee;
 			dma_buffer->result[n].buffer_status = 0xeeeeeeee;
 			dma_buffer->result[n].erased_cw_status = 0xeeeeee00;
@@ -1771,11 +1774,10 @@ static int msm_nand_read_oob(struct mtd_info *mtd, loff_t from,
 						mtd->ecc_stats.failed++;
 						pageerr = -EBADMSG;
 						break;
-					} else {
-						pageerr = 0;
-						pr_debug("Uncorrectable ECC errors dectected on an erased page and has been fixed.\n");
-						break;
 					}
+					pageerr = 0;
+					pr_debug("Uncorrectable ECC errors dectected on an erased page and has been fixed.\n");
+					break;
 				}
 			}
 		}
@@ -1883,7 +1885,6 @@ static int msm_nand_read_partial_page(struct mtd_info *mtd,
 
 	bounce_buf = kmalloc(mtd->writesize, GFP_KERNEL);
 	if (!bounce_buf) {
-		pr_err("%s: could not allocate memory\n", __func__);
 		err = -ENOMEM;
 		goto out;
 	}
@@ -1971,8 +1972,6 @@ static int msm_nand_read(struct mtd_info *mtd, loff_t from, size_t len,
 
 			bounce_buf = kmalloc(ops.len, GFP_KERNEL);
 			if (!bounce_buf) {
-				pr_err("%s: unable to allocate memory\n",
-						__func__);
 				ret = -ENOMEM;
 				goto out;
 			}
@@ -2092,6 +2091,7 @@ static int msm_nand_write_oob(struct mtd_info *mtd, loff_t to,
 	while (rw_params.page_count-- > 0) {
 		uint32_t cw_desc_cnt = 0;
 		struct sps_command_element *curr_ce, *start_ce;
+
 		data.addr0 = (rw_params.page << 16);
 		data.addr1 = (rw_params.page >> 16) & 0xff;
 
@@ -2277,8 +2277,6 @@ static int msm_nand_write(struct mtd_info *mtd, loff_t to, size_t len,
 
 		bounce_buf = kmalloc(ops.len, GFP_KERNEL);
 		if (!bounce_buf) {
-			pr_err("%s: unable to allocate memory\n",
-					__func__);
 			ret = -ENOMEM;
 			goto out;
 		}
@@ -3245,7 +3243,6 @@ static int msm_nand_probe(struct platform_device *pdev)
 	info = devm_kzalloc(&pdev->dev, sizeof(struct msm_nand_info),
 				GFP_KERNEL);
 	if (!info) {
-		pr_err("Unable to allocate memory for msm_nand_info\n");
 		err = -ENOMEM;
 		goto out;
 	}
