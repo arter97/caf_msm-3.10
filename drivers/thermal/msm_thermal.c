@@ -47,7 +47,9 @@
 #include <linux/suspend.h>
 #include <soc/qcom/msm-core.h>
 #include <linux/cpumask.h>
-
+#include <dt-bindings/msm/msm-bus-ids.h>
+#include <dt-bindings/msm/msm-bus-rule-ops.h>
+#include <linux/msm_bus_rules.h>
 #define CREATE_TRACE_POINTS
 #define TRACE_MSM_THERMAL
 #include <trace/trace_thermal.h>
@@ -167,6 +169,7 @@ static bool cluster_info_probed;
 static bool cluster_info_nodes_called;
 static bool in_suspend, retry_in_progress;
 static bool cpr_temp_band_enable;
+static bool bwlm_init_done, bwlm_post_init_done, bwlm_enabled;
 static int *tsens_id_map;
 static int *zone_id_tsens_map;
 static DEFINE_MUTEX(vdd_rstr_mutex);
@@ -386,10 +389,40 @@ enum ocr_request {
 	OPTIMUM_CURRENT_NR,
 };
 
+enum bwlm_threshold_id {
+	BWLM_AB_LOW_THRESHOLD,
+	BWLM_AB_HIGH_THRESHOLD,
+	BWLM_IB_LOW_THRESHOLD,
+	BWLM_IB_HIGH_THRESHOLD,
+	MAX_BWLM_THRESHOLD,
+};
+
+enum bwlm_bw_level {
+	BWLM_LOW_BW_LEVEL,
+	BWLM_INTERMEDIATE_BW_LEVEL,
+	BWLM_HIGH_BW_LEVEL,
+};
+
+static struct workqueue_struct *bwlm_wq;
+
+struct bwlm_drv_data {
+	struct bwlm_info_arg bwlm_info;
+	struct work_struct bwlm_wd;
+	struct notifier_block bwlm_nb;
+	struct bus_rule_type thresh_bus_rule[MAX_BWLM_THRESHOLD];
+	struct bus_rule_type mit_bus_rule;
+	int bus_rule_triggered;
+	struct mutex clnt_lock;
+	uint32_t bus_rule_action[MAX_BWLM_THRESHOLD];
+};
+
+struct bwlm_drv_data bwlm_data;
+
 static int thermal_config_debugfs_read(struct seq_file *m, void *data);
 static ssize_t thermal_config_debugfs_write(struct file *file,
 					const char __user *buffer,
 					size_t count, loff_t *ppos);
+static int bwlm_post_init(void);
 
 #define __ATTR_RW(attr) __ATTR(attr, 0644, attr##_show, attr##_store)
 
@@ -500,6 +533,86 @@ static ssize_t thermal_config_debugfs_write(struct file *file,
 		}                                                             \
 	} while (0)
 
+#define CREATE_BUS_RULE(rule, _src_field, _op, _val, thresh_id, ret) \
+	do { \
+		if (!rule.src_id) \
+			rule.src_id = devm_kzalloc( \
+			&msm_thermal_info.pdev->dev, \
+			sizeof(int), GFP_KERNEL); \
+		if (!rule.src_field) \
+			rule.src_field = devm_kzalloc( \
+			&msm_thermal_info.pdev->dev, \
+			sizeof(int), GFP_KERNEL); \
+		if (!rule.op) \
+			rule.op = devm_kzalloc( \
+			&msm_thermal_info.pdev->dev, \
+			sizeof(int), GFP_KERNEL); \
+		if (!rule.thresh) \
+			rule.thresh = devm_kzalloc( \
+			&msm_thermal_info.pdev->dev, \
+			sizeof(u64), GFP_KERNEL); \
+		if (!rule.dst_node) \
+			rule.dst_node = devm_kzalloc( \
+			&msm_thermal_info.pdev->dev, sizeof(int), \
+			GFP_KERNEL); \
+		if (!rule.client_data) \
+			rule.client_data = devm_kzalloc( \
+			&msm_thermal_info.pdev->dev, \
+			sizeof(int), GFP_KERNEL); \
+		if (!rule.src_id || !rule.src_field || !rule.op || !rule.thresh\
+			|| !rule.dst_node || !rule.client_data) { \
+			ret = -ENOMEM; \
+			devm_kfree(&msm_thermal_info.pdev->dev,	rule.src_id); \
+			devm_kfree(&msm_thermal_info.pdev->dev,	\
+				rule.src_field); \
+			devm_kfree(&msm_thermal_info.pdev->dev,	rule.op); \
+			devm_kfree(&msm_thermal_info.pdev->dev,	rule.thresh); \
+			devm_kfree(&msm_thermal_info.pdev->dev,	rule.dst_node);\
+			devm_kfree(&msm_thermal_info.pdev->dev,	\
+				rule.client_data); \
+		} else { \
+			rule.num_src = 1; \
+			*(rule.src_id) = MSM_BUS_MASTER_AMPSS_M0; \
+			*(rule.src_field) = _src_field; \
+			*(rule.op) = _op; \
+			*(rule.thresh) = _val; \
+			rule.num_dst = 1; \
+			*(rule.dst_node) = MSM_BUS_MASTER_AMPSS_M0; \
+			rule.mode = THROTTLE_OFF; \
+			*(int *)(rule.client_data) = thresh_id; \
+		} \
+	} while (0)
+
+#define UPDATE_BW_LEVEL(rule, type, action) \
+	do { \
+		if (*(rule.op) == OP_GT) { \
+			if (action == RULE_STATE_APPLIED) { \
+				bwlm_data.bwlm_info.bw_level.type##_bw_level \
+					= BWLM_HIGH_BW_LEVEL; \
+			} else if (action == RULE_STATE_NOT_APPLIED) { \
+				bwlm_data.bwlm_info.bw_level.type##_bw_level \
+					= BWLM_INTERMEDIATE_BW_LEVEL; \
+			} else { \
+				pr_err_ratelimited( \
+				"Error in high threshold interrupt\n"); \
+			} \
+		} else if (*(rule.op) == OP_LT) { \
+			if (action == RULE_STATE_APPLIED) { \
+				bwlm_data.bwlm_info.bw_level.type##_bw_level \
+					= BWLM_LOW_BW_LEVEL; \
+			} else if (action == RULE_STATE_NOT_APPLIED) { \
+				bwlm_data.bwlm_info.bw_level.type##_bw_level \
+					= BWLM_INTERMEDIATE_BW_LEVEL; \
+			} else {\
+				pr_err_ratelimited( \
+				"Error in low threshold interrupt\n"); \
+			} \
+		} else { \
+			pr_err_ratelimited( \
+				"Error threshold interrupt. Bad OP\n"); \
+		} \
+	} while (0)
+
 static uint32_t get_mask_from_core_handle(struct platform_device *pdev,
 						const char *key)
 {
@@ -528,6 +641,284 @@ static uint32_t get_mask_from_core_handle(struct platform_device *pdev,
 	}
 
 	return mask;
+}
+
+static ssize_t bwlm_info_show(
+	struct kobject *kobj, struct kobj_attribute *attr, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%d %d\n",
+		bwlm_data.bwlm_info.bw_level.ab_bw_level,
+		bwlm_data.bwlm_info.bw_level.ib_bw_level);
+}
+
+static struct kobj_attribute bwlm_info_attr =
+		__ATTR_RO(bwlm_info);
+static int create_bwlm_sysfs(void)
+{
+	struct kobject *module_kobj = NULL;
+	int ret = 0;
+
+	module_kobj = kset_find_obj(module_kset, KBUILD_MODNAME);
+	if (!module_kobj) {
+		pr_err("cannot find kobject\n");
+		return -ENOENT;
+	}
+	sysfs_attr_init(&bwlm_info_attr.attr);
+	ret = sysfs_create_file(module_kobj, &bwlm_info_attr.attr);
+	if (ret) {
+		pr_err(
+		"cannot create bwlm info kobject attribute. err:%d\n", ret);
+		return ret;
+	}
+
+	return ret;
+}
+
+int msm_thermal_get_bwlm_info(struct bwlm_info_arg *bwlm_ptr)
+{
+	if (!bwlm_post_init_done) {
+		if (bwlm_post_init())
+			return -ENODEV;
+	}
+	if (!bwlm_enabled) {
+		pr_err_ratelimited("Error. bwlm not enabled\n");
+		return -ENODEV;
+	}
+
+	if (!bwlm_ptr) {
+		pr_err_ratelimited("Error. Invalid bwlm_info pointer\n");
+		return -EINVAL;
+	}
+	memcpy(bwlm_ptr, &bwlm_data.bwlm_info, sizeof(struct bwlm_info_arg));
+
+	return 0;
+}
+
+static void bwlm_notify_wq(struct work_struct *work)
+{
+	struct kobject *module_kobj = NULL;
+	int i = 0;
+
+	mutex_lock(&bwlm_data.clnt_lock);
+	module_kobj = kset_find_obj(module_kset, KBUILD_MODNAME);
+	if (!module_kobj) {
+		pr_err_ratelimited("cannot find kobject\n");
+		return;
+	}
+	/* Update new bw levels */
+	for (i = 0; i < MAX_BWLM_THRESHOLD; i++) {
+		if (!(bwlm_data.bus_rule_triggered & (1 << i)))
+			continue;
+		if (*(bwlm_data.thresh_bus_rule[i].src_field) == FLD_AB) {
+			UPDATE_BW_LEVEL(bwlm_data.thresh_bus_rule[i],
+				ab, bwlm_data.bus_rule_action[i]);
+		} else {
+			UPDATE_BW_LEVEL(bwlm_data.thresh_bus_rule[i],
+				ib, bwlm_data.bus_rule_action[i]);
+		}
+		bwlm_data.bus_rule_triggered ^= (1 << i);
+	}
+	mutex_unlock(&bwlm_data.clnt_lock);
+	pr_debug("Ab BW level: %d Ib BW level: %d\n",
+		bwlm_data.bwlm_info.bw_level.ab_bw_level,
+		bwlm_data.bwlm_info.bw_level.ib_bw_level);
+	sysfs_notify(module_kobj, NULL, "bwlm_info");
+}
+
+static int bwlm_threshold_cb(struct notifier_block *nb, unsigned long action,
+		void *data)
+{
+	struct bwlm_drv_data *bwlm_ptr = container_of(nb,
+		struct bwlm_drv_data, bwlm_nb);
+	struct bus_rule_type *rule = data;
+	enum bwlm_threshold_id thresh_id = *(int *)(rule->client_data);
+
+	pr_debug(
+	"srcid:%d, srcfld:%d op:%d thresh:%llu threshid:%d action:%lu\n",
+	*(rule->src_id), *(rule->src_field), *(rule->op), *(rule->thresh),
+	thresh_id, action);
+	bwlm_ptr->bus_rule_triggered |= (1 << thresh_id);
+	bwlm_ptr->bus_rule_action[thresh_id] = action;
+	queue_work(bwlm_wq, &bwlm_ptr->bwlm_wd);
+
+	return 0;
+}
+
+static void cleanup_bus_rules(void)
+{
+	int i = 0;
+
+	for (i = 0; i < MAX_BWLM_THRESHOLD; i++) {
+		devm_kfree(&msm_thermal_info.pdev->dev,
+			bwlm_data.thresh_bus_rule[i].src_id);
+		devm_kfree(&msm_thermal_info.pdev->dev,
+			bwlm_data.thresh_bus_rule[i].src_field);
+		devm_kfree(&msm_thermal_info.pdev->dev,
+			bwlm_data.thresh_bus_rule[i].op);
+		devm_kfree(&msm_thermal_info.pdev->dev,
+			bwlm_data.thresh_bus_rule[i].thresh);
+		devm_kfree(&msm_thermal_info.pdev->dev,
+			bwlm_data.thresh_bus_rule[i].dst_node);
+		devm_kfree(&msm_thermal_info.pdev->dev,
+			bwlm_data.thresh_bus_rule[i].client_data);
+	}
+	devm_kfree(&msm_thermal_info.pdev->dev, bwlm_data.mit_bus_rule.src_id);
+	devm_kfree(&msm_thermal_info.pdev->dev,
+		bwlm_data.mit_bus_rule.src_field);
+	devm_kfree(&msm_thermal_info.pdev->dev, bwlm_data.mit_bus_rule.op);
+	devm_kfree(&msm_thermal_info.pdev->dev, bwlm_data.mit_bus_rule.thresh);
+	devm_kfree(&msm_thermal_info.pdev->dev,
+		bwlm_data.mit_bus_rule.dst_node);
+	devm_kfree(&msm_thermal_info.pdev->dev,
+		bwlm_data.mit_bus_rule.client_data);
+}
+
+int msm_thermal_set_bwlm_config(struct bwlm_monitor_arg *bw_monitor)
+{
+	struct bus_rule_type new_rule[MAX_BWLM_THRESHOLD] = { {0} };
+	struct bus_rule_type new_mit_rule = {0};
+	int i = 0, ret = 0;
+
+	if (!bwlm_post_init_done) {
+		if (bwlm_post_init())
+			return -ENODEV;
+	}
+	if (!bwlm_enabled) {
+		pr_err_ratelimited("Error. bwlm not enabled\n");
+		return -ENODEV;
+	}
+
+	if (!bw_monitor) {
+		pr_err_ratelimited("Error. Invalid bw_config pointer\n");
+		return -EINVAL;
+	}
+	pr_debug("AB - low: %llu high: %llu IB - low: %llu high: %llu\n",
+		bw_monitor->ab_low_thresh, bw_monitor->ab_high_thresh,
+		bw_monitor->ib_low_thresh, bw_monitor->ib_high_thresh);
+
+	mutex_lock(&bwlm_data.clnt_lock);
+	CREATE_BUS_RULE(new_rule[BWLM_AB_LOW_THRESHOLD], FLD_AB, OP_LT,
+			bw_monitor->ab_low_thresh, BWLM_AB_LOW_THRESHOLD, ret);
+	if (ret)
+		goto exit;
+	CREATE_BUS_RULE(new_rule[BWLM_AB_HIGH_THRESHOLD], FLD_AB, OP_GT,
+			bw_monitor->ab_high_thresh, BWLM_AB_HIGH_THRESHOLD,
+			ret);
+	if (ret)
+		goto exit;
+	CREATE_BUS_RULE(new_rule[BWLM_IB_LOW_THRESHOLD], FLD_IB, OP_LT,
+			bw_monitor->ib_low_thresh, BWLM_IB_LOW_THRESHOLD, ret);
+	if (ret)
+		goto exit;
+	CREATE_BUS_RULE(new_rule[BWLM_IB_HIGH_THRESHOLD], FLD_IB, OP_GT,
+			bw_monitor->ib_high_thresh, BWLM_IB_HIGH_THRESHOLD,
+			ret);
+	if (ret)
+		goto exit;
+	bwlm_data.bwlm_nb.notifier_call = bwlm_threshold_cb;
+
+	if (bwlm_data.mit_bus_rule.dst_bw != bw_monitor->mitigation_level) {
+		pr_debug("BW mitigating to %llu\n",
+			bw_monitor->mitigation_level);
+		CREATE_BUS_RULE(new_mit_rule, FLD_AB, OP_GT, 0, -1, ret);
+		if (ret)
+			goto exit;
+		new_mit_rule.dst_bw = bw_monitor->mitigation_level;
+		new_mit_rule.mode = THROTTLE_ON;
+		msm_rule_update(&bwlm_data.mit_bus_rule, &new_mit_rule, NULL);
+		msm_rule_evaluate_rules(MSM_BUS_FAB_APPSS);
+		memcpy(&bwlm_data.mit_bus_rule, &new_mit_rule,
+			sizeof(struct bus_rule_type));
+	}
+	for (i = 0; i < MAX_BWLM_THRESHOLD; i++)
+		msm_rule_update(&bwlm_data.thresh_bus_rule[i], &new_rule[i],
+			&bwlm_data.bwlm_nb);
+
+	memcpy(bwlm_data.thresh_bus_rule, new_rule, sizeof(struct bus_rule_type)
+			* MAX_BWLM_THRESHOLD);
+	memcpy(&bwlm_data.bwlm_info.bw_monitor, bw_monitor,
+		sizeof(struct bwlm_monitor_arg));
+
+exit:
+	if (ret)
+		cleanup_bus_rules();
+	mutex_unlock(&bwlm_data.clnt_lock);
+
+	return 0;
+}
+
+static int bwlm_init_rules(void)
+{
+	int ret = 0;
+
+	CREATE_BUS_RULE(bwlm_data.thresh_bus_rule[BWLM_AB_LOW_THRESHOLD],
+			FLD_AB, OP_LT, 0, BWLM_AB_LOW_THRESHOLD, ret);
+	if (ret)
+		goto exit;
+	CREATE_BUS_RULE(bwlm_data.thresh_bus_rule[BWLM_AB_HIGH_THRESHOLD],
+			FLD_AB, OP_GT, ULONG_MAX, BWLM_AB_HIGH_THRESHOLD, ret);
+	if (ret)
+		goto exit;
+	CREATE_BUS_RULE(bwlm_data.thresh_bus_rule[BWLM_IB_LOW_THRESHOLD],
+			FLD_IB, OP_LT, 0, BWLM_IB_LOW_THRESHOLD, ret);
+	if (ret)
+		goto exit;
+	CREATE_BUS_RULE(bwlm_data.thresh_bus_rule[BWLM_IB_HIGH_THRESHOLD],
+			FLD_IB, OP_GT, ULONG_MAX, BWLM_IB_HIGH_THRESHOLD, ret);
+	if (ret)
+		goto exit;
+	bwlm_data.bwlm_nb.notifier_call = bwlm_threshold_cb;
+	msm_rule_register(MAX_BWLM_THRESHOLD, bwlm_data.thresh_bus_rule,
+			&bwlm_data.bwlm_nb);
+
+	CREATE_BUS_RULE(bwlm_data.mit_bus_rule, FLD_AB, OP_GT, 0, -1, ret);
+	if (ret)
+		goto exit;
+	msm_rule_register(1, &bwlm_data.mit_bus_rule, NULL);
+
+exit:
+	if (ret) {
+		pr_err("Error in bwlm init rules\n");
+		cleanup_bus_rules();
+	}
+
+	return ret;
+}
+
+static int bwlm_post_init(void)
+{
+	int ret = 0;
+
+	if (!bwlm_init_done) {
+		ret = -ENODEV;
+		goto exit;
+	}
+
+	ret = bwlm_init_rules();
+	if (ret)
+		goto exit;
+
+	bwlm_wq = create_singlethread_workqueue("bwlm_wq");
+	if (!bwlm_wq) {
+		pr_err("Error creating workqueue thread\n");
+		ret = -ENODEV;
+		goto exit;
+	}
+	INIT_WORK(&bwlm_data.bwlm_wd, bwlm_notify_wq);
+	bwlm_enabled = true;
+
+exit:
+	bwlm_post_init_done = true;
+	return ret;
+}
+
+static void bwlm_init(void)
+{
+	mutex_init(&bwlm_data.clnt_lock);
+	if (!create_bwlm_sysfs())
+		bwlm_init_done = true;
+	else
+		pr_err("Error in bwlm init\n");
 }
 
 static void get_cluster_mask(uint32_t cpu, cpumask_t *mask)
@@ -7519,7 +7910,7 @@ int __init msm_thermal_late_init(void)
 	create_thermal_debugfs();
 	msm_thermal_add_bucket_info_nodes();
 	msm_thermal_add_cpr_temp_nodes();
-
+	bwlm_init();
 	return 0;
 }
 late_initcall(msm_thermal_late_init);

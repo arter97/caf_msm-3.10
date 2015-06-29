@@ -275,6 +275,32 @@ process_volt_exit:
 	return ret;
 }
 
+static long msm_thermal_process_get_bwlm_info_req(
+		struct msm_thermal_ioctl *query,
+		unsigned long *arg)
+{
+	int ret = 0;
+	struct bwlm_info_arg *bwlm_info = &(query->bwlm_info);
+
+	ret = msm_thermal_get_bwlm_info(bwlm_info);
+	if (ret) {
+		pr_err_ratelimited(
+		"%s: Error in query bwlm info. ret:%d\n", KBUILD_MODNAME, ret);
+		goto process_bwlm_info_exit;
+	}
+
+	ret = copy_to_user((void __user *)(*arg), query,
+		sizeof(struct msm_thermal_ioctl));
+	if (ret) {
+		pr_err_ratelimited(
+		"%s: copy_to_user error:%d.\n", KBUILD_MODNAME, ret);
+		goto process_bwlm_info_exit;
+	}
+
+process_bwlm_info_exit:
+	return ret;
+}
+
 static long msm_thermal_ioctl_process(struct file *filep, unsigned int cmd,
 	unsigned long arg)
 {
@@ -309,6 +335,12 @@ static long msm_thermal_ioctl_process(struct file *filep, unsigned int cmd,
 		break;
 	case MSM_THERMAL_GET_CLUSTER_VOLTAGE_PLAN:
 		ret = msm_thermal_process_voltage_table_req(&query, &arg);
+		break;
+	case MSM_THERMAL_SET_BWLM_CONFIG:
+		ret = msm_thermal_set_bwlm_config(&query.bwlm_config);
+		break;
+	case MSM_THERMAL_GET_BWLM_INFO:
+		ret = msm_thermal_process_get_bwlm_info_req(&query, &arg);
 		break;
 	default:
 		ret = -ENOTTY;

@@ -47,12 +47,32 @@ struct __attribute__((__packed__)) voltage_plan_arg {
 	uint32_t voltage_table[MSM_IOCTL_FREQ_SIZE];
 };
 
+struct __attribute__((__packed__)) bwlm_monitor_arg {
+	uint64_t ab_low_thresh;
+	uint64_t ab_high_thresh;
+	uint64_t ib_low_thresh;
+	uint64_t ib_high_thresh;
+	uint64_t mitigation_level;
+};
+
+struct __attribute__((__packed__)) bwlm_level_arg {
+	uint32_t ab_bw_level;
+	uint32_t ib_bw_level;
+};
+
+struct __attribute__((__packed__)) bwlm_info_arg {
+	struct bwlm_monitor_arg bw_monitor;
+	struct bwlm_level_arg bw_level;
+};
+
 struct __attribute__((__packed__)) msm_thermal_ioctl {
 	uint32_t size;
 	union {
 		struct cpu_freq_arg cpu_freq;
 		struct clock_plan_arg clock_freq;
 		struct voltage_plan_arg voltage;
+		struct bwlm_monitor_arg bwlm_config;
+		struct bwlm_info_arg bwlm_info;
 	};
 };
 
@@ -67,6 +87,10 @@ enum {
 	MSM_GET_CLUSTER_FREQ_PLAN = 0x04,
 	/*Get cluster voltage plan */
 	MSM_GET_CLUSTER_VOLTAGE_PLAN = 0x05,
+	/*Set BWLM configuration*/
+	MSM_SET_BWLM_CONFIG = 0x06,
+	/*Get BWLM info*/
+	MSM_GET_BWLM_INFO = 0x07,
 	MSM_CMD_MAX_NR,
 };
 
@@ -89,6 +113,12 @@ enum {
 
 #define MSM_THERMAL_GET_CLUSTER_VOLTAGE_PLAN _IOR(MSM_THERMAL_MAGIC_NUM,\
 		MSM_GET_CLUSTER_VOLTAGE_PLAN, struct msm_thermal_ioctl)
+
+#define MSM_THERMAL_SET_BWLM_CONFIG _IOW(MSM_THERMAL_MAGIC_NUM,\
+		MSM_SET_BWLM_CONFIG, struct msm_thermal_ioctl)
+
+#define MSM_THERMAL_GET_BWLM_INFO _IOR(MSM_THERMAL_MAGIC_NUM,\
+		MSM_GET_BWLM_INFO, struct msm_thermal_ioctl)
 #ifdef __KERNEL__
 extern int msm_thermal_ioctl_init(void);
 extern void msm_thermal_ioctl_cleanup(void);
