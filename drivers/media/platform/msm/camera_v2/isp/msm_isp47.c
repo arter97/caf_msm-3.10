@@ -11,6 +11,7 @@
  */
 
 #include <linux/module.h>
+#include <linux/clk.h>
 #include <linux/qcom_iommu.h>
 #include <linux/ratelimit.h>
 

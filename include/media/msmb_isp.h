@@ -314,6 +314,7 @@ struct msm_vfe_axi_stream_cfg_update_info {
 	uint32_t stream_handle;
 	uint32_t output_format;
 	uint32_t user_stream_id;
+	uint32_t request_frm_num;
 	enum msm_vfe_frame_skip_pattern skip_pattern;
 	struct msm_vfe_axi_plane_cfg plane_cfg[MAX_PLANES_PER_STREAM];
 	struct msm_isp_sw_framskip sw_skip_info;
@@ -379,12 +380,10 @@ enum msm_vfe_reg_cfg_type {
 	VFE_READ_DMI_32BIT,
 	VFE_READ_DMI_64BIT,
 	GET_MAX_CLK_RATE,
-	GET_CLK_RATES,
 	GET_ISP_ID,
 	VFE_HW_UPDATE_LOCK,
 	VFE_HW_UPDATE_UNLOCK,
 	SET_WM_UB_SIZE,
-	SET_UB_POLICY,
 };
 
 struct msm_vfe_cfg_cmd2 {

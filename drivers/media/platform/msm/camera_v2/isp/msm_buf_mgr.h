@@ -147,8 +147,7 @@ struct msm_isp_buf_ops {
 		uint32_t bufq_handle, uint32_t buf_index,
 		struct timeval *tv, uint32_t frame_id);
 	void (*register_ctx) (struct msm_isp_buf_mgr *buf_mgr,
-		struct device **iommu_ctx1, struct device **iommu_ctx2,
-		int num_iommu_ctx1, int num_iommu_ctx2);
+		struct device **iommu_ctx, int num_iommu_ctx);
 	int (*buf_mgr_init) (struct msm_isp_buf_mgr *buf_mgr,
 		const char *ctx_name, uint16_t num_buf_q);
 	int (*buf_mgr_deinit) (struct msm_isp_buf_mgr *buf_mgr);

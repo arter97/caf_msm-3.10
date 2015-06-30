@@ -31,6 +31,7 @@
 		qcom,cci-master = <0>;
 		cam_vaf-supply = <&pm8226_l15>;
 		qcom,cam-vreg-name = "cam_vaf";
+		qcom,cam-vreg-type = <0>;
 		qcom,cam-vreg-min-voltage = <2800000>;
 		qcom,cam-vreg-max-voltage = <2800000>;
 		qcom,cam-vreg-op-mode = <100000>;
@@ -50,6 +51,7 @@
 		cam_vana-supply = <&pm8226_l19>;
 		cam_vio-supply = <&pm8226_lvs1>;
 		qcom,cam-vreg-name = "cam_vdig", "cam_vio", "cam_vana";
+		qcom,cam-vreg-type = <0 1 0>;
 		qcom,cam-vreg-min-voltage = <1200000 0 2850000>;
 		qcom,cam-vreg-max-voltage = <1200000 0 2850000>;
 		qcom,cam-vreg-op-mode = <200000 0 80000>;
@@ -83,6 +85,7 @@
 		cam_vana-supply = <&pm8226_l19>;
 		cam_vio-supply = <&pm8226_lvs1>;
 		qcom,cam-vreg-name = "cam_vdig", "cam_vio", "cam_vana";
+		qcom,cam-vreg-type = <0 1 0>;
 		qcom,cam-vreg-min-voltage = <1200000 0 2850000>;
 		qcom,cam-vreg-max-voltage = <1200000 0 2850000>;
 		qcom,cam-vreg-op-mode = <200000 0 80000>;
@@ -120,6 +123,7 @@
 		cam_vana-supply = <&pm8226_l19>;
 		cam_vio-supply = <&pm8226_lvs1>;
 		qcom,cam-vreg-name = "cam_vdig", "cam_vio", "cam_vana";
+		qcom,cam-vreg-type = <0 1 0>;
 		qcom,cam-vreg-min-voltage = <1200000 0 2850000>;
 		qcom,cam-vreg-max-voltage = <1200000 0 2850000>;
 		qcom,cam-vreg-op-mode = <200000 0 80000>;
@@ -151,6 +155,7 @@
 		cam_vana-supply = <&pm8226_l19>;
 		cam_vio-supply = <&pm8226_lvs1>;
 		qcom,cam-vreg-name = "cam_vdig", "cam_vio", "cam_vana";
+		qcom,cam-vreg-type = <0 1 0>;
 		qcom,cam-vreg-min-voltage = <1200000 0 2850000>;
 		qcom,cam-vreg-max-voltage = <1200000 0 2850000>;
 		qcom,cam-vreg-op-mode = <200000 0 80000>;
