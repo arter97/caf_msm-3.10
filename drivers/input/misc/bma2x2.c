@@ -4166,6 +4166,8 @@ static int bma2x2_update_delay(struct bma2x2_data *bma2x2, unsigned int delay)
 		if (cancel_delayed_work_sync(&bma2x2->work))
 			queue_delayed_work(bma2x2->data_wq, &bma2x2->work,
 				msecs_to_jiffies(delay));
+	} else if (bma2x2->pdata->int_en && BMA2x2_IS_NEWDATA_INT_ENABLED()) {
+		err = bma2x2_update_bandwidth(bma2x2);
 	} else {
 		dev_err(&bma2x2->bma2x2_client->dev,
 			"Incorrect state! enable=%d, fifoEnable=%d, delay=%d, latency=%d\n",
@@ -5726,7 +5728,7 @@ static int bma2x2_set_enable(struct device *dev, int enable)
 			queue_delayed_work(bma2x2->data_wq, &bma2x2->work,
 				msecs_to_jiffies(atomic_read(&bma2x2->delay)));
 		}
-		if (!en_sig_motion) {
+		if (!en_sig_motion && bma2x2->pdata->int_en) {
 			err = bma2x2_config_interrupt(bma2x2, true);
 			if (err) {
 				dev_err(&client->dev,
@@ -5738,7 +5740,7 @@ static int bma2x2_set_enable(struct device *dev, int enable)
 		}
 		atomic_set(&bma2x2->enable, 1);
 	} else if (!enable && pre_enable) {
-		if (!en_sig_motion) {
+		if (!en_sig_motion && bma2x2->pdata->int_en) {
 			if (bma2x2_store_state(client, bma2x2) < 0) {
 				dev_err(dev, "set state failed\n");
 				goto mutex_exit;
