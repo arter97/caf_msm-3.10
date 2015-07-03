@@ -246,10 +246,11 @@
 		      <0xb111050 0x08>,
 		      <0xb011050 0x08>,
 		      <0xb1d1050 0x08>,
+		      <0xb1db000 0x200>,
 		      <0x00a412c 0x08>;
 		reg-names = "c0-pll", "c1-pll", "cci-pll",
 			    "c0-mux", "c1-mux", "cci-mux",
-			    "efuse";
+			    "perf_base", "efuse";
 		vdd_mx_hf-supply = <&pm8950_s6_level_ao>;
 		vdd_hf_pll-supply = <&pm8950_l7_ao>;
 		vdd_mx_sr-supply = <&pm8950_s6_level_ao>;
@@ -260,6 +261,10 @@
 			 <&clock_gcc clk_gpll4_clk_src>,
 			 <&clock_gcc clk_gpll0_ao_clk_src>;
 		clock-names = "xo_a", "aux_clk_2", "aux_clk_3";
+		qcom,pboost-ratio = <0x5a 0x5a 0x5a 0x5a>,
+				<0x5a 0x5a 0x5a 0x5a>,
+				<0x5a 0x5a 0x5a 0x5a>,
+				<0x5a 0x5a 0x5a 0x5a>;
 		qcom,speed0-bin-v0-c0 =
 			<          0 0>,
 			<  200000000 1>,
