@@ -215,10 +215,16 @@ dtb-$(CONFIG_ARCH_MDMCALIFORNIUM) += mdmcalifornium-sim.dtb \
 	mdmcalifornium-rumi.dtb
 dtb-$(CONFIG_ARCH_MDM9640) += mdm9640-v1-emmc-cdp.dtb \
 	mdm9640-v1-nand-cdp.dtb \
+	mdm9640-v1-pmk8001-emmc-cdp.dtb \
+	mdm9640-v1-pmk8001-nand-cdp.dtb \
 	mdm9640-v1-mtp.dtb \
+	mdm9640-v1-pmk8001-mtp.dtb \
 	mdm9640-v2-emmc-cdp.dtb \
 	mdm9640-v2-nand-cdp.dtb \
-	mdm9640-v2-mtp.dtb
+	mdm9640-v2-pmk8001-emmc-cdp.dtb \
+	mdm9640-v2-pmk8001-nand-cdp.dtb \
+	mdm9640-v2-mtp.dtb \
+	mdm9640-v2-pmk8001-mtp.dtb
 dtb-$(CONFIG_ARCH_MSMVPIPA) += msmvpipa-sim.dtb
 dtb-$(CONFIG_ARCH_APQ8084) += apq8084-v1.0-old-pwr-grid-liquid.dtb \
 	apq8084-v1.1-old-pwr-grid-liquid.dtb \
