@@ -674,7 +674,7 @@ bool rtac_make_adm_callback(uint32_t *payload, u32 payload_size)
 	return true;
 }
 
-u32 send_adm_apr(void *buf, u32 opcode)
+int send_adm_apr(void *buf, u32 opcode)
 {
 	s32	result;
 	u32	user_buf_size = 0;
@@ -895,7 +895,7 @@ bool rtac_make_asm_callback(u32 session_id, uint32_t *payload,
 	return true;
 }
 
-u32 send_rtac_asm_apr(void *buf, u32 opcode)
+int send_rtac_asm_apr(void *buf, u32 opcode)
 {
 	s32	result;
 	u32	user_buf_size = 0;
@@ -1136,7 +1136,7 @@ static int fill_afe_apr_hdr(struct apr_hdr *apr_hdr, uint32_t port,
 	return 0;
 
 }
-static u32 send_rtac_afe_apr(void *buf, uint32_t opcode)
+static int send_rtac_afe_apr(void *buf, uint32_t opcode)
 {
 	int32_t result;
 	uint32_t bytes_returned = 0;
@@ -1375,7 +1375,7 @@ bool rtac_make_voice_callback(u32 mode, uint32_t *payload, u32 payload_size)
 	return true;
 }
 
-u32 send_voice_apr(u32 mode, void *buf, u32 opcode)
+int send_voice_apr(u32 mode, void *buf, u32 opcode)
 {
 	s32	result;
 	u32	user_buf_size = 0;
