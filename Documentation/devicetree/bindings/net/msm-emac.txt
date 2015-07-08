@@ -11,10 +11,8 @@ Required properties:
 	Optional register resource entries are:
 	"emac_1588"      : EMAC 1588 (PTP) register block.
 			   Required if 'qcom,emac-tstamp-en' is present.
-	"emac_qserdes"   : EMAC SerDes register block.
-			   Required if 'phy-mode' is "sgmii".
-	"emac_sgmii_phy" : EMAC SGMII PHY register block.
-			   Required if 'phy-mode' is "sgmii".
+	"emac_sgmii" : EMAC SGMII PHY register block.
+		       Required if 'phy-mode' is "sgmii".
 - interrupts : Interrupt numbers used by this controller
 - interrupt-names : Interrupt resource names referenced in 'interrupts' above.
 	Required interrupt resource entries are:
@@ -63,13 +61,11 @@ Example:
 	emac0: qcom,emac@feb20000 {
 		cell-index = <0>;
 		compatible = "qcom,emac";
-		reg-names = "emac", "emac_csr", "emac_1588",
-			    "emac_qserdes", "emac_sgmii_phy";
+		reg-names = "emac", "emac_csr", "emac_1588", "emac_sgmii";
 		reg = <0xfeb20000 0x10000>,
 		      <0xfeb36000 0x1000>,
 		      <0xfeb3c000 0x4000>,
-		      <0xfeb13800 0x300>,
-		      <0xfeb13b00 0x100>;
+		      <0xfeb13800 0x400>;
 		interrupts = <0 76 0>, <0 77 0>, <0 78 0>, <0 79 0>;
 		interrupt-names = "emac_core0_irq", "emac_core1_irq",
 				  "emac_core2_irq", "emac_core3_irq";

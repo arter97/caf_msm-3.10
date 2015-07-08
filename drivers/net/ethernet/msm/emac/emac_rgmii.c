@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -21,6 +21,14 @@
 #define EMAC_RGMII_CORE_IE_C            0x2001
 #define EMAC_RGMII_PLL_L_VAL            0x14
 #define EMAC_RGMII_PHY_MODE             0
+
+static int emac_rgmii_config(struct platform_device *pdev,
+			     struct emac_adapter *adpt)
+{
+	/* For rgmii phy, the mdio lines are dedicated pins */
+	adpt->no_mdio_gpio = true;
+	return 0;
+}
 
 static int emac_rgmii_init(struct emac_adapter *adpt)
 {
@@ -102,11 +110,11 @@ static int emac_rgmii_init(struct emac_adapter *adpt)
 	return 0;
 }
 
-void emac_rgmii_reset_nop(struct emac_adapter *adpt)
+static void emac_rgmii_reset_nop(struct emac_adapter *adpt)
 {
 }
 
-int emac_rgmii_init_ephy(struct emac_hw *hw)
+static int emac_rgmii_init_ephy(struct emac_hw *hw)
 {
 	u16 val;
 
@@ -128,29 +136,30 @@ int emac_rgmii_init_ephy(struct emac_hw *hw)
 	return retval;
 }
 
-void emac_rgmii_irq_enable_nop(struct emac_adapter *adpt)
-{
-}
-
-void emac_rgmii_irq_disable_nop(struct emac_adapter *adpt)
-{
-}
-
-int emac_rgmii_link_setup_no_ephy(struct emac_adapter *adpt, u32 speed,
-				  bool autoneg)
+static int emac_rgmii_link_setup_no_ephy(struct emac_adapter *adpt, u32 speed,
+					 bool autoneg)
 {
 	emac_err(adpt, "error rgmii can't setup phy link without ephy\n");
 	return -ENOTSUPP;
 }
 
-int emac_rgmii_link_check_no_ephy(struct emac_adapter *adpt, u32 *speed,
-				  bool *link_up)
+static int emac_rgmii_link_check_no_ephy(struct emac_adapter *adpt, u32 *speed,
+					 bool *link_up)
 {
 	emac_err(adpt, "error rgmii can't check phy link without ephy\n");
 	return -ENOTSUPP;
 }
 
-void emac_rgmii_tx_clk_set_rate(struct emac_adapter *adpt)
+static int emac_rgmii_up_nop(struct emac_adapter *adpt)
+{
+	return 0;
+}
+
+static void emac_rgmii_down_nop(struct emac_adapter *adpt)
+{
+}
+
+static void emac_rgmii_tx_clk_set_rate(struct emac_adapter *adpt)
 {
 	switch (adpt->hw.link_speed) {
 	case EMAC_LINK_SPEED_1GB_FULL:
@@ -167,16 +176,17 @@ void emac_rgmii_tx_clk_set_rate(struct emac_adapter *adpt)
 	}
 }
 
-void emac_rgmii_periodic_nop(struct emac_adapter *adpt)
+static void emac_rgmii_periodic_nop(struct emac_adapter *adpt)
 {
 }
 
 struct emac_phy_ops emac_rgmii_ops = {
+	.config			= emac_rgmii_config,
+	.up			= emac_rgmii_up_nop,
+	.down			= emac_rgmii_down_nop,
 	.init			= emac_rgmii_init,
 	.reset			= emac_rgmii_reset_nop,
 	.init_ephy		= emac_rgmii_init_ephy,
-	.irq_enable		= emac_rgmii_irq_enable_nop,
-	.irq_disable		= emac_rgmii_irq_disable_nop,
 	.link_setup_no_ephy	= emac_rgmii_link_setup_no_ephy,
 	.link_check_no_ephy	= emac_rgmii_link_check_no_ephy,
 	.tx_clk_set_rate	= emac_rgmii_tx_clk_set_rate,

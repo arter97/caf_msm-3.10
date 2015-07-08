@@ -17,6 +17,8 @@
 #include <linux/if_vlan.h>
 #include <linux/jiffies.h>
 #include <linux/phy.h>
+#include <linux/of.h>
+#include <linux/of_net.h>
 
 #include "emac_hw.h"
 #include "emac_ptp.h"
@@ -259,15 +261,42 @@ int emac_hw_ack_phy_intr(struct emac_hw *hw)
 	return 0;
 }
 
-/* initialize phy */
-int emac_hw_init_phy(struct emac_hw *hw)
+/* read phy configuration and initialize it */
+int emac_hw_config_phy(struct platform_device *pdev, struct emac_adapter *adpt)
 {
-	struct emac_adapter *adpt = emac_hw_get_adap(hw);
+	int ret;
 
-	spin_lock_init(&hw->mdio_lock);
+	/* get no_ephy attribute */
+	adpt->no_ephy = of_property_read_bool(pdev->dev.of_node,
+					      "qcom,no-external-phy");
 
-	hw->autoneg = true;
-	hw->autoneg_advertised = EMAC_LINK_SPEED_DEFAULT;
+	/* get phy address on MDIO bus */
+	if (!adpt->no_ephy) {
+		ret = of_property_read_u32(pdev->dev.of_node, "phy-addr",
+					   &adpt->hw.phy_addr);
+		if (ret)
+			return ret;
+	}
+
+	/* get phy mode */
+	ret = of_get_phy_mode(pdev->dev.of_node);
+	if (ret < 0)
+		return ret;
+
+	adpt->hw.ops = (adpt->phy_mode == PHY_INTERFACE_MODE_RGMII) ?
+		       emac_rgmii_ops : emac_sgmii_v1_ops;
+
+	if (adpt->no_ephy)
+		adpt->no_mdio_gpio = true;
+
+	ret = adpt->hw.ops.config(pdev, adpt);
+	if (ret)
+		return ret;
+
+	spin_lock_init(&adpt->hw.mdio_lock);
+
+	adpt->hw.autoneg = true;
+	adpt->hw.autoneg_advertised = EMAC_LINK_SPEED_DEFAULT;
 
 	return adpt->hw.ops.init(adpt);
 }
@@ -492,8 +521,6 @@ void emac_hw_enable_intr(struct emac_hw *hw)
 		emac_reg_w32(hw, EMAC, irq_cmn->mask_reg, irq->mask);
 	}
 
-	hw->ops.irq_enable(adpt);
-
 	if (adpt->tstamp_en)
 		emac_reg_w32(hw, EMAC_1588, EMAC_P1588_PTP_EXPANDED_INT_MASK,
 			     hw->ptp_intr_mask);
@@ -514,8 +541,6 @@ void emac_hw_disable_intr(struct emac_hw *hw)
 	if (adpt->tstamp_en)
 		emac_reg_w32(hw, EMAC_1588, EMAC_P1588_PTP_EXPANDED_INT_MASK,
 			     0);
-
-	hw->ops.irq_disable(adpt);
 
 	wmb();
 }
