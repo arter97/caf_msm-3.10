@@ -20,6 +20,7 @@
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <linux/qcom_iommu.h>
 
 static struct dentry *debugfs_top_dir;
 
@@ -327,12 +328,7 @@ static const struct file_operations iommu_debug_device_fops = {
 	.release = single_release,
 };
 
-/*
- * The following will only work for drivers that implement the generic
- * device tree bindings described in
- * Documentation/devicetree/bindings/iommu/iommu.txt
- */
-static int snarf_iommu_devices(struct device *dev, void *ignored)
+static int snarf_iommu_device(struct device *dev, const char *name)
 {
 	struct iommu_debug_device *ddev;
 	struct dentry *dir, *profiling_dentry;
@@ -343,18 +339,21 @@ static int snarf_iommu_devices(struct device *dev, void *ignored)
 	ddev = kzalloc(sizeof(*ddev), GFP_KERNEL);
 	if (!ddev)
 		return -ENODEV;
+
 	ddev->dev = dev;
-	dir = debugfs_create_dir(dev_name(dev), debugfs_tests_dir);
+
+	dir = debugfs_create_dir(name, debugfs_tests_dir);
 	if (!dir) {
 		pr_err("Couldn't create iommu/devices/%s debugfs dir\n",
-		       dev_name(dev));
+		       name);
 		goto err;
 	}
+
 	profiling_dentry = debugfs_create_file("profiling", S_IRUSR, dir, ddev,
 					       &iommu_debug_device_fops);
 	if (!profiling_dentry) {
 		pr_err("Couldn't create iommu/devices/%s/profiling debugfs file\n",
-		       dev_name(dev));
+		       name);
 		goto err_rmdir;
 	}
 
@@ -368,6 +367,33 @@ err:
 	return 0;
 }
 
+#ifdef CONFIG_MSM_IOMMU_V1
+static int iommu_debug_populate_devices(void)
+{
+	return snarf_iommu_device(msm_iommu_get_ctx("gfx3d_priv"),
+					"gfx3d_priv");
+}
+#else
+/*
+ * The following will only work for drivers that implement the generic
+ * device tree bindings described in
+ * Documentation/devicetree/bindings/iommu/iommu.txt
+ */
+static int pass_iommu_devices(struct device *dev, void *ignored)
+{
+	if (!of_find_property(dev->of_node, "iommus", NULL))
+		return 0;
+
+	return snarf_iommu_device(dev, dev_name(dev));
+}
+
+static int iommu_debug_populate_devices(void)
+{
+	return bus_for_each_dev(&platform_bus_type, NULL, NULL,
+				pass_iommu_devices);
+}
+#endif
+
 static int iommu_debug_init_tests(void)
 {
 	debugfs_tests_dir = debugfs_create_dir("tests",
@@ -377,8 +403,7 @@ static int iommu_debug_init_tests(void)
 		return -ENODEV;
 	}
 
-	return bus_for_each_dev(&platform_bus_type, NULL, NULL,
-				snarf_iommu_devices);
+	return iommu_debug_populate_devices();
 }
 #else
 static inline int iommu_debug_init_tests(void) { return 0; }
