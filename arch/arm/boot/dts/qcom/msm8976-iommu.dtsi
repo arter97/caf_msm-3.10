@@ -33,6 +33,7 @@
 			interrupts = <0 240 0>;
 			qcom,iommu-ctx-sids = <0x0>;
 			qcom,iommu-sid-mask = <0x400>;
+			qcom,prefetch-depth = <0x3>;
 			label = "gfx3d_user";
 		};
 
