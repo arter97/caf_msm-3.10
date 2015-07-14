@@ -35,7 +35,8 @@ Required properties:
 			'ZZZ' can be c1, c0 or cci depending on whether the table
 			is for the big cluster, little cluster or cci.
 Optional Properties:
-- qcom,pboost-ratio:	List of L values for combination of cores.
+- qcom,pboost-ratioX-vY: List of L values for combination of cores for a
+			 particular speed-bin.
 
 Example:
         clock_cpu: qcom,cpu-clock-8976@b016000 {
