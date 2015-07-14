@@ -188,6 +188,7 @@ struct msm_cpp_timer_t {
 };
 
 struct msm_cpp_timer_t cpp_timer;
+static void msm_cpp_set_vbif_reg_values(struct cpp_device *cpp_dev);
 
 static int msm_cpp_init_bandwidth_mgr(struct cpp_device *cpp_dev)
 {
@@ -1070,6 +1071,7 @@ static int cpp_init_hardware(struct cpp_device *cpp_dev)
 			MSM_CPP_MICRO_IRQGEN_CLR);
 	}
 
+	msm_cpp_set_vbif_reg_values(cpp_dev);
 	return rc;
 req_irq_fail:
 	iounmap(cpp_dev->cpp_hw_base);
@@ -3506,6 +3508,44 @@ struct v4l2_file_operations msm_cpp_v4l2_subdev_fops = {
 	.compat_ioctl32 = msm_cpp_subdev_fops_compat_ioctl,
 #endif
 };
+
+static void msm_cpp_set_vbif_reg_values(struct cpp_device *cpp_dev)
+{
+	int i, reg, val;
+	const u32 *vbif_qos_arr = NULL;
+	int vbif_qos_len = 0;
+	struct platform_device *pdev;
+
+	pr_debug("%s\n", __func__);
+	if (cpp_dev != NULL) {
+		pdev = cpp_dev->pdev;
+		vbif_qos_arr = of_get_property(pdev->dev.of_node,
+					       "qcom,vbif-qos-setting",
+						&vbif_qos_len);
+		if (!vbif_qos_arr || (vbif_qos_len & 1)) {
+			pr_debug("%s: vbif qos setting not found\n",
+				 __func__);
+			vbif_qos_len = 0;
+		}
+		vbif_qos_len /= sizeof(u32);
+		pr_debug("%s: vbif_qos_len %d\n", __func__, vbif_qos_len);
+		if (cpp_dev->vbif_base) {
+			for (i = 0; i < vbif_qos_len; i = i+2) {
+				reg = be32_to_cpu(vbif_qos_arr[i]);
+				val = be32_to_cpu(vbif_qos_arr[i+1]);
+				pr_debug("%s: DT: offset %x, val %x\n",
+					 __func__, reg, val);
+				pr_debug("%s: before write to register 0x%x\n",
+					 __func__, msm_camera_io_r(
+					 cpp_dev->vbif_base + reg));
+				msm_camera_io_w(val, cpp_dev->vbif_base + reg);
+				pr_debug("%s: after write to register 0x%x\n",
+					 __func__, msm_camera_io_r(
+					 cpp_dev->vbif_base + reg));
+			}
+		}
+	}
+}
 
 static int cpp_probe(struct platform_device *pdev)
 {

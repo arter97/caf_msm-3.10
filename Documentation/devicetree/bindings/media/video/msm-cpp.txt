@@ -52,6 +52,14 @@ Optional properties of the child node:
 - qcom,ref-we-mmu-pf-ptr-off =  offset from plane base to reference write engine
    mmu prefetch address min location in payload.
 
+Optional properties:
+- mmagic-vdd-supply: phandle to GDSC regulator controlling mmagic.
+- camss-vdd-supply: phandle to GDSC regulator controlling camss.
+- qcom,bus-master: Flag for presence of CPP bus master. It has to be set only for
+  platforms that support such feature.
+- qcom,vbif-qos-setting: The offset and value for vbif core qos registers.
+  The first entry is register offset and second entry is register value.
+
 Example:
 
 	qcom,cpp@fda04000 {
@@ -76,7 +84,11 @@ Example:
 			"camss_vfe_cpp_clk","micro_iface_clk", "camss_ahb_clk";
 		qcom,clock-rates = <0 465000000 0 0 465000000 0 0>;
 		qcom,min-clock-rate = <465000000>;
-		bus_master = <0>;
+		qcom,bus-master = <1>;
+		qcom,vbif-qos-setting = <0x20 0x10000000>,
+			<0x24 0x10000000>,
+			<0x28 0x10000000>,
+			<0x2C 0x10000000>;
 		qcom,cpp-fw-payload-info {
 			qcom,stripe-base = <553>;
 			qcom,plane-base = <481>;
