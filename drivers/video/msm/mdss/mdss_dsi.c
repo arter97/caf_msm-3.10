@@ -355,8 +355,10 @@ static int mdss_dsi_panel_power_ctrl(struct mdss_panel_data *pdata,
 	 * If a dynamic mode switch is pending, the regulators should not
 	 * be turned off or on.
 	 */
-	if (pdata->panel_info.dynamic_switch_pending)
+	if (pdata->panel_info.dynamic_switch_pending) {
+		pinfo->panel_power_state = power_state;
 		return 0;
+	}
 
 	switch (power_state) {
 	case MDSS_PANEL_POWER_OFF:
