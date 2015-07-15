@@ -4887,7 +4887,9 @@ static noinline void __schedule_bug(struct task_struct *prev)
 
 	printk(KERN_ERR "BUG: scheduling while atomic: %s/%d/0x%08x\n",
 		prev->comm, prev->pid, preempt_count());
-
+#ifdef CONFIG_PANIC_ON_SCHED_BUG
+	BUG();
+#endif
 	debug_show_held_locks(prev);
 	print_modules();
 	if (irqs_disabled())
@@ -9714,6 +9716,9 @@ void __might_sleep(const char *file, int line, int preempt_offset)
 	debug_show_held_locks(current);
 	if (irqs_disabled())
 		print_irqtrace_events(current);
+#ifdef CONFIG_PANIC_ON_SCHED_BUG
+	BUG();
+#endif
 	dump_stack();
 }
 EXPORT_SYMBOL(__might_sleep);
