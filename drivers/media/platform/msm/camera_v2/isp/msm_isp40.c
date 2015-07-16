@@ -37,7 +37,7 @@
 #define VFE40_UB_SIZE_8952 2048 /* 2048 * 128 bits = 32KB */
 #define VFE40_UB_SIZE_8916 3072 /* 3072 * 128 bits = 48KB */
 #define VFE40_EQUAL_SLICE_UB 190 /* (UB_SIZE - STATS SIZE)/6 */
-#define VFE40_EQUAL_SLICE_UB_8916 276
+#define VFE40_EQUAL_SLICE_UB_8916 236
 #define VFE40_TOTAL_WM_UB 1144 /* UB_SIZE - STATS SIZE */
 #define VFE40_TOTAL_WM_UB_8916 1656
 #define VFE40_WM_BASE(idx) (0x6C + 0x24 * idx)
@@ -444,11 +444,10 @@ static void msm_vfe40_process_input_irq(struct vfe_device *vfe_dev,
 	if (!(irq_status0 & 0x1000003))
 		return;
 
-	if (irq_status0 & 0x1)
-		vfe_dev->axi_data.src_info[VFE_PIX_0].camif_sof_frame_id++;
-
-	if (vfe_dev->axi_data.src_info[VFE_PIX_0].camif_sof_frame_id == 0)
-		vfe_dev->axi_data.src_info[VFE_PIX_0].camif_sof_frame_id = 1;
+	if (irq_status0 & (1 << 0)) {
+		ISP_DBG("%s: SOF IRQ\n", __func__);
+		msm_isp_increment_frame_id(vfe_dev, VFE_PIX_0, ts);
+	}
 
 	if (irq_status0 & (1 << 24)) {
 		ISP_DBG("%s: Fetch Engine Read IRQ\n", __func__);
@@ -669,11 +668,11 @@ static void msm_vfe40_process_reg_update(struct vfe_device *vfe_dev,
 	for (i = VFE_PIX_0; i <= VFE_RAW_2; i++) {
 		if (shift_irq & BIT(i)) {
 			reg_updated |= BIT(i);
-			ISP_DBG("%s update_mask %x\n", __func__,
+			ISP_DBG("%s REG_UPDATE IRQ %x\n", __func__,
 				(uint32_t)BIT(i));
 			switch (i) {
 			case VFE_PIX_0:
-				for (j = 0; j < MAX_NUM_STREAM; j++) {
+				for (j = 0; j < VFE_AXI_SRC_MAX; j++) {
 					stream_info =
 						&vfe_dev->axi_data.
 							stream_info[j];
@@ -691,6 +690,7 @@ static void msm_vfe40_process_reg_update(struct vfe_device *vfe_dev,
 			case VFE_RAW_0:
 			case VFE_RAW_1:
 			case VFE_RAW_2:
+				msm_isp_increment_frame_id(vfe_dev, i, ts);
 				msm_isp_notify(vfe_dev, ISP_EVENT_SOF, i, ts);
 				msm_isp_update_framedrop_reg(vfe_dev, i);
 				/*
@@ -1663,7 +1663,8 @@ static void msm_vfe40_cfg_axi_ub_equal_slicing(
 	uint32_t equal_slice_ub;
 	struct msm_vfe_axi_shared_data *axi_data = &vfe_dev->axi_data;
 
-	if (vfe_dev->vfe_hw_version == VFE40_8916_VERSION) {
+	if (vfe_dev->vfe_hw_version == VFE40_8916_VERSION ||
+		vfe_dev->vfe_hw_version == VFE40_8952_VERSION) {
 		vfe_dev->ub_info->wm_ub = VFE40_EQUAL_SLICE_UB_8916;
 		equal_slice_ub = VFE40_EQUAL_SLICE_UB_8916;
 	} else {
@@ -1687,6 +1688,8 @@ static void msm_vfe40_cfg_axi_ub(struct vfe_device *vfe_dev)
 	struct msm_vfe_axi_shared_data *axi_data = &vfe_dev->axi_data;
 	axi_data->wm_ub_cfg_policy =
 		(enum msm_wm_ub_cfg_type)vfe_dev->vfe_ub_policy;
+	ISP_DBG("%s: ub_policy %d\n", __func__, axi_data->wm_ub_cfg_policy);
+	axi_data->wm_ub_cfg_policy = MSM_WM_UB_EQUAL_SLICING;
 	if (axi_data->wm_ub_cfg_policy == MSM_WM_UB_EQUAL_SLICING) {
 		vfe_dev->ub_info->policy = MSM_WM_UB_EQUAL_SLICING;
 		msm_vfe40_cfg_axi_ub_equal_slicing(vfe_dev);

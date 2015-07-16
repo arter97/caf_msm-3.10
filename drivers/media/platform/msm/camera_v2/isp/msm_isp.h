@@ -66,10 +66,9 @@ struct msm_vfe_stats_stream;
 
 #define VFE_SD_HW_MAX VFE_SD_COMMON
 
-#define DUAL_CAM_NUM_SLAVE_MAX 1
-
 struct msm_vfe_sof_info {
-	struct timeval timestamp;
+	uint32_t timestamp_ms;
+	uint32_t mono_timestamp_ms;
 	uint32_t frame_id;
 };
 
@@ -398,7 +397,6 @@ struct msm_vfe_src_info {
 	uint32_t sof_counter_step;
 	enum msm_vfe_dual_hw_type dual_hw_type;
 	struct msm_vfe_dual_hw_ms_info dual_hw_ms_info;
-	struct timeval time_stamp;
 };
 
 struct msm_vfe_fetch_engine_info {
@@ -507,7 +505,7 @@ struct msm_vfe_error_info {
 	uint32_t error_mask1;
 	uint32_t violation_status;
 	uint32_t camif_status;
-	uint8_t stream_framedrop_count[MAX_NUM_STREAM];
+	uint8_t stream_framedrop_count[VFE_AXI_SRC_MAX];
 	uint8_t stats_framedrop_count[MSM_ISP_STATS_MAX];
 	uint32_t info_dump_frame_count;
 	uint32_t error_count;
@@ -588,11 +586,15 @@ struct msm_vfe_hw_init_parms {
 };
 
 struct msm_vfe_common_dev_data {
+	spinlock_t common_dev_data_lock;
 	enum msm_vfe_dual_hw_type dual_hw_type;
 	struct msm_vfe_sof_info master_sof_info;
+	uint8_t master_active;
+	uint32_t sof_delta_threshold; /* Updated by Master */
 	uint32_t num_slave;
-	uint32_t free_slave_mask;
-	struct msm_vfe_sof_info slave_sof_info[DUAL_CAM_NUM_SLAVE_MAX];
+	uint32_t reserved_slave_mask;
+	uint32_t slave_active_mask;
+	struct msm_vfe_sof_info slave_sof_info[MS_NUM_SLAVE_MAX];
 };
 
 struct msm_vfe_common_subdev {
