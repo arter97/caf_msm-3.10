@@ -32,11 +32,14 @@
 #include "emac.h"
 #include "emac_hw.h"
 #include "emac_ptp.h"
+#include "emac_rgmii.h"
+#include "emac_sgmii_v1.h"
 
 #define DRV_VERSION "1.1.0.0"
 
-char emac_drv_name[] = "msm_emac";
-const char emac_drv_description[] = "Qualcomm EMAC Ethernet Driver";
+char emac_drv_name[] = "qcom_emac";
+const char emac_drv_description[] =
+			      "Qualcomm Technologies Inc EMAC Ethernet Driver";
 const char emac_drv_version[] = DRV_VERSION;
 
 #define EMAC_MSG_DEFAULT (NETIF_MSG_DRV | NETIF_MSG_PROBE | NETIF_MSG_LINK |  \
@@ -80,7 +83,6 @@ module_param_named(intr_ext, msm_emac_intr_ext, int,
 		   S_IRUGO | S_IWUSR | S_IWGRP);
 
 static irqreturn_t emac_isr(int irq, void *data);
-static irqreturn_t emac_sgmii_isr(int irq, void *data);
 static irqreturn_t emac_wol_isr(int irq, void *data);
 
 /* EMAC HW has an issue with interrupt assignment because of which receive queue
@@ -102,7 +104,7 @@ const struct emac_irq_common emac_irq_cmn_tbl[EMAC_IRQ_CNT] = {
 		RX_PKT_INT3,	0},
 	{ "emac_wol_irq"  , emac_wol_isr,            0,              0,
 		0,		0},
-	{ "emac_sgmii_irq", emac_sgmii_isr, 0, EMAC_SGMII_PHY_INTERRUPT_MASK,
+	{ "emac_sgmii_irq", emac_sgmii_v1_isr, 0, EMAC_SGMII_PHY_INTERRUPT_MASK,
 		SGMII_ISR_MASK, IRQF_TRIGGER_RISING},
 };
 
@@ -129,13 +131,13 @@ static int emac_clk_prepare_enable(struct emac_adapter *adpt,
 	return ret;
 }
 
-static int emac_clk_set_rate(struct emac_adapter *adpt, enum emac_clk_id id,
-			     enum emac_clk_rate rate)
+int emac_clk_set_rate(struct emac_adapter *adpt, enum emac_clk_id id,
+		      enum emac_clk_rate rate)
 {
 	int ret = clk_set_rate(adpt->clk[id].clk, rate);
 	if (ret)
-		emac_err(adpt, "error:%d on clk_set_rate(%s)\n", ret,
-			 emac_clk_name[id]);
+		emac_err(adpt, "error:%d on clk_set_rate(%s, %d)\n", ret,
+			 emac_clk_name[id], rate);
 
 	return ret;
 }
@@ -154,17 +156,14 @@ void emac_reinit_locked(struct emac_adapter *adpt)
 	}
 
 	emac_down(adpt, EMAC_HW_CTRL_RESET_MAC);
-	if (adpt->phy_mode == PHY_INTERFACE_MODE_SGMII) {
-		emac_clk_set_rate(adpt, EMAC_CLK_125M, EMC_CLK_RATE_19_2MHz);
-		emac_hw_reset_sgmii(&adpt->hw);
-		emac_clk_set_rate(adpt, EMAC_CLK_125M, EMC_CLK_RATE_125MHz);
-	}
+
+	adpt->hw.ops.reset(adpt);
 	emac_up(adpt);
 
 	CLR_FLAG(adpt, ADPT_STATE_RESETTING);
 }
 
-static void emac_task_schedule(struct emac_adapter *adpt)
+void emac_task_schedule(struct emac_adapter *adpt)
 {
 	if (!TEST_FLAG(adpt, ADPT_STATE_DOWN) &&
 	    !TEST_FLAG(adpt, ADPT_STATE_WATCH_DOG)) {
@@ -173,7 +172,7 @@ static void emac_task_schedule(struct emac_adapter *adpt)
 	}
 }
 
-static void emac_check_lsc(struct emac_adapter *adpt)
+void emac_check_lsc(struct emac_adapter *adpt)
 {
 	SET_FLAG(adpt, ADPT_TASK_LSC_REQ);
 	adpt->link_jiffies = jiffies + EMAC_TRY_LINK_TIMEOUT;
@@ -1099,45 +1098,6 @@ static irqreturn_t emac_isr(int _irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static irqreturn_t emac_sgmii_isr(int _irq, void *data)
-{
-	struct emac_irq_per_dev *irq = data;
-	struct emac_adapter *adpt = emac_irq_get_adpt(data);
-	struct emac_hw *hw = &adpt->hw;
-	u32 status;
-
-	emac_dbg(adpt, intr, "receive sgmii interrupt\n");
-
-	do {
-		status = emac_reg_r32(hw, EMAC_SGMII_PHY,
-				      EMAC_SGMII_PHY_INTERRUPT_STATUS);
-		status &= irq->mask;
-		if (!status)
-			break;
-
-		if (status & SGMII_PHY_INTERRUPT_ERR) {
-			SET_FLAG(adpt, ADPT_TASK_CHK_SGMII_REQ);
-			if (!TEST_FLAG(adpt, ADPT_STATE_DOWN))
-				emac_task_schedule(adpt);
-		}
-
-		if (status & SGMII_ISR_AN_MASK)
-			emac_check_lsc(adpt);
-
-		if (emac_hw_clear_sgmii_intr_status(hw, status) != 0) {
-			emac_warn(adpt, intr,
-				  "failed to clear sgmii intr, status=0x%x\n",
-				  status);
-			/* reset */
-			SET_FLAG(adpt, ADPT_TASK_REINIT_REQ);
-			emac_task_schedule(adpt);
-			break;
-		}
-	} while (1);
-
-	return IRQ_HANDLED;
-}
-
 /* Enable interrupts */
 static inline void emac_enable_intr(struct emac_adapter *adpt)
 {
@@ -2023,25 +1983,7 @@ static void emac_link_task_routine(struct emac_adapter *adpt)
 		pm_runtime_get_sync(netdev->dev.parent);
 		emac_info(adpt, timer, "NIC Link is Up %s\n", link_desc);
 
-		/* for rgmii phy, set tx clk rate based on link speed */
-		if (adpt->phy_mode == PHY_INTERFACE_MODE_RGMII) {
-			switch (hw->link_speed) {
-			case EMAC_LINK_SPEED_1GB_FULL:
-				clk_set_rate(adpt->clk[EMAC_CLK_TX].clk,
-					     EMC_CLK_RATE_125MHz);
-				break;
-			case EMAC_LINK_SPEED_100_FULL:
-			case EMAC_LINK_SPEED_100_HALF:
-				clk_set_rate(adpt->clk[EMAC_CLK_TX].clk,
-					     EMC_CLK_RATE_25MHz);
-				break;
-			case EMAC_LINK_SPEED_10_FULL:
-			case EMAC_LINK_SPEED_10_HALF:
-				clk_set_rate(adpt->clk[EMAC_CLK_TX].clk,
-					     EMC_CLK_RATE_2_5MHz);
-				break;
-			}
-		}
+		hw->ops.tx_clk_set_rate(adpt);
 
 		emac_hw_start_mac(hw);
 		netif_carrier_on(netdev);
@@ -2070,32 +2012,6 @@ link_task_done:
 	CLR_FLAG(adpt, ADPT_STATE_RESETTING);
 }
 
-/* Check SGMII for error */
-static void emac_sgmii_task_routine(struct emac_adapter *adpt)
-{
-	struct emac_hw *hw = &adpt->hw;
-
-	if (!TEST_FLAG(adpt, ADPT_TASK_CHK_SGMII_REQ))
-		return;
-	CLR_FLAG(adpt, ADPT_TASK_CHK_SGMII_REQ);
-
-	/* ensure that no reset is in progess while link task is running */
-	while (TEST_N_SET_FLAG(adpt, ADPT_STATE_RESETTING))
-		msleep(20); /* Reset might take few 10s of ms */
-
-	if (TEST_FLAG(adpt, ADPT_STATE_DOWN))
-		goto sgmii_task_done;
-
-	if (emac_reg_r32(hw, EMAC_SGMII_PHY, EMAC_SGMII_PHY_RX_CHK_STATUS)
-	    & 0x40)
-		goto sgmii_task_done;
-
-	emac_err(adpt, "SGMII CDR not locked\n");
-
-sgmii_task_done:
-	CLR_FLAG(adpt, ADPT_STATE_RESETTING);
-}
-
 /* Watchdog task routine */
 static void emac_task_routine(struct work_struct *work)
 {
@@ -2109,7 +2025,7 @@ static void emac_task_routine(struct work_struct *work)
 
 	emac_link_task_routine(adpt);
 
-	emac_sgmii_task_routine(adpt);
+	adpt->hw.ops.periodic_task(adpt);
 
 	CLR_FLAG(adpt, ADPT_STATE_WATCH_DOG);
 }
@@ -2474,7 +2390,7 @@ static int emac_init_clks(struct emac_adapter *adpt)
 	if (retval)
 		return retval;
 
-	retval = emac_clk_set_rate(adpt, EMAC_CLK_125M, EMC_CLK_RATE_19_2MHz);
+	retval = emac_clk_set_rate(adpt, EMAC_CLK_125M, EMC_CLK_RATE_19_2MHZ);
 	if (retval)
 		return retval;
 
@@ -2488,7 +2404,7 @@ static int emac_enable_clks(struct emac_adapter *adpt)
 {
 	int retval;
 
-	retval = emac_clk_set_rate(adpt, EMAC_CLK_TX, EMC_CLK_RATE_125MHz);
+	retval = emac_clk_set_rate(adpt, EMAC_CLK_TX, EMC_CLK_RATE_125MHZ);
 	if (retval)
 		return retval;
 
@@ -2496,11 +2412,11 @@ static int emac_enable_clks(struct emac_adapter *adpt)
 	if (retval)
 		return retval;
 
-	retval = emac_clk_set_rate(adpt, EMAC_CLK_125M, EMC_CLK_RATE_125MHz);
+	retval = emac_clk_set_rate(adpt, EMAC_CLK_125M, EMC_CLK_RATE_125MHZ);
 	if (retval)
 		return retval;
 
-	retval = emac_clk_set_rate(adpt, EMAC_CLK_SYS_25M, EMC_CLK_RATE_25MHz);
+	retval = emac_clk_set_rate(adpt, EMAC_CLK_SYS_25M, EMC_CLK_RATE_25MHZ);
 	if (retval)
 		return retval;
 
@@ -2572,6 +2488,8 @@ static int emac_get_resources(struct platform_device *pdev,
 		return retval;
 
 	adpt->phy_mode = retval;
+	adpt->hw.ops = (adpt->phy_mode == PHY_INTERFACE_MODE_RGMII) ?
+		       emac_rgmii_ops : emac_sgmii_v1_ops;
 
 	/* For rgmii phy, the mdio lines are dedicated pins */
 	if (adpt->no_ephy || (adpt->phy_mode == PHY_INTERFACE_MODE_RGMII))
