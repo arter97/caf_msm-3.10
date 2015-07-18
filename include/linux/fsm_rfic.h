@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -160,6 +160,12 @@ struct rfic_wfm_param {
 #define BBIF_IOCTL_SET_ADC_CLK \
 	_IOC(_IOC_WRITE, RFIC_IOCTL_MAGIC, 0x44, \
 		sizeof(unsigned int *))
+#define BBIF_IOCTL_CAL_GET \
+	_IOC(_IOC_READ, RFIC_IOCTL_MAGIC, 0x45, \
+		sizeof(struct bbif_param *))
+#define BBIF_IOCTL_CAL_SET \
+	_IOC(_IOC_WRITE, RFIC_IOCTL_MAGIC, 0x46, \
+		sizeof(struct bbif_param *))
 #define RFIC_IOCTL_SET_LDO \
 	_IOC(_IOC_WRITE, RFIC_IOCTL_MAGIC, 0x50, \
 		sizeof(unsigned int *))
