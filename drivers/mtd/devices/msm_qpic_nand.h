@@ -200,18 +200,6 @@
 #define CMD_INT_UNLCK	(CMD | INT_UNLCK)
 #define NWD		SPS_IOVEC_FLAG_NWD
 
-#define msm_nand_sps_get_iovec(pipe, indx, cnt, ret, label, iovec)	\
-	do {								\
-		do {							\
-			ret = sps_get_iovec((pipe), (iovec));		\
-		} while (((iovec)->addr == 0x0) && ((iovec)->size == 0x0));\
-		if (ret) {						\
-			pr_err("sps_get_iovec failed for pipe %d (ret: %d)\n",\
-					indx, ret);			\
-			goto label;					\
-		}							\
-	} while (--(cnt))
-
 /* Structure that defines a NAND SPS command element */
 struct msm_nand_sps_cmd {
 	struct sps_command_element ce;
