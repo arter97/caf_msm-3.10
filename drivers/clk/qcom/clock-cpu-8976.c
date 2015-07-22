@@ -1217,14 +1217,83 @@ static const struct file_operations perf_boost_debug_fops = {
 	.open   = simple_open,
 };
 
+static ssize_t perf_enable_get(struct file *file, char __user *buf,
+					size_t count, loff_t *ppos)
+{
+	struct clk *clk;
+	struct cpu_clk_8976 *c;
+	int rc = 0, output = 0;
+
+	if (IS_ERR(file) || file == NULL) {
+		pr_err("Function Input Error %ld\n", PTR_ERR(file));
+		return -ENOMEM;
+	}
+
+	clk = file->private_data;
+	c = to_cpu_clk_8976(clk);
+
+	mutex_lock(&debug_buf_mutex);
+	output = snprintf(debug_buf, MAX_DEBUG_BUF_LEN-1, "Enable: %d\n",
+			c->boost.enabled);
+	rc = simple_read_from_buffer((void __user *) buf, output, ppos,
+					(void *) debug_buf, output);
+	mutex_unlock(&debug_buf_mutex);
+
+	return rc;
+}
+
+static ssize_t perf_enable_set(struct file *file, const char __user *buf,
+					size_t count, loff_t *ppos)
+{
+	int filled;
+	struct clk *clk;
+	struct cpu_clk_8976 *c;
+	unsigned int enable;
+
+	if (IS_ERR(file) || file == NULL) {
+		pr_err("Function Input Error %ld\n", PTR_ERR(file));
+		return -ENOMEM;
+	}
+
+	clk = file->private_data;
+	c = to_cpu_clk_8976(clk);
+
+	if (count < MAX_DEBUG_BUF_LEN) {
+		mutex_lock(&debug_buf_mutex);
+		if (copy_from_user(debug_buf, (void __user *) buf, count)) {
+			mutex_unlock(&debug_buf_mutex);
+			return -EFAULT;
+		}
+
+		debug_buf[count] = '\0';
+		filled = kstrtouint(debug_buf, 10, &enable);
+		mutex_unlock(&debug_buf_mutex);
+
+		if (filled < 0)
+			pr_err("Invalid range\n");
+		if (enable == 0)
+			c->boost.enabled = false;
+		else if (enable == 1)
+			c->boost.enabled = true;
+	}
+
+	return count;
+}
+static const struct file_operations perf_boost_enable_fops = {
+	.read	= perf_enable_get,
+	.write  = perf_enable_set,
+	.open   = simple_open,
+};
+
 static int perf_frequency_boost_init(struct platform_device *pdev,
-			struct clk *clk)
+			struct clk *clk, int bin, int version)
 {
 	struct cpu_clk_8976 *c = to_cpu_clk_8976(clk);
 	struct resource *res;
 	struct dentry *debugfs_base;
 	u32 regval;
 	int rc = 0;
+	char prop_name[] = "qcom,pboost-ratioX-vX";
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "perf_base");
 	if (!res) {
@@ -1239,7 +1308,10 @@ static int perf_frequency_boost_init(struct platform_device *pdev,
 		return -ENOMEM;
 	}
 
-	rc = parse_dt_pboost(pdev, "qcom,pboost-ratio", clk);
+	snprintf(prop_name, ARRAY_SIZE(prop_name),
+					"qcom,pboost-ratio%d-v%d",
+						bin, version);
+	rc = parse_dt_pboost(pdev, prop_name, clk);
 	if (rc)
 		return rc;
 
@@ -1259,6 +1331,9 @@ static int perf_frequency_boost_init(struct platform_device *pdev,
 			goto debugfs_fail;
 		if (!debugfs_create_file("status", S_IRUGO, debugfs_base,
 					clk, &perf_boost_debug_fops))
+			goto debugfs_fail;
+		if (!debugfs_create_file("enable", S_IRUGO, debugfs_base,
+					clk, &perf_boost_enable_fops))
 			goto debugfs_fail;
 	} else {
 		dev_err(&pdev->dev, "Failed to create debugfs entry\n");
@@ -1376,7 +1451,8 @@ static int clock_cpu_probe(struct platform_device *pdev)
 
 	for_each_online_cpu(cpu) {
 		if (logical_cpu_to_clk(cpu) == &a72_clk.c) {
-			rc = perf_frequency_boost_init(pdev, &a72_clk.c);
+			rc = perf_frequency_boost_init(pdev, &a72_clk.c,
+					speed_bin, version);
 			if (rc)
 				dev_err(&pdev->dev,
 					"Failed to initialize Perf Boost\n");
