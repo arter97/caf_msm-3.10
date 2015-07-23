@@ -272,7 +272,7 @@ static void soc_init_codec_debugfs(struct snd_soc_codec *codec)
 	codec->debugfs_codec_root = debugfs_create_dir(codec->name,
 						       debugfs_card_root);
 	if (!codec->debugfs_codec_root) {
-		dev_warn(codec->dev, "ASoC: Failed to create codec debugfs"
+		dev_dbg(codec->dev, "ASoC: Failed to create codec debugfs"
 			" directory\n");
 		return;
 	}
@@ -286,7 +286,7 @@ static void soc_init_codec_debugfs(struct snd_soc_codec *codec)
 						 codec->debugfs_codec_root,
 						 codec, &codec_reg_fops);
 	if (!codec->debugfs_reg)
-		dev_warn(codec->dev, "ASoC: Failed to create codec register"
+		dev_dbg(codec->dev, "ASoC: Failed to create codec register"
 			" debugfs file\n");
 
 	snd_soc_dapm_debugfs_init(&codec->dapm, codec->debugfs_codec_root);
@@ -304,7 +304,7 @@ static void soc_init_platform_debugfs(struct snd_soc_platform *platform)
 	platform->debugfs_platform_root = debugfs_create_dir(platform->name,
 						       debugfs_card_root);
 	if (!platform->debugfs_platform_root) {
-		dev_warn(platform->dev,
+		dev_dbg(platform->dev,
 			"ASoC: Failed to create platform debugfs directory\n");
 		return;
 	}
