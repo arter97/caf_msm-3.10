@@ -25,6 +25,10 @@ Optional properties:
 - qcom,secure-context : Property to distinguish between secure and
   non secure context banks
 
+Optional properties:
+- qcom,scratch-buf-support : Enables iommu scratch buffer support in
+  that context bank.
+
 Example:
 qcom,cam_smmu {
 	compatible = "qcom,msm-cam-smmu";
@@ -32,5 +36,6 @@ qcom,cam_smmu {
 		compatible = "qcom,msm-cam-smmu-cb";
 		iommus = <&vfe_iommu 0>;
 		label = "vfe";
+		qcom,scratch-buf-support;
 	}
 }
