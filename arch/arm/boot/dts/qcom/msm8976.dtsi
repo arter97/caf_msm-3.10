@@ -2374,6 +2374,12 @@
 		linux,contiguous-region = <&modem_mem>;
 	};
 
+	cpu-pmu {
+		compatible = "arm,armv8-pmuv3";
+		qcom,irq-is-percpu;
+		interrupts = <1 7 0xff00>;
+	};
+
 	jtag_fuse: jtagfuse@a601c {
 		compatible = "qcom,jtag-fuse-v2";
 		reg = <0xa601c 0x8>;
