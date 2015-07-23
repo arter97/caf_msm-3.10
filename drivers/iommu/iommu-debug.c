@@ -351,9 +351,6 @@ static int snarf_iommu_device(struct device *dev, const char *name)
 	struct iommu_debug_device *ddev;
 	struct dentry *dir, *profiling_dentry;
 
-	if (!of_find_property(dev->of_node, "iommus", NULL))
-		return 0;
-
 	ddev = kzalloc(sizeof(*ddev), GFP_KERNEL);
 	if (!ddev)
 		return -ENODEV;
