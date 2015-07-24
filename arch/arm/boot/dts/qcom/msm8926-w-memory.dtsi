@@ -43,11 +43,11 @@
 			label = "external_image_mem";
 		};
 
-		adsp_pil_mem: adsp_region@1e00000 {
+		adsp_pil_mem: adsp_region@1d00000 {
 			linux,reserve-contiguous-region;
 			linux,reserve-region;
 			linux,remove-completely;
-			reg = <0x01e00000 0x1100000>;
+			reg = <0x01d00000 0x1200000>;
 			label = "adsp_pil_mem";
 		};
 
@@ -67,19 +67,19 @@
 			label = "modem_mem";
 		};
 
-		modem_efs: modem_efs_region@0x01700000 {
+		modem_efs: modem_efs_region@0x01600000 {
 			linux,reserve-contiguous-region;
 			linux,reserve-region;
 			linux,remove-completely;
-			reg = <0x01700000 0x200000>;
+			reg = <0x01600000 0x200000>;
 			label = "modem_efs";
 		};
 
-		adsp_venus_mem: adsp_venus_region@01900000 {
+		adsp_venus_mem: adsp_venus_region@01800000 {
 			linux,reserve-contiguous-region;
 			linux,reserve-region;
 			linux,remove-completely;
-			reg = <0x01900000 0x500000>;
+			reg = <0x01800000 0x500000>;
 			label = "adsp_venus_mem";
 		};
 
