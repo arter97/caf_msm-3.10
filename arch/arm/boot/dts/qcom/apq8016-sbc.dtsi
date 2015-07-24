@@ -92,6 +92,8 @@
 			adi,irq-gpio = <&msm_gpio 31 0x2002>;
 			adi,hpd-irq-gpio = <&msm_gpio 20 0x2003>;
 			adi,switch-gpio = <&msm_gpio 32 0x0>;
+			clocks = <&clock_rpm clk_bb_clk2>;
+			clock-names = "ref_clk";
 		};
 	};
 
