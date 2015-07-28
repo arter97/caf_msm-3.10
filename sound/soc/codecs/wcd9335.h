@@ -75,6 +75,10 @@ enum {
 	TASHA_TX_MAX,
 };
 
+enum wcd9335_codec_event {
+	WCD9335_CODEC_EVENT_CODEC_UP = 0,
+};
+
 /* Dai data structure holds the
  * dai specific info like rate,
  * channel number etc.
@@ -106,4 +110,8 @@ extern int tasha_enable_efuse_sensing(struct snd_soc_codec *codec);
 extern void tasha_mbhc_zdet_gpio_ctrl(
 		int (*zdet_gpio_cb)(struct snd_soc_codec *codec, bool high),
 		struct snd_soc_codec *codec);
+extern void tasha_event_register(
+	int (*machine_event_cb)(struct snd_soc_codec *codec,
+				enum wcd9335_codec_event),
+	struct snd_soc_codec *codec);
 #endif
