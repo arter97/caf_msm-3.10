@@ -398,6 +398,58 @@ end:
 		devm_kfree(dev, val_array);
 }
 
+static int adv7533_parse_clock_dt(struct device *dev, struct adv7533 *pdata)
+{
+	int i = 0, rc = 0;
+	struct dss_module_power *mp;
+	const char *clock_name;
+
+	if (!dev || !pdata) {
+		pr_err("%s: invalid input\n", __func__);
+		rc = -EINVAL;
+		goto clk_err;
+	}
+
+	mp = &pdata->power_data;
+	if (!mp) {
+		pr_err("%s: invalid power data\n", __func__);
+		rc = -EINVAL;
+		goto clk_err;
+	}
+
+	mp->num_clk = of_property_count_strings(dev->of_node,
+			"clock-names");
+	if (mp->num_clk <= 0) {
+		pr_err("%s: clocks are not defined\n", __func__);
+		goto clk_err;
+	}
+
+	mp->clk_config = devm_kzalloc(dev,
+		sizeof(struct dss_clk) * mp->num_clk, GFP_KERNEL);
+	if (!mp->clk_config) {
+		rc = -ENOMEM;
+		mp->num_clk = 0;
+		goto clk_err;
+	}
+
+	for (i = 0; i < mp->num_clk; i++) {
+		of_property_read_string_index(dev->of_node,
+			"clock-names", i, &clock_name);
+		strlcpy(mp->clk_config[i].clk_name, clock_name,
+			sizeof(mp->clk_config[i].clk_name));
+		mp->clk_config[i].rate = 0;
+		mp->clk_config[i].type = DSS_CLK_AHB;
+	}
+
+	rc = msm_dss_get_clk(dev, mp->clk_config, mp->num_clk);
+	if (rc) {
+		pr_err("%s: Clock get failed rc=%d\n", __func__, rc);
+		goto clk_err;
+	}
+clk_err:
+	return rc;
+}
+
 static int adv7533_parse_dt(struct device *dev,
 	struct adv7533 *pdata)
 {
@@ -429,6 +481,10 @@ static int adv7533_parse_dt(struct device *dev,
 	pdata->audio = of_property_read_bool(np, "adi,enable-audio");
 
 	adv7533_parse_vreg_dt(dev, &pdata->power_data);
+
+	ret = adv7533_parse_clock_dt(dev, pdata);
+	if (ret)
+		pr_warn("%s: Failed to get clocks\n", __func__);
 
 	/* Get pinctrl if target uses pinctrl */
 	pdata->ts_pinctrl = devm_pinctrl_get(dev);
@@ -471,6 +527,44 @@ static int adv7533_parse_dt(struct device *dev,
 
 end:
 	return ret;
+}
+
+static int adv7533_config_clocks(struct adv7533 *pdata, int enable)
+{
+	int rc = 0;
+	struct dss_module_power *mp;
+
+	if (!pdata) {
+		pr_err("%s: invalid input\n", __func__);
+		rc = -EINVAL;
+		goto end;
+	}
+
+	mp = &pdata->power_data;
+	if (!mp) {
+		pr_err("%s: invalid power data\n", __func__);
+		rc = -EINVAL;
+		goto end;
+	}
+
+	if (enable) {
+		rc = msm_dss_clk_set_rate(mp->clk_config, mp->num_clk);
+		if (rc) {
+			pr_err("%s: Failed to set clock rate rc=%d\n",
+				__func__, rc);
+			goto end;
+		}
+
+		rc = msm_dss_enable_clk(mp->clk_config, mp->num_clk, enable);
+		if (rc) {
+			pr_err("%s: clock enable failed rc:%d\n", __func__, rc);
+			goto end;
+		}
+	} else {
+		msm_dss_enable_clk(mp->clk_config, mp->num_clk, enable);
+	}
+end:
+	return rc;
 }
 
 static int adv7533_gpio_configure(struct adv7533 *pdata, bool on)
@@ -1683,6 +1777,10 @@ static int adv7533_probe(struct i2c_client *client,
 		return -EPROBE_DEFER;
 	}
 
+	ret = adv7533_config_clocks(pdata, 1);
+	if (ret)
+		pr_warn("%s: Failed to config clocks\n", __func__);
+
 	mutex_init(&pdata->ops_mutex);
 
 	ret = adv7533_register_dba(pdata);
@@ -1783,6 +1881,9 @@ static int adv7533_remove(struct i2c_client *client)
 	free_irq(pdata->irq, pdata);
 
 	ret = adv7533_gpio_configure(pdata, false);
+
+	adv7533_config_clocks(pdata, 0);
+	devm_kfree(&client->dev, pdata->power_data.clk_config);
 
 	mutex_destroy(&pdata->ops_mutex);
 
