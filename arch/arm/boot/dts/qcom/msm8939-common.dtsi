@@ -65,7 +65,7 @@
 
 		venus_mem: venus_region@0 {
 			linux,reserve-contiguous-region;
-			linux,memory-limit = <0x90000000>;
+			linux,memory-limit = <0x0>;
 			reg = <0 0 0 0x0500000>;
 			label = "venus_mem";
 		};
