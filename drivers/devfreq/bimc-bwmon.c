@@ -78,6 +78,12 @@ static void mon_disable(struct bwmon *m)
 static void mon_clear(struct bwmon *m)
 {
 	writel_relaxed(0x1, MON_CLEAR(m));
+	/*
+	 * The counter clear and IRQ clear bits are not in the same 4KB
+	 * region. So, we need to make sure the counter clear is completed
+	 * before we try to clear the IRQ or do any other counter operations.
+	 */
+	mb();
 }
 
 static void mon_irq_enable(struct bwmon *m)
@@ -112,12 +118,12 @@ static void mon_irq_disable(struct bwmon *m)
 
 static unsigned int mon_irq_status(struct bwmon *m)
 {
-	u32 mval, gval;
+	u32 mval;
 
-	mval = readl_relaxed(MON_INT_STATUS(m)),
-	gval = readl_relaxed(GLB_INT_STATUS(m));
+	mval = readl_relaxed(MON_INT_STATUS(m));
 
-	dev_dbg(m->dev, "IRQ status p:%x, g:%x\n", mval, gval);
+	dev_dbg(m->dev, "IRQ status p:%x, g:%x\n", mval,
+			readl_relaxed(GLB_INT_STATUS(m)));
 
 	return mval;
 }
@@ -370,11 +376,11 @@ static int bimc_bwmon_driver_probe(struct platform_device *pdev)
 	m->hw.of_node = of_parse_phandle(dev->of_node, "qcom,target-dev", 0);
 	if (!m->hw.of_node)
 		return -EINVAL;
-	m->hw.start_hwmon = &start_bw_hwmon,
-	m->hw.stop_hwmon = &stop_bw_hwmon,
-	m->hw.suspend_hwmon = &suspend_bw_hwmon,
-	m->hw.resume_hwmon = &resume_bw_hwmon,
-	m->hw.meas_bw_and_set_irq = &meas_bw_and_set_irq,
+	m->hw.start_hwmon = &start_bw_hwmon;
+	m->hw.stop_hwmon = &stop_bw_hwmon;
+	m->hw.suspend_hwmon = &suspend_bw_hwmon;
+	m->hw.resume_hwmon = &resume_bw_hwmon;
+	m->hw.meas_bw_and_set_irq = &meas_bw_and_set_irq;
 
 	ret = register_bw_hwmon(dev, &m->hw);
 	if (ret) {
