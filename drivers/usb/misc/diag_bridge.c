@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -83,11 +83,14 @@ int diag_bridge_open(int id, struct diag_bridge_ops *ops)
 	dev->ops = ops;
 	dev->err = 0;
 
+	if (!id) {
 #ifdef CONFIG_PM_RUNTIME
-	dev->default_autosusp_delay = dev->udev->dev.power.autosuspend_delay;
+		dev->default_autosusp_delay =
+			dev->udev->dev.power.autosuspend_delay;
 #endif
-	pm_runtime_set_autosuspend_delay(&dev->udev->dev,
-			AUTOSUSP_DELAY_WITH_USB);
+		pm_runtime_set_autosuspend_delay(&dev->udev->dev,
+				AUTOSUSP_DELAY_WITH_USB);
+	}
 
 	kref_get(&dev->kref);
 
@@ -130,8 +133,11 @@ void diag_bridge_close(int id)
 	usb_kill_anchored_urbs(&dev->submitted);
 	dev->ops = 0;
 
-	pm_runtime_set_autosuspend_delay(&dev->udev->dev,
+
+	if (!id) {
+		pm_runtime_set_autosuspend_delay(&dev->udev->dev,
 			dev->default_autosusp_delay);
+	}
 
 	kref_put(&dev->kref, diag_bridge_delete);
 }
