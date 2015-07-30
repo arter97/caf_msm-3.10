@@ -3149,7 +3149,7 @@ static void smbchg_external_power_changed(struct power_supply *psy)
 
 	rc = chip->usb_psy->get_property(chip->usb_psy,
 				POWER_SUPPLY_PROP_CURRENT_MAX, &prop);
-	if (rc != 0)
+	if (rc == 0)
 		current_limit = prop.intval / 1000;
 
 	read_usb_type(chip, &usb_type_name, &usb_supply_type);
@@ -5343,14 +5343,14 @@ static irqreturn_t src_detect_handler(int irq, void *_chip)
 	 * instead of the USBIN_UV handler since the latter is untrustworthy
 	 * when the battery voltage is high.
 	 */
+	chip->very_weak_charger = false;
+	rc = smbchg_primary_usb_en(chip, true, REASON_WEAK_CHARGER, &unused);
+	if (rc < 0)
+		pr_err("could not enable charger: %d\n", rc);
+
 	if (src_detect) {
 		update_usb_status(chip, usb_present, 0);
 	} else {
-		chip->very_weak_charger = false;
-		rc = smbchg_primary_usb_en(chip, true,
-				REASON_WEAK_CHARGER, &unused);
-		if (rc)
-			pr_err("could not enable charger: %d", rc);
 		update_usb_status(chip, 0, false);
 		chip->aicl_irq_count = 0;
 	}
