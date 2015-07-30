@@ -826,16 +826,16 @@ static int emac_ptp_sysfs_frac_ns_adj_set(
 }
 
 static struct device_attribute ptp_sysfs_devattr[] = {
-	__ATTR(cmd, 0222, NULL, emac_ptp_sysfs_cmd),
-	__ATTR(tstamp, 0444, emac_ptp_sysfs_tstamp_show, NULL),
-	__ATTR(mtnp, 0444, emac_ptp_sysfs_mtnp_show, NULL),
-	__ATTR(slam, 0222, NULL, emac_ptp_sysfs_slam),
-	__ATTR(cadj, 0222, NULL, emac_ptp_sysfs_cadj),
-	__ATTR(fadj, 0222, NULL, emac_ptp_sysfs_fadj),
-	__ATTR(frac_ns_adj, 0666, emac_ptp_sysfs_frac_ns_adj_show,
-	       emac_ptp_sysfs_frac_ns_adj_set),
-	__ATTR(ptp_mode, 0666, emac_ptp_sysfs_mode_show,
-	       emac_ptp_sysfs_mode_set),
+	__ATTR(cmd, S_IWUSR|S_IWGRP, NULL, emac_ptp_sysfs_cmd),
+	__ATTR(tstamp, S_IRUSR|S_IRGRP, emac_ptp_sysfs_tstamp_show, NULL),
+	__ATTR(mtnp, S_IRUSR|S_IRGRP, emac_ptp_sysfs_mtnp_show, NULL),
+	__ATTR(slam, S_IWUSR|S_IWGRP, NULL, emac_ptp_sysfs_slam),
+	__ATTR(cadj, S_IWUSR|S_IWGRP, NULL, emac_ptp_sysfs_cadj),
+	__ATTR(fadj, S_IWUSR|S_IWGRP, NULL, emac_ptp_sysfs_fadj),
+	__ATTR(frac_ns_adj, S_IRUSR|S_IRGRP|S_IWUSR|S_IWGRP,
+	       emac_ptp_sysfs_frac_ns_adj_show, emac_ptp_sysfs_frac_ns_adj_set),
+	__ATTR(ptp_mode, S_IRUSR|S_IRGRP|S_IWUSR|S_IWGRP,
+	       emac_ptp_sysfs_mode_show, emac_ptp_sysfs_mode_set),
 	__ATTR_NULL
 };
 

@@ -521,5 +521,5 @@ static const struct ethtool_ops emac_ethtool_ops = {
 /* Set ethtool operations */
 void emac_set_ethtool_ops(struct net_device *netdev)
 {
-	SET_ETHTOOL_OPS(netdev, &emac_ethtool_ops);
+	netdev->ethtool_ops = &emac_ethtool_ops;
 }

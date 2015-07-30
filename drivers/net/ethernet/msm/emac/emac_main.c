@@ -560,8 +560,6 @@ static void emac_hwtxtstamp_task_routine(struct work_struct *work)
 				struct skb_shared_hwtstamps ts;
 
 				ts.hwtstamp = ktime_set(cb->sec, cb->ns);
-				ts.syststamp = ktime_add_ns(
-					ts.hwtstamp, adpt->hw.tstamp_tx_offset);
 				skb_tstamp_tx(skb, &ts);
 				adpt->hwtxtstamp_stats.deliver++;
 			}
@@ -647,8 +645,6 @@ static void emac_handle_rx(struct emac_adapter *adpt,
 
 			hwts->hwtstamp = ktime_set(srrd.genr.ts_high,
 						   srrd.genr.ts_low);
-			hwts->syststamp = ktime_sub_ns(hwts->hwtstamp,
-						       hw->tstamp_rx_offset);
 		}
 
 		emac_receive_skb(rxque, skb, (u16)srrd.genr.cvlan_tag,
