@@ -170,6 +170,7 @@ static struct mux_clk rpm_debug_mux = {
 		{ &gcc_ce2_axi_m_clk.c, 0x0141 },
 		{ &gcc_ce2_ahb_m_clk.c, 0x0142 },
 		{ &gcc_bimc_kpss_axi_m_clk.c, 0x0155 },
+		{ &ipa_clk.c, 0x0218 },
 	),
 	.c = {
 		.dbg_name = "rpm_debug_mux",
