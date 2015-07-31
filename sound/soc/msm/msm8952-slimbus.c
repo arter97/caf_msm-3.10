@@ -2043,6 +2043,7 @@ static int is_us_eu_switch_gpio_support(struct platform_device *pdev,
 				return ret;
 			}
 			wcd9xxx_mbhc_cfg.swap_gnd_mic = msm8952_swap_gnd_mic;
+			wcd_mbhc_cfg.swap_gnd_mic = msm8952_swap_gnd_mic;
 		}
 	}
 	return 0;
