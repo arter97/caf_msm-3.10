@@ -618,6 +618,7 @@ out:
 	return err;
 no_route:
 	kfree_skb(nskb);
+
 	if (asoc)
 		IP_INC_STATS(sock_net(asoc->base.sk), IPSTATS_MIB_OUTNOROUTES);
 
