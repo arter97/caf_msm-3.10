@@ -391,7 +391,7 @@ static int dwc3_otg_set_power(struct usb_phy *phy, unsigned mA)
 
 
 	if (!dotg->psy || !dotg->charger) {
-		dev_err(phy->dev, "no usb power supply/charger registered\n");
+		dev_dbg(phy->dev, "no usb power supply/charger registered\n");
 		return 0;
 	}
 
