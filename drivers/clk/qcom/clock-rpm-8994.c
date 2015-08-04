@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -179,6 +179,7 @@ static struct mux_clk rpm_debug_mux = {
 		{ &gcc_ce2_axi_m_clk.c, 0x0141 },
 		{ &gcc_ce2_ahb_m_clk.c, 0x0142 },
 		{ &gcc_bimc_kpss_axi_m_clk.c, 0x0155 },
+		{ &ipa_clk.c, 0x0218 },
 		{ &ce3_clk.c, 0x0228 },
 		{ &gcc_ce3_axi_m_clk.c, 0x0229 },
 		{ &gcc_ce3_ahb_m_clk.c, 0x022a },
