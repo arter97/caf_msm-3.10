@@ -1116,9 +1116,9 @@ int mdss_debugfs_init(struct mdss_data_type *mdata)
 		(u32 *)&mdata->allow_cx_vddmin);
 
 	mdd->bordercolor = debugfs_create_dir("bordercolor", mdd->root);
-	if (IS_ERR_OR_NULL(mdd->root)) {
-		pr_err("debugfs_create_dir for mdp failed, error %ld\n",
-		       PTR_ERR(mdd->root));
+	if (IS_ERR_OR_NULL(mdd->bordercolor)) {
+		pr_err("debugfs_create_dir for bordercolor failed, error %ld\n",
+		       PTR_ERR(mdd->bordercolor));
 		goto err;
 	}
 
