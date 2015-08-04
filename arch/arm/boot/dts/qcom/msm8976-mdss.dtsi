@@ -273,6 +273,7 @@
 				<&clock_gcc clk_gcc_mdss_esc0_clk>;
 			clock-names = "byte_clk", "pixel_clk", "core_clk";
 
+			qcom,null-insertion-enabled;
 			qcom,platform-strength-ctrl = [ff 06];
 			qcom,platform-bist-ctrl = [00 00 b1 ff 00 00];
 			qcom,platform-regulator-settings = [03 09 03 00 20 07 01];
@@ -306,6 +307,7 @@
 				<&clock_gcc clk_gcc_mdss_esc1_clk>;
 			clock-names = "byte_clk", "pixel_clk", "core_clk";
 
+			qcom,null-insertion-enabled;
 			qcom,platform-strength-ctrl = [ff 06];
 			qcom,platform-bist-ctrl = [00 00 b1 ff 00 00];
 			qcom,platform-regulator-settings = [03 09 03 00 20 07 01];
