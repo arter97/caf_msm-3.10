@@ -285,6 +285,10 @@
 	};
 };
 
+&flash_led {
+	qcom,follow-otst2-rb-disabled;
+};
+
 &pmx_adv7533_int {
 	qcom,num-grp-pins = <1>;
 	qcom,pins = <&gp 135>;
