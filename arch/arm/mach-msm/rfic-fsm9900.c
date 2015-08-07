@@ -101,6 +101,10 @@
 #define I2C_B_FIELD     21
 #define I2C_V_FIELD     23
 
+#define LMC_WTR 600000
+#define LMC_GEN 325000
+#define LMC_V3  1200000
+
 uint16_t slave_address = 0x52;
 uint8_t rfbid;
 uint8_t rf_eeprom = 0;
@@ -179,7 +183,7 @@ static int rf_regulator_init(struct platform_device *pdev, char *reg_name,
 	}
 
 	if (opt_mode) {
-		ret = regulator_set_optimum_mode(vreg_ldo, 325000);
+		ret = regulator_set_optimum_mode(vreg_ldo, opt_mode);
 		if (ret < 0) {
 			pr_err("%s: unable to set optimum mode for %s\n",
 				__func__, reg_name);
@@ -560,32 +564,33 @@ static long ftr_ioctl(struct file *file,
 			switch (ldo) {
 			case LDO11:
 				if (rf_regulator_init(to_platform_device
-					(pdev->dev), "vdd-1v3", 0) != 0)
+					(pdev->dev), "vdd-1v3", LMC_V3) != 0)
 					pr_err("%s: LDO11 fail\n", __func__);
 					break;
 			case LDO18:
 				if (rf_regulator_init(to_platform_device
-					(pdev->dev), "vdd-switch", 0) != 0)
+					(pdev->dev), "vdd-switch", LMC_GEN)
+						!= 0)
 					pr_err("%s: LDO18 fail\n", __func__);
 					break;
 			case LDO19:
 				if (rf_regulator_init(to_platform_device
-					(pdev->dev), "vdd-wtr", 0) != 0)
+					(pdev->dev), "vdd-wtr", LMC_WTR) != 0)
 					pr_err("%s: LDO19 fail\n", __func__);
 					break;
 			case LDO23:
 				if (rf_regulator_init(to_platform_device
-					(pdev->dev), "vdd-ftr1", 1) != 0)
+					(pdev->dev), "vdd-ftr1", LMC_GEN) != 0)
 					pr_err("%s: LDO23 fail\n", __func__);
 					break;
 			case LDO25:
 				if (rf_regulator_init(to_platform_device
-					(pdev->dev), "vdd-ftr2", 1) != 0)
+					(pdev->dev), "vdd-ftr2", LMC_GEN) != 0)
 					pr_err("%s: LDO25 fail\n", __func__);
 					break;
 			case LDO26:
 				if (rf_regulator_init(to_platform_device
-					(pdev->dev), "vdd-1v8", 1) != 0)
+					(pdev->dev), "vdd-1v8", LMC_GEN) != 0)
 					pr_err("%s: LDO26 fail\n", __func__);
 					break;
 			default:
@@ -853,22 +858,22 @@ static int ftr_regulator_init(struct platform_device *pdev)
 {
 	int ret;
 
-	ret = (rf_regulator_init(pdev, "vdd-1v8", 1));
+	ret = (rf_regulator_init(pdev, "vdd-1v8", LMC_GEN));
 		if (ret)
 			return ret;
-	ret = (rf_regulator_init(pdev, "vdd-1v3", 0));
+	ret = (rf_regulator_init(pdev, "vdd-1v3", LMC_V3));
 		if (ret)
 			return ret;
-	ret = (rf_regulator_init(pdev, "vdd-ftr1", 1));
+	ret = (rf_regulator_init(pdev, "vdd-ftr1", LMC_GEN));
 		if (ret)
 			return ret;
-	ret = (rf_regulator_init(pdev, "vdd-ftr2", 1));
+	ret = (rf_regulator_init(pdev, "vdd-ftr2", LMC_GEN));
 		if (ret)
 			return ret;
-	ret = (rf_regulator_init(pdev, "vdd-switch", 0));
+	ret = (rf_regulator_init(pdev, "vdd-switch", LMC_GEN));
 		if (ret)
 			return ret;
-	ret = (rf_regulator_init(pdev, "vdd-wtr", 0));
+	ret = (rf_regulator_init(pdev, "vdd-wtr", LMC_WTR));
 		if (ret)
 			return ret;
 
@@ -879,19 +884,18 @@ static int glu_regulator_init(struct platform_device *pdev)
 {
 	int ret;
 
-	ret = (rf_regulator_init(pdev, "vdd-1v3", 0));
+	ret = (rf_regulator_init(pdev, "vdd-1v3", LMC_V3));
 		if (ret)
 			return ret;
-	ret = (rf_regulator_init(pdev, "vdd-ftr1", 1));
+	ret = (rf_regulator_init(pdev, "vdd-ftr1", LMC_GEN));
 		if (ret)
 			return ret;
-	ret = (rf_regulator_init(pdev, "vdd-ftr2", 1));
+	ret = (rf_regulator_init(pdev, "vdd-ftr2", LMC_GEN));
 		if (ret)
 			return ret;
-	ret = (rf_regulator_init(pdev, "vdd-switch", 0));
+	ret = (rf_regulator_init(pdev, "vdd-switch", LMC_GEN));
 		if (ret)
 			return ret;
-
 	return 0;
 }
 
@@ -899,27 +903,27 @@ static int mtr_regulator_init(struct platform_device *pdev)
 {
 	int ret;
 
-	ret = (rf_regulator_init(pdev, "vdd-1v8", 1));
+	ret = (rf_regulator_init(pdev, "vdd-1v8", LMC_GEN));
 		if (ret)
 			return ret;
 
 	udelay(500); /* Power-up sequence as per Mray spec */
 
-	ret = (rf_regulator_init(pdev, "vdd-ftr1", 1));
+	ret = (rf_regulator_init(pdev, "vdd-ftr1", LMC_GEN));
 		if (ret)
 			return ret;
 
-	ret = (rf_regulator_init(pdev, "vdd-ftr2", 1));
+	ret = (rf_regulator_init(pdev, "vdd-ftr2", LMC_GEN));
 		if (ret)
 			return ret;
 
 	udelay(500); /* Power-up sequence as per Mray spec */
 
-	ret = (rf_regulator_init(pdev, "vdd-1v3", 0));
+	ret = (rf_regulator_init(pdev, "vdd-1v3", LMC_V3));
 		if (ret)
 			return ret;
 
-	ret = (rf_regulator_init(pdev, "vdd-switch", 0));
+	ret = (rf_regulator_init(pdev, "vdd-switch", LMC_GEN));
 		if (ret)
 			return ret;
 
