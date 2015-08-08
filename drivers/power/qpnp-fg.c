@@ -4235,9 +4235,26 @@ static int fg_do_restart(struct fg_chip *chip, bool write_profile)
 	int rc;
 	int tries = 0;
 	u8 reg = 0;
+	u8 buf[2];
 
 	if (fg_debug_mask & FG_STATUS)
 		pr_info("restarting fuel gauge...\n");
+
+	/*
+	 * save the temperature if the sw rbias control is active so that there
+	 * is no gap of time when there is no valid temperature read after the
+	 * restart
+	 */
+	if (chip->sw_rbias_ctrl) {
+		rc = fg_mem_read(chip, buf,
+				fg_data[FG_DATA_BATT_TEMP].address,
+				fg_data[FG_DATA_BATT_TEMP].len,
+				fg_data[FG_DATA_BATT_TEMP].offset, 0);
+		if (rc) {
+			pr_err("failed to read batt temp rc=%d\n", rc);
+			goto sub_and_fail;
+		}
+	}
 	/*
 	 * release the sram access and configure the correct settings
 	 * before re-requesting access.
@@ -4366,6 +4383,21 @@ static int fg_do_restart(struct fg_chip *chip, bool write_profile)
 		goto fail;
 	}
 
+	/* restore the battery temperature reading here */
+	if (chip->sw_rbias_ctrl) {
+		if (fg_debug_mask & FG_STATUS)
+			pr_info("reloaded 0x%02x%02x into batt temp",
+					buf[0], buf[1]);
+		rc = fg_mem_write(chip, buf,
+				fg_data[FG_DATA_BATT_TEMP].address,
+				fg_data[FG_DATA_BATT_TEMP].len,
+				fg_data[FG_DATA_BATT_TEMP].offset, 0);
+		if (rc) {
+			pr_err("failed to write batt temp rc=%d\n", rc);
+			goto fail;
+		}
+	}
+
 	if (fg_debug_mask & FG_STATUS)
 		pr_info("done!\n");
 	return 0;
@@ -4473,29 +4505,6 @@ wait:
 				&chip->cc_cv_threshold_mv);
 	}
 
-	/*
-	 * Only configure from profile if thermal-coefficients is not
-	 * defined in the FG device node.
-	 */
-	if (!of_find_property(chip->spmi->dev.of_node,
-				"qcom,thermal-coefficients", NULL)) {
-		data = of_get_property(profile_node,
-				"qcom,thermal-coefficients", &len);
-		if (data && len == THERMAL_COEFF_N_BYTES) {
-			memcpy(chip->thermal_coefficients, data, len);
-			rc = fg_mem_write(chip, chip->thermal_coefficients,
-				THERMAL_COEFF_ADDR, THERMAL_COEFF_N_BYTES,
-				THERMAL_COEFF_OFFSET, 0);
-			if (rc) {
-				pr_err("spmi write failed addr:%03x, ret:%d\n",
-						THERMAL_COEFF_ADDR, rc);
-				goto fail;
-			} else {
-				pr_debug("Battery thermal coefficients changed\n");
-			}
-		}
-	}
-
 	data = of_get_property(profile_node, "qcom,fg-profile-data", &len);
 	if (!data) {
 		pr_err("no battery profile loaded\n");
@@ -4591,6 +4600,27 @@ wait:
 	if (rc) {
 		pr_err("restart failed: %d\n", rc);
 		goto fail;
+	}
+
+	/*
+	 * Only configure from profile if thermal-coefficients is not
+	 * defined in the FG device node.
+	 */
+	if (!of_find_property(chip->spmi->dev.of_node,
+				"qcom,thermal-coefficients", NULL)) {
+		data = of_get_property(profile_node,
+				"qcom,thermal-coefficients", &len);
+		if (data && len == THERMAL_COEFF_N_BYTES) {
+			memcpy(chip->thermal_coefficients, data, len);
+			rc = fg_mem_write(chip, chip->thermal_coefficients,
+				THERMAL_COEFF_ADDR, THERMAL_COEFF_N_BYTES,
+				THERMAL_COEFF_OFFSET, 0);
+			if (rc)
+				pr_err("spmi write failed addr:%03x, ret:%d\n",
+						THERMAL_COEFF_ADDR, rc);
+			else if (fg_debug_mask & FG_STATUS)
+				pr_info("Battery thermal coefficients changed\n");
+		}
 	}
 
 done:
