@@ -208,6 +208,12 @@
 			};
 		};
 	};
+
+	qcom,pm8916@1 {
+		qcom,vibrator@c000 {
+			qcom,vib-vtg-level-mV = <2700>;
+		};
+	};
 };
 
 &mdss_mdp {
