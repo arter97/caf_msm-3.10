@@ -199,10 +199,9 @@
 		reg = <0xf995d000 0x1000>;
 		interrupts = <0 101 0>;
 		status = "disabled";
-		qcom,uim-data-gpio = <&msmgpio 24 0>;
-		qcom,uim-clk-gpio = <&msmgpio 25 0>;
-		qcom,uim-reset-gpio = <&msmgpio 26 0>;
-		qcom,uim-card-detect-gpio = <&msmgpio 27 0>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&uim_data_default &uim_clk_default
+				&uim_reset_default &uim_present_default>;
 	};
 
 	qcom,ipc-spinlock@fd484000 {
