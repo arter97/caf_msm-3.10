@@ -44,7 +44,7 @@ static const char *const emac_ethtool_stat_strings[] = {
 	"rx bcast byte cnt",
 	"rx mcast byte cnt",
 	"rx err addr",
-	"rx crc allign",
+	"rx crc align",
 	"rx jubbers",
 	"tx ok",
 	"tx bcast",
@@ -159,6 +159,7 @@ static int emac_set_settings(struct net_device *netdev,
 		autoneg = true;
 	} else {
 		u32 speed = ecmd->speed;
+
 		autoneg = false;
 		if (speed == SPEED_1000) {
 			if (ecmd->duplex != DUPLEX_FULL) {
@@ -250,15 +251,15 @@ static int emac_set_pauseparam(struct net_device *netdev,
 	else
 		disable_fc_autoneg = false;
 
-	if (pause->rx_pause && pause->tx_pause)
+	if (pause->rx_pause && pause->tx_pause) {
 		req_fc_mode = emac_fc_full;
-	else if (pause->rx_pause && !pause->tx_pause)
+	} else if (pause->rx_pause && !pause->tx_pause) {
 		req_fc_mode = emac_fc_rx_pause;
-	else if (!pause->rx_pause && pause->tx_pause)
+	} else if (!pause->rx_pause && pause->tx_pause) {
 		req_fc_mode = emac_fc_tx_pause;
-	else if (!pause->rx_pause && !pause->tx_pause)
+	} else if (!pause->rx_pause && !pause->tx_pause) {
 		req_fc_mode = emac_fc_none;
-	else {
+	} else {
 		CLR_FLAG(adpt, ADPT_STATE_RESETTING);
 		return -EINVAL;
 	}
@@ -318,8 +319,6 @@ static void emac_get_regs(struct net_device *netdev,
 	memset(val, 0, EMAC_MAX_REG_SIZE * sizeof(u32));
 	for (i = 0; i < ARRAY_SIZE(reg); i++)
 		val[i] = emac_reg_r32(hw, EMAC, reg[i]);
-
-	return;
 }
 
 static void emac_get_drvinfo(struct net_device *netdev,

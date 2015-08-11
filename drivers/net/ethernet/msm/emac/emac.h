@@ -153,7 +153,7 @@ struct emac_hw_stats {
 	u64 rx_bcast_byte_cnt;  /* broadcast packets byte count (without FCS) */
 	u64 rx_mcast_byte_cnt;  /* multicast packets byte count (without FCS) */
 	u64 rx_err_addr;        /* packets dropped due to address filtering */
-	u64 rx_crc_allign;      /* CRC align errors */
+	u64 rx_crc_align;       /* CRC align errors */
 	u64 rx_jubbers;         /* jubbers */
 
 	/* tx */
@@ -254,7 +254,7 @@ struct emac_hw {
 	u32             autoneg_advertised;
 	u32             link_speed;
 	bool            link_up;
-	spinlock_t      mdio_lock;
+	spinlock_t      mdio_lock; /* sync access to mdio bus */
 
 	/* MAC parameter */
 	u8      mac_addr[ETH_ALEN];
@@ -278,7 +278,7 @@ struct emac_hw {
 	enum emac_ptp_clk_mode  ptp_clk_mode;
 	enum emac_ptp_mode      ptp_mode;
 	u32                     ptp_intr_mask;
-	spinlock_t              ptp_lock;
+	spinlock_t              ptp_lock; /* sync access to ptp hw */
 	u32                     tstamp_rx_offset;
 	u32                     tstamp_tx_offset;
 	void                    *frac_ns_adj_tbl;
@@ -315,13 +315,11 @@ struct emac_hw {
 #define emac_dbg(_adpt, _mlevel, _format, ...) \
 	netif_dbg(_adpt, _mlevel, _adpt->netdev, _format, ##__VA_ARGS__)
 
-
 #define EMAC_VLAN_TO_TAG(_vlan, _tag) \
-		_tag =  ((((_vlan) >> 8) & 0xFF) | (((_vlan) & 0xFF) << 8));
+		(_tag =  ((((_vlan) >> 8) & 0xFF) | (((_vlan) & 0xFF) << 8)))
 
 #define EMAC_TAG_TO_VLAN(_tag, _vlan) \
-		_vlan = ((((_tag) >> 8) & 0xFF) | (((_tag) & 0xFF) << 8));
-
+		(_vlan = ((((_tag) >> 8) & 0xFF) | (((_tag) & 0xFF) << 8)))
 
 #define EMAC_DEF_RX_BUF_SIZE            1536
 #define EMAC_MAX_JUMBO_PKT_SIZE         (9*1024)
@@ -537,7 +535,6 @@ union emac_sw_tpdesc {
 #define EMAC_TPD_LAST_FRAGMENT  0x80000000
 #define EMAC_TPD_TSTAMP_SAVE    0x80000000
 
-
 /* emac_irq_per_dev per-device (per-adapter) irq properties.
  * @idx:	index of this irq entry in the adapter irq array.
  * @irq:	irq number.
@@ -697,6 +694,7 @@ struct emac_tx_queue {
 	u32 consume_mask;
 	u8 consume_shft;
 };
+
 #define GET_TPD_BUFFER(_tque, _i)    (&((_tque)->tpd.tpbuff[(_i)]))
 
 /* driver private data structure */
@@ -773,12 +771,12 @@ struct emac_adapter *emac_irq_get_adpt(struct emac_irq_per_dev *irq)
 
 extern char emac_drv_name[];
 extern const char emac_drv_version[];
-extern void emac_set_ethtool_ops(struct net_device *netdev);
-extern void emac_reinit_locked(struct emac_adapter *adpt);
-extern void emac_update_hw_stats(struct emac_adapter *adpt);
-extern int emac_resize_rings(struct net_device *netdev);
-extern int emac_up(struct emac_adapter *adpt);
-extern void emac_down(struct emac_adapter *adpt, u32 ctrl);
+void emac_set_ethtool_ops(struct net_device *netdev);
+void emac_reinit_locked(struct emac_adapter *adpt);
+void emac_update_hw_stats(struct emac_adapter *adpt);
+int emac_resize_rings(struct net_device *netdev);
+int emac_up(struct emac_adapter *adpt);
+void emac_down(struct emac_adapter *adpt, u32 ctrl);
 int emac_clk_set_rate(struct emac_adapter *adpt, enum emac_clk_id id,
 		      enum emac_clk_rate rate);
 void emac_task_schedule(struct emac_adapter *adpt);

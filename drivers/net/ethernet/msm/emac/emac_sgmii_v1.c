@@ -335,7 +335,7 @@ static int emac_sgmii_v1_init(struct emac_adapter *adpt)
 	struct emac_sgmii_v1 *sgmii = hw->private;
 
 	emac_sgmii_v1_init_link(hw, hw->autoneg_advertised,
-				 hw->autoneg, !hw->disable_fc_autoneg);
+				hw->autoneg, !hw->disable_fc_autoneg);
 
 	emac_reg_write_all(sgmii, physical_coding_sublayer_programming);
 

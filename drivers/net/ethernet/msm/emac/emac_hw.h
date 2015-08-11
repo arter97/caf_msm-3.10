@@ -22,53 +22,50 @@
 /* function prototype */
 
 /* REG */
-extern u32 emac_reg_r32(struct emac_hw *hw, u8 base, u32 reg);
-extern void emac_reg_w32(struct emac_hw *hw, u8 base, u32 reg, u32 val);
-extern void emac_reg_update32(struct emac_hw *hw, u8 base, u32 reg,
-			      u32 mask, u32 val);
-extern u32 emac_reg_field_r32(struct emac_hw *hw, u8 base, u32 reg,
-			      u32 mask, u32 shift);
+u32 emac_reg_r32(struct emac_hw *hw, u8 base, u32 reg);
+void emac_reg_w32(struct emac_hw *hw, u8 base, u32 reg, u32 val);
+void emac_reg_update32(struct emac_hw *hw, u8 base, u32 reg, u32 mask, u32 val);
+u32 emac_reg_field_r32(struct emac_hw *hw, u8 base, u32 reg, u32 mask,
+		       u32 shift);
 /* PHY */
-extern int emac_hw_read_phy_reg(struct emac_hw *hw, bool ext, u8 dev,
-				bool fast, u16 reg_addr, u16 *phy_data);
-extern int emac_hw_write_phy_reg(struct emac_hw *hw, bool ext, u8 dev,
-				 bool fast, u16 reg_addr, u16 phy_data);
-extern int emac_read_phy_reg(struct emac_hw *hw, u16 phy_addr,
-			     u16 reg_addr, u16 *phy_data);
-extern int emac_write_phy_reg(struct emac_hw *hw, u16 phy_addr,
-			      u16 reg_addr, u16 phy_data);
-extern int emac_setup_phy_link(struct emac_hw *hw, u32 speed,
-			       bool autoneg, bool fc);
-extern int emac_setup_phy_link_speed(struct emac_hw *hw, u32 speed,
-				     bool autoneg, bool fc);
-extern int emac_check_phy_link(struct emac_hw *hw, u32 *speed, bool *link_up);
-extern int emac_hw_get_lpa_speed(struct emac_hw *hw, u32 *speed);
-extern int emac_hw_ack_phy_intr(struct emac_hw *hw);
+int emac_hw_read_phy_reg(struct emac_hw *hw, bool ext, u8 dev, bool fast,
+			 u16 reg_addr, u16 *phy_data);
+int emac_hw_write_phy_reg(struct emac_hw *hw, bool ext, u8 dev, bool fast,
+			  u16 reg_addr, u16 phy_data);
+int emac_read_phy_reg(struct emac_hw *hw, u16 phy_addr, u16 reg_addr,
+		      u16 *phy_data);
+int emac_write_phy_reg(struct emac_hw *hw, u16 phy_addr, u16 reg_addr,
+		       u16 phy_data);
+int emac_setup_phy_link(struct emac_hw *hw, u32 speed, bool autoneg, bool fc);
+int emac_setup_phy_link_speed(struct emac_hw *hw, u32 speed, bool autoneg,
+			      bool fc);
+int emac_check_phy_link(struct emac_hw *hw, u32 *speed, bool *link_up);
+int emac_hw_get_lpa_speed(struct emac_hw *hw, u32 *speed);
+int emac_hw_ack_phy_intr(struct emac_hw *hw);
 int emac_hw_config_phy(struct platform_device *pdev, struct emac_adapter *adpt);
-extern int emac_hw_init_ephy(struct emac_hw *hw);
-extern void emac_hw_config_pow_save(struct emac_hw *hw, u32 speed, bool wol_en,
-				    bool rx_en);
+int emac_hw_init_ephy(struct emac_hw *hw);
+void emac_hw_config_pow_save(struct emac_hw *hw, u32 speed, bool wol_en,
+			     bool rx_en);
 /* MAC */
-extern void emac_hw_enable_intr(struct emac_hw *hw);
-extern void emac_hw_disable_intr(struct emac_hw *hw);
-extern void emac_hw_set_mc_addr(struct emac_hw *hw, u8 *addr);
-extern void emac_hw_clear_mc_addr(struct emac_hw *hw);
+void emac_hw_enable_intr(struct emac_hw *hw);
+void emac_hw_disable_intr(struct emac_hw *hw);
+void emac_hw_set_mc_addr(struct emac_hw *hw, u8 *addr);
+void emac_hw_clear_mc_addr(struct emac_hw *hw);
 
-extern void emac_hw_config_mac_ctrl(struct emac_hw *hw);
-extern void emac_hw_config_rss(struct emac_hw *hw);
-extern void emac_hw_config_wol(struct emac_hw *hw, u32 wufc);
-extern int emac_hw_config_fc(struct emac_hw *hw);
+void emac_hw_config_mac_ctrl(struct emac_hw *hw);
+void emac_hw_config_rss(struct emac_hw *hw);
+void emac_hw_config_wol(struct emac_hw *hw, u32 wufc);
+int emac_hw_config_fc(struct emac_hw *hw);
 
-extern void emac_hw_reset_mac(struct emac_hw *hw);
-extern void emac_hw_config_mac(struct emac_hw *hw);
-extern void emac_hw_start_mac(struct emac_hw *hw);
-extern void emac_hw_stop_mac(struct emac_hw *hw);
+void emac_hw_reset_mac(struct emac_hw *hw);
+void emac_hw_config_mac(struct emac_hw *hw);
+void emac_hw_start_mac(struct emac_hw *hw);
+void emac_hw_stop_mac(struct emac_hw *hw);
 
-extern void emac_hw_set_mac_addr(struct emac_hw *hw, u8 *addr);
+void emac_hw_set_mac_addr(struct emac_hw *hw, u8 *addr);
 
 /* TX Timestamp */
-extern bool emac_hw_read_tx_tstamp(struct emac_hw *hw,
-				   struct emac_hwtxtstamp *ts);
+bool emac_hw_read_tx_tstamp(struct emac_hw *hw, struct emac_hwtxtstamp *ts);
 
 #define IMR_NORMAL_MASK         (\
 		ISR_ERROR       |\
