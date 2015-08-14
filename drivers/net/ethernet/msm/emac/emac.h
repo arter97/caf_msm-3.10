@@ -17,6 +17,7 @@
 #include <linux/interrupt.h>
 #include <linux/netdevice.h>
 #include <linux/clk.h>
+#include <linux/platform_device.h>
 
 /* Device IDs */
 #define EMAC_DEV_ID                0x0040
@@ -30,11 +31,10 @@
 #define EMAC_DMA_ADDR_LO(_addr) \
 		((u32)((u64)(_addr) & DMA_ADDR_LO_MASK))
 
-/* 4 emac core irq, 1 phy irq, 1 wol irq */
+/* 4 emac core irq and 1 wol irq */
 #define EMAC_NUM_CORE_IRQ     4
 #define EMAC_WOL_IRQ          4
-#define EMAC_SGMII_PHY_IRQ    5
-#define EMAC_IRQ_CNT          6
+#define EMAC_IRQ_CNT          5
 /* mdio/mdc gpios */
 #define EMAC_GPIO_CNT         2
 
@@ -83,8 +83,6 @@ enum emac_reg_bases {
 	EMAC,
 	EMAC_CSR,
 	EMAC_1588,
-	EMAC_QSERDES,
-	EMAC_SGMII_PHY,
 	NUM_EMAC_REG_BASES
 };
 
@@ -218,15 +216,16 @@ struct emac_adapter;
 struct emac_hw;
 
 struct emac_phy_ops {
-	int (*init)(struct emac_adapter *adpt);
+	int  (*config)(struct platform_device *pdev, struct emac_adapter *adpt);
+	int  (*up)(struct emac_adapter *adpt);
+	void (*down)(struct emac_adapter *adpt);
+	int  (*init)(struct emac_adapter *adpt);
 	void (*reset)(struct emac_adapter *adpt);
-	int (*init_ephy)(struct emac_hw *hw);
-	int (*link_setup_no_ephy)(struct emac_adapter *adpt, u32 speed,
-				  bool autoneg);
-	int (*link_check_no_ephy)(struct emac_adapter *adpt, u32 *speed,
-				  bool *link_up);
-	void (*irq_enable)(struct emac_adapter *adpt);
-	void (*irq_disable)(struct emac_adapter *adpt);
+	int  (*init_ephy)(struct emac_hw *hw);
+	int  (*link_setup_no_ephy)(struct emac_adapter *adpt, u32 speed,
+				   bool autoneg);
+	int  (*link_check_no_ephy)(struct emac_adapter *adpt, u32 *speed,
+				   bool *link_up);
 	void (*tx_clk_set_rate)(struct emac_adapter *adpt);
 	void (*periodic_task)(struct emac_adapter *adpt);
 };
@@ -237,6 +236,7 @@ struct emac_hw {
 	u16     devid;
 	u16     revid;
 	struct emac_phy_ops	ops;
+	void			*private;
 
 	/* ring parameter */
 	u8      tpd_burst;
@@ -783,6 +783,5 @@ int emac_clk_set_rate(struct emac_adapter *adpt, enum emac_clk_id id,
 		      enum emac_clk_rate rate);
 void emac_task_schedule(struct emac_adapter *adpt);
 void emac_check_lsc(struct emac_adapter *adpt);
-irqreturn_t emac_sgmii_v1_isr(int _irq, void *data);
 
 #endif /* _MSM_EMAC_H_ */

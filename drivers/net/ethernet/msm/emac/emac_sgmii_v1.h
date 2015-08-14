@@ -17,6 +17,4 @@
 
 extern struct emac_phy_ops emac_sgmii_v1_ops;
 
-irqreturn_t emac_sgmii_v1_isr(int irq, void *data);
-
 #endif /*_EMAC_SGMII_H_*/

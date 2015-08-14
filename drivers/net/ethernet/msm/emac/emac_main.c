@@ -32,8 +32,6 @@
 #include "emac.h"
 #include "emac_hw.h"
 #include "emac_ptp.h"
-#include "emac_rgmii.h"
-#include "emac_sgmii_v1.h"
 
 #define DRV_VERSION "1.1.0.0"
 
@@ -104,8 +102,6 @@ const struct emac_irq_common emac_irq_cmn_tbl[EMAC_IRQ_CNT] = {
 		RX_PKT_INT3,	0},
 	{ "emac_wol_irq"  , emac_wol_isr,            0,              0,
 		0,		0},
-	{ "emac_sgmii_irq", emac_sgmii_v1_isr, 0, EMAC_SGMII_PHY_INTERRUPT_MASK,
-		SGMII_ISR_MASK, IRQF_TRIGGER_RISING},
 };
 
 static const char * const emac_gpio_name[] = {
@@ -1111,9 +1107,6 @@ static inline void emac_disable_intr(struct emac_adapter *adpt)
 	emac_hw_disable_intr(hw);
 	for (i = 0; i < EMAC_NUM_CORE_IRQ; i++)
 		synchronize_irq(adpt->irq[i].irq);
-
-	/* SGMII IRQ */
-	synchronize_irq(adpt->irq[EMAC_SGMII_PHY_IRQ].irq);
 }
 
 /* Configure VLAN tag strip/insert feature */
@@ -1579,6 +1572,10 @@ int emac_up(struct emac_adapter *adpt)
 	emac_hw_config_mac(hw);
 	emac_config_rss(adpt);
 
+	retval = adpt->hw.ops.up(adpt);
+	if (retval)
+		return retval;
+
 	for (i = 0; (!adpt->no_mdio_gpio) && i < EMAC_GPIO_CNT; i++) {
 		retval = gpio_request(adpt->gpio[i], emac_gpio_name[i]);
 		if (retval) {
@@ -1632,6 +1629,7 @@ err_request_irq:
 	for (i = 0; (!adpt->no_mdio_gpio) && i < EMAC_GPIO_CNT; i++)
 		gpio_free(adpt->gpio[i]);
 err_request_gpio:
+	adpt->hw.ops.down(adpt);
 	return retval;
 }
 
@@ -1650,6 +1648,8 @@ void emac_down(struct emac_adapter *adpt, u32 ctrl)
 
 	emac_disable_intr(adpt);
 	emac_napi_disable_all(adpt);
+
+	adpt->hw.ops.down(adpt);
 
 	for (i = 0; i < EMAC_IRQ_CNT; i++)
 		if (adpt->irq[i].irq)
@@ -2452,8 +2452,8 @@ static int emac_get_resources(struct platform_device *pdev,
 	struct resource *res;
 	struct net_device *netdev = adpt->netdev;
 	struct device_node *node = pdev->dev.of_node;
-	char *res_name[NUM_EMAC_REG_BASES] = {"emac", "emac_csr", "emac_1588",
-					      "emac_qserdes", "emac_sgmii_phy"};
+	static const char * const res_name[] = {"emac", "emac_csr",
+						"emac_1588"};
 	const void *maddr;
 
 	if (!node)
@@ -2466,30 +2466,6 @@ static int emac_get_resources(struct platform_device *pdev,
 
 	/* get time stamp enable flag */
 	adpt->tstamp_en = of_property_read_bool(node, "qcom,emac-tstamp-en");
-
-	/* get no_ephy attribute */
-	adpt->no_ephy = of_property_read_bool(node, "qcom,no-external-phy");
-
-	/* get phy address on MDIO bus */
-	if (adpt->no_ephy == false) {
-		retval = of_property_read_u32(node, "phy-addr",
-					      &adpt->hw.phy_addr);
-		if (retval)
-			return retval;
-	}
-
-	/* get phy mode */
-	retval = of_get_phy_mode(node);
-	if (retval < 0)
-		return retval;
-
-	adpt->phy_mode = retval;
-	adpt->hw.ops = (adpt->phy_mode == PHY_INTERFACE_MODE_RGMII) ?
-		       emac_rgmii_ops : emac_sgmii_v1_ops;
-
-	/* For rgmii phy, the mdio lines are dedicated pins */
-	if (adpt->no_ephy || (adpt->phy_mode == PHY_INTERFACE_MODE_RGMII))
-		adpt->no_mdio_gpio = true;
 
 	/* get gpios */
 	for (i = 0; (!adpt->no_mdio_gpio) && i < EMAC_GPIO_CNT; i++) {
@@ -2509,11 +2485,6 @@ static int emac_get_resources(struct platform_device *pdev,
 
 	/* get irqs */
 	for (i = 0; i < EMAC_IRQ_CNT; i++) {
-		/* SGMII_PHY IRQ is only required if phy_mode is "sgmii" */
-		if ((i == EMAC_SGMII_PHY_IRQ) &&
-		    (adpt->phy_mode != PHY_INTERFACE_MODE_SGMII))
-				continue;
-
 		retval = platform_get_irq_byname(pdev,
 						 emac_irq_cmn_tbl[i].name);
 		if (retval < 0) {
@@ -2536,11 +2507,6 @@ static int emac_get_resources(struct platform_device *pdev,
 	for (i = 0; i < NUM_EMAC_REG_BASES; i++) {
 		/* 1588 is required only if tstamp is enabled */
 		if ((i == EMAC_1588) && !adpt->tstamp_en)
-			continue;
-
-		/* qserdes & sgmii_phy are required only for sgmii phy */
-		if ((adpt->phy_mode != PHY_INTERFACE_MODE_SGMII) &&
-		    ((i == EMAC_QSERDES) || (i == EMAC_SGMII_PHY)))
 			continue;
 
 		res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
@@ -2667,8 +2633,8 @@ static int emac_probe(struct platform_device *pdev)
 	/* init adapter */
 	emac_init_adapter(adpt);
 
-	/* init phy */
-	retval = emac_hw_init_phy(hw);
+	/* config phy */
+	retval = emac_hw_config_phy(pdev, adpt);
 	if (retval)
 		goto err_init_phy;
 

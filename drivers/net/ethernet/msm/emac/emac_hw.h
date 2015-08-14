@@ -44,12 +44,8 @@ extern int emac_setup_phy_link_speed(struct emac_hw *hw, u32 speed,
 extern int emac_check_phy_link(struct emac_hw *hw, u32 *speed, bool *link_up);
 extern int emac_hw_get_lpa_speed(struct emac_hw *hw, u32 *speed);
 extern int emac_hw_ack_phy_intr(struct emac_hw *hw);
-extern int emac_hw_init_phy(struct emac_hw *hw);
+int emac_hw_config_phy(struct platform_device *pdev, struct emac_adapter *adpt);
 extern int emac_hw_init_ephy(struct emac_hw *hw);
-extern int emac_hw_init_sgmii(struct emac_hw *hw);
-extern int emac_hw_reset_sgmii(struct emac_hw *hw);
-extern int emac_check_sgmii_link(struct emac_hw *hw, u32 *speed, bool *linkup);
-extern int emac_hw_clear_sgmii_intr_status(struct emac_hw *hw, u32 irq_bits);
 extern void emac_hw_config_pow_save(struct emac_hw *hw, u32 speed, bool wol_en,
 				    bool rx_en);
 /* MAC */
@@ -142,62 +138,6 @@ extern bool emac_hw_read_tx_tstamp(struct emac_hw *hw,
 #define MASTER_CTRL_CLK_SEL_DIS         0x1000
 
 #define MDIO_WAIT_TIMES                 1000
-
-#define SERDES_START_WAIT_TIMES         100
-
-#define SGMII_CDR_MAX_CNT               0x0f
-
-#define QSERDES_PLL_IPSETI              0x01
-#define QSERDES_PLL_CP_SETI             0x3b
-#define QSERDES_PLL_IP_SETP             0x0a
-#define QSERDES_PLL_CP_SETP             0x09
-#define QSERDES_PLL_CRCTRL              0xfb
-#define QSERDES_PLL_DEC                    2
-#define QSERDES_PLL_DIV_FRAC_START1     0x55
-#define QSERDES_PLL_DIV_FRAC_START2     0x2a
-#define QSERDES_PLL_DIV_FRAC_START3     0x03
-#define QSERDES_PLL_LOCK_CMP1           0x2b
-#define QSERDES_PLL_LOCK_CMP2           0x68
-#define QSERDES_PLL_LOCK_CMP3           0x00
-
-#define QSERDES_RX_CDR_CTRL1_THRESH     0x03
-#define QSERDES_RX_CDR_CTRL1_GAIN       0x02
-#define QSERDES_RX_CDR_CTRL2_THRESH     0x03
-#define QSERDES_RX_CDR_CTRL2_GAIN       0x04
-#define QSERDES_RX_EQ_GAIN2              0xf
-#define QSERDES_RX_EQ_GAIN1              0xf
-
-#define QSERDES_TX_BIST_MODE_LANENO     0x00
-#define QSERDES_TX_DRV_LVL              0x0f
-#define QSERDES_TX_EMP_POST1_LVL           1
-#define QSERDES_TX_LANE_MODE            0x08
-
-#define SGMII_PHY_IRQ_CLR_WAIT_TIME     10
-
-#define SGMII_PHY_INTERRUPT_ERR (\
-	DECODE_CODE_ERR         |\
-	DECODE_DISP_ERR)
-
-#define SGMII_ISR_AN_MASK       (\
-	AN_REQUEST              |\
-	AN_START                |\
-	AN_END                  |\
-	AN_ILLEGAL_TERM         |\
-	PLL_UNLOCK              |\
-	SYNC_FAIL)
-
-#define SGMII_ISR_MASK          (\
-	SGMII_PHY_INTERRUPT_ERR |\
-	SGMII_ISR_AN_MASK)
-
-/* SGMII TX_CONFIG */
-#define TXCFG_LINK                      0x8000
-#define TXCFG_MODE_BMSK                 0x1c00
-#define TXCFG_1000_FULL                 0x1800
-#define TXCFG_100_FULL                  0x1400
-#define TXCFG_100_HALF                  0x0400
-#define TXCFG_10_FULL                   0x1000
-#define TXCFG_10_HALF                   0x0000
 
 /* PHY */
 #define MII_PSSR                        0x11 /* PHY Specific Status Reg */
