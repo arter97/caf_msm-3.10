@@ -1,21 +1,21 @@
 /*
-	All files except if stated otherwise in the begining of the file
-	are under the ISC license:
-	----------------------------------------------------------------------
-
-	Copyright (c) 2010-2012 Design Art Networks Ltd.
-
-	Permission to use, copy, modify, and/or distribute this software for any
-	purpose with or without fee is hereby granted, provided that the above
-	copyright notice and this permission notice appear in all copies.
-
-	THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-	WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-	MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
-	ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-	WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
-	ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
-	OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ *	All files except if stated otherwise in the beginning of the file
+ *	are under the ISC license:
+ *	----------------------------------------------------------------------
+ *	Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ *	Copyright (c) 2010-2012 Design Art Networks Ltd.
+ *
+ *	Permission to use, copy, modify, and/or distribute this software for any
+ *	purpose with or without fee is hereby granted, provided that the above
+ *	copyright notice and this permission notice appear in all copies.
+ *
+ *	THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ *	WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ *	MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ *	ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ *	WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ *	ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ *	OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 */
 
 
@@ -147,8 +147,7 @@ struct ipc_next_buf {
 enum ipc_trns_prio {
 	ipc_trns_prio_0,	/* Low */
 	ipc_trns_prio_1,	/* .. */
-	ipc_trns_prio_2,	/* .. */
-	ipc_trns_prio_3,	/* High */
+	max_ipc_prio,
 };
 
 typedef char *(*ipc_trns_alloc_t)(uint8_t dest_aid, enum ipc_trns_prio pri);
@@ -176,21 +175,6 @@ struct agent_entry {
 	char	name[MAX_AGENT_NAME_LEN];
 };
 
-/* Own Node number */
-extern uint8_t	ipc_own_node;
-
-
-/* -----------------------------------------------------------
- * Function:	ipc_recv
- * Description:	Processing IPC messages
- * Input:	max_msg_count:		max number processed messages per call
- *		pri:			priority queue
- * Output:	None
- * -----------------------------------------------------------
- */
-uint32_t ipc_recv(uint32_t max_msg_count, enum ipc_trns_prio pri);
-
-
 /* ===========================================================================
  * ipc_buf_alloc
  * ===========================================================================
@@ -213,14 +197,15 @@ char *ipc_buf_alloc(uint8_t dest_aid, enum ipc_trns_prio pri);
  *		or on sending node when need to free previously allocated
  *		buffers
  *
- * Parameters:		buf_first	- Pointer to first message buffer
+ * Parameters:		dest_aid	- Free buffer to this node.
+ *			buf_first	- Pointer to first message buffer
  *			pri		- Transport priority level
  *
  *
  * Returns: Result code
  *
  */
-int32_t ipc_buf_free(char *buf_first, enum ipc_trns_prio pri);
+int32_t ipc_buf_free(char *buf_first, uint8_t dest_aid, enum ipc_trns_prio pri);
 
 
 /* ===========================================================================

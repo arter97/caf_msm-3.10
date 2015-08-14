@@ -1,23 +1,22 @@
 /*
-	All files except if stated otherwise in the begining of the file
-	are under the ISC license:
-	----------------------------------------------------------------------
-
-	Copyright (c) 2010-2012 Design Art Networks Ltd.
-
-	Permission to use, copy, modify, and/or distribute this software for any
-	purpose with or without fee is hereby granted, provided that the above
-	copyright notice and this permission notice appear in all copies.
-
-	THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-	WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-	MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
-	ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-	WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
-	ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
-	OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-*/
-
+ *	All files except if stated otherwise in the beginning of the file
+ *	are under the ISC license:
+ *	----------------------------------------------------------------------
+ *	Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ *	Copyright (c) 2010-2012 Design Art Networks Ltd.
+ *
+ *	Permission to use, copy, modify, and/or distribute this software for any
+ *	purpose with or without fee is hereby granted, provided that the above
+ *	copyright notice and this permission notice appear in all copies.
+ *
+ *	THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ *	WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ *	MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ *	ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ *	WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ *	ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ *	OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
 
 #include <linux/string.h>
 
@@ -25,7 +24,6 @@
 #include "ipc_api.h"
 
 #include "danipc_lowlevel.h"
-
 
 /* -----------------------------------------------------------
  * MACRO (define) section
@@ -35,9 +33,6 @@
 #define MAX_LOCAL_ID     (MAX_LOCAL_AGENT-1)
 
 static uint8_t	ipc_req_sn;	/* Maintain node related sequence number */
-
-uint8_t		ipc_own_node;
-
 
 /* ===========================================================================
  * ipc_appl_init
@@ -50,25 +45,30 @@ uint8_t		ipc_own_node;
  * Returns: n/a
  *
  */
-static inline void ipc_appl_init(struct ipc_trns_func const *def_trns_funcs)
+static inline void ipc_appl_init(uint8_t local_cpuid,
+				 struct ipc_trns_func const *def_trns_funcs,
+				 uint8_t ifidx)
 {
-	ipc_own_node = ipc_get_own_node();
-	ipc_agent_table_clean();
+	ipc_agent_table_clean(local_cpuid);
 
-	ipc_trns_fifo_buf_init(ipc_own_node);
-
+	ipc_trns_fifo_buf_init(local_cpuid, ifidx);
 	/* Initialize IPC routing table (of CPU#) */
-	ipc_route_table_init(def_trns_funcs);
+	ipc_route_table_init(local_cpuid, def_trns_funcs);
 }
 
-
-unsigned ipc_init(void)
+unsigned ipc_init(uint8_t local_cpuid, uint8_t ifidx)
 {
-	ipc_appl_init(&ipc_fifo_utils);
+	ipc_appl_init(local_cpuid, &ipc_fifo_utils, ifidx);
 	return 0;
 }
 
+unsigned ipc_cleanup(uint8_t local_cpuid)
+{
+	ipc_agent_table_clean(local_cpuid);
+	ipc_trns_fifo_buf_flush(local_cpuid);
 
+	return 0;
+}
 
 /* ===========================================================================
  * ipc_buf_alloc
@@ -114,26 +114,24 @@ char *ipc_buf_alloc(uint8_t dest_aid, enum ipc_trns_prio prio)
  *		or on sending node when need to free previously allocated
  *		buffers
  *
- * Parameters:		buf_first	- Pointer to first message buffer
- *			prio		- Transport priority level
+ * Parameters:	dest_aid	- node to free the packet to.
+ *		buf_first	- Pointer to first message buffer
+ *		prio		- Transport priority level
  *
  *
  * Returns: Result code
  *
  */
-int32_t ipc_buf_free(char *buf_first, enum ipc_trns_prio prio)
+int32_t ipc_buf_free(char *buf_first, uint8_t dest_aid, enum ipc_trns_prio prio)
 {
 	struct ipc_buf_hdr		*cur_buf;
 	struct ipc_buf_hdr		*next_buf;
 	struct ipc_trns_func const	*trns_funcs;
 	ipc_trns_free_t			free_func;
-	uint8_t				dest_aid;
 	uint8_t				cpuid;
 	int32_t				res = IPC_GENERIC_ERROR;
 
 	if (likely(buf_first)) {
-		dest_aid  = (((struct ipc_first_buf *)buf_first)->
-							msg_hdr).dest_aid;
 		cur_buf = (struct ipc_buf_hdr *)buf_first;
 		cpuid = ipc_get_node(dest_aid);
 		trns_funcs = get_trns_funcs(cpuid);
@@ -150,7 +148,7 @@ int32_t ipc_buf_free(char *buf_first, enum ipc_trns_prio prio)
 					next_buf = ((struct ipc_msg_hdr *)
 					 IPC_NEXT_PTR_PART(cur_buf))->next;
 					free_func(IPC_NEXT_PTR_PART(cur_buf),
-							cpuid, prio);
+						  cpuid, prio);
 					cur_buf = next_buf;
 				} while ((uint32_t)cur_buf & IPC_BUF_TYPE_MTC);
 				res = IPC_SUCCESS;
@@ -252,7 +250,6 @@ static int32_t ipc_msg_set_reply_ptr(
 	return IPC_SUCCESS;
 }
 
-
 /* ===========================================================================
  * ipc_msg_alloc
  * ===========================================================================
@@ -301,7 +298,8 @@ char *ipc_msg_alloc(
 			next_bufs_num++;
 	}
 
-	first_buf = prev_buf = ipc_buf_alloc(dest_aid, prio);
+	first_buf = ipc_buf_alloc(dest_aid, prio);
+	prev_buf = first_buf;
 	for (buf = 0; buf < next_bufs_num; buf++) {
 		if (prev_buf == NULL)
 			break;
@@ -313,7 +311,7 @@ char *ipc_msg_alloc(
 
 	/* If buffer allocation failed free the entire buffers */
 	if ((prev_buf == NULL) && (first_buf != NULL)) {
-		ipc_buf_free(first_buf, prio);
+		ipc_buf_free(first_buf, dest_aid, prio);
 		first_buf = NULL;
 	} else if (first_buf) {
 		ipc_msg_set_type(first_buf, msg_type);
@@ -330,10 +328,10 @@ char *ipc_msg_alloc(
 			/* Now copy the Data */
 			reminder = msg_len;
 			tmp_size = min_t(size_t, reminder,
-					IPC_FIRST_BUF_DATA_SIZE_MAX);
+					 IPC_FIRST_BUF_DATA_SIZE_MAX);
 
 			memcpy(((struct ipc_first_buf *)first_buf)->body,
-					last_data - reminder, tmp_size);
+			       last_data - reminder, tmp_size);
 
 			reminder -= tmp_size;
 			prev_buf = first_buf;
@@ -342,10 +340,10 @@ char *ipc_msg_alloc(
 				next_buf = IPC_NEXT_PTR_PART(
 					((struct ipc_msg_hdr *)prev_buf)->next);
 				tmp_size = min_t(size_t, reminder,
-						IPC_NEXT_BUF_DATA_SIZE_MAX);
+						 IPC_NEXT_BUF_DATA_SIZE_MAX);
 
 				memcpy(((struct ipc_next_buf *)next_buf)->body,
-						last_data - reminder, tmp_size);
+				       last_data - reminder, tmp_size);
 
 				reminder -= tmp_size;
 				prev_buf = next_buf;
@@ -390,29 +388,4 @@ int32_t ipc_msg_send(char *buf_first, enum ipc_trns_prio prio)
 		}
 	}
 	return res;
-}
-
-/* -----------------------------------------------------------
- * Function:	ipc_recv
- * Description:	Processing IPC messages
- * Input:		max_msg_count	- max number processed messages per call
- *			prio		- transport priority level
- * Output:		number of processed messages
- * -----------------------------------------------------------
- */
-uint32_t ipc_recv(uint32_t max_msg_count, enum ipc_trns_prio prio)
-{
-	unsigned		ix;
-	char			*ipc_data;
-
-	for (ix = 0; ix < max_msg_count; ix++) {
-		ipc_data = ipc_trns_fifo_buf_read(prio);
-
-		if (ipc_data) {
-			/* IPC_msg_handler(ipc_data); */
-			handle_incoming_packet(ipc_data, ipc_own_node, prio);
-		} else
-			break; /* no more messages, queue empty */
-	}
-	return ix;
 }

@@ -1,23 +1,22 @@
 /*
-	All files except if stated otherwise in the begining of the file
-	are under the ISC license:
-	----------------------------------------------------------------------
-
-	Copyright (c) 2010-2012 Design Art Networks Ltd.
-
-	Permission to use, copy, modify, and/or distribute this software for any
-	purpose with or without fee is hereby granted, provided that the above
-	copyright notice and this permission notice appear in all copies.
-
-	THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-	WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-	MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
-	ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-	WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
-	ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
-	OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-*/
-
+ *	All files except if stated otherwise in the beginning of the file
+ *	are under the ISC license:
+ *	----------------------------------------------------------------------
+ *	Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ *	Copyright (c) 2010-2012 Design Art Networks Ltd.
+ *
+ *	Permission to use, copy, modify, and/or distribute this software for any
+ *	purpose with or without fee is hereby granted, provided that the above
+ *	copyright notice and this permission notice appear in all copies.
+ *
+ *	THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ *	WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ *	MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ *	ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ *	WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ *	ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ *	OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
 
 #include <linux/module.h>
 #include <linux/init.h>
@@ -31,12 +30,16 @@
 #include "ipc_api.h"
 #include "danipc_lowlevel.h"
 
-
 struct agent_data {
 	struct task_struct	*task;
 	pid_t			pid;
+	/* to unregister from agent_table we need to know which interface task
+	 * is assigned to.
+	 */
+	struct net_device	*dev;
 };
-struct agent_data		agent_data[MAX_LOCAL_AGENT];
+
+struct agent_data agent_data[MAX_LOCAL_AGENT];
 
 static int
 is_process_alive(const struct agent_data *agent_data_p)
@@ -49,7 +52,7 @@ is_process_alive(const struct agent_data *agent_data_p)
 		 * to the correct process.
 		 */
 		if (agent_data_p->task == task &&
-				agent_data_p->pid == task->pid)
+		    agent_data_p->pid == task->pid)
 			rc = 1;
 	}
 
@@ -65,12 +68,22 @@ ipc_gc(void)
 		struct agent_data *agent_data_p = &agent_data[lid];
 
 		if (agent_data_p->task && !is_process_alive(agent_data_p)) {
+			if (agent_data_p->dev) {
+				struct danipc_if *intf = (struct danipc_if *)
+					netdev_priv(agent_data_p->dev);
+
+				uint8_t	lcpuid = intf->rx_fifo_idx;
+				unsigned	aid =
+					__IPC_AGENT_ID(lcpuid, lid);
+				memset(agent_table[aid].name, '\0',
+				       MAX_AGENT_NAME_LEN);
+			}
 			agent_data_p->task	= NULL;
 			agent_data_p->pid	= 0;
+			agent_data_p->dev	= NULL;
 		}
 	}
 }
-
 
 static int
 danipc_strncmp(const char *cs, const char *ct, size_t cs_size, size_t ct_size)
@@ -82,10 +95,10 @@ danipc_strncmp(const char *cs, const char *ct, size_t cs_size, size_t ct_size)
 /* Second registration is allowed only for the same process. */
 static int
 second_registration(struct danipc_reg *danipc_reg_p, const int aid,
-			const unsigned lid)
+		    const unsigned lid)
 {
 	return (danipc_strncmp(agent_table[aid].name, danipc_reg_p->name,
-			MAX_AGENT_NAME_LEN, MAX_AGENT_NAME) &&
+			       MAX_AGENT_NAME_LEN, MAX_AGENT_NAME) &&
 		agent_data[lid].task == current) ? 1 : 0;
 }
 
@@ -96,6 +109,8 @@ register_agent(struct net_device *dev, struct danipc_reg *danipc_reg_p)
 	unsigned		r_lid;
 	unsigned		agent_id = INVALID_ID;
 	int			rc = 0;
+	struct danipc_if	*intf = (struct danipc_if *)netdev_priv(dev);
+	uint8_t		lcpuid = intf->rx_fifo_idx;
 
 	ipc_gc();
 
@@ -105,7 +120,7 @@ register_agent(struct net_device *dev, struct danipc_reg *danipc_reg_p)
 	r_lid = danipc_reg.requested_lid;
 
 	if (r_lid != INVALID_ID) {
-		const unsigned r_aid = __IPC_AGENT_ID(LOCAL_IPC_ID, r_lid);
+		const unsigned r_aid = __IPC_AGENT_ID(lcpuid, r_lid);
 
 		/* Requested ID is not used, so assign it */
 		if (!*agent_table[r_aid].name ||
@@ -124,11 +139,12 @@ register_agent(struct net_device *dev, struct danipc_reg *danipc_reg_p)
 		unsigned	lid;
 		/* Scan for the ID already assigned */
 		for (lid = 0; lid < MAX_LOCAL_AGENT; lid++) {
-			const unsigned aid = __IPC_AGENT_ID(LOCAL_IPC_ID, lid);
+			const unsigned aid = __IPC_AGENT_ID(lcpuid, lid);
+
 			if (danipc_strncmp(danipc_reg.name,
-				agent_table[aid].name,
-					MAX_AGENT_NAME, MAX_AGENT_NAME_LEN)
-					&& agent_data[lid].task == NULL) {
+					   agent_table[aid].name,
+					  MAX_AGENT_NAME, MAX_AGENT_NAME_LEN) &&
+			    agent_data[lid].task == NULL) {
 				if (put_user(lid, &danipc_reg_p->assigned_lid))
 					return -EFAULT;
 				agent_id = aid;
@@ -141,9 +157,10 @@ register_agent(struct net_device *dev, struct danipc_reg *danipc_reg_p)
 		unsigned	lid;
 		/* Scan for the 1st free ID */
 		for (lid = 0; lid < MAX_LOCAL_AGENT; lid++) {
-			const unsigned aid = __IPC_AGENT_ID(LOCAL_IPC_ID, lid);
+			const unsigned aid = __IPC_AGENT_ID(lcpuid, lid);
+
 			if (!*agent_table[aid].name ||
-				second_registration(&danipc_reg, aid, lid)) {
+			    second_registration(&danipc_reg, aid, lid)) {
 				if (put_user(lid, &danipc_reg_p->assigned_lid))
 					return -EFAULT;
 				agent_id = aid;
@@ -163,16 +180,16 @@ register_agent(struct net_device *dev, struct danipc_reg *danipc_reg_p)
 			rc = -EFAULT;
 		agent_data[ipc_lid(agent_id)].task	= current;
 		agent_data[ipc_lid(agent_id)].pid	= current->pid;
-		netdev_dbg(dev,
-			"%s: agent_id=0x%x assigned_lid=0x%x agent_table[]=\"%s\"\n",
-			__func__, agent_id, danipc_reg.assigned_lid,
+		agent_data[ipc_lid(agent_id)].dev	= dev;
+		netdev_dbg(dev, "%s: agent_id=0x%x assigned_lid=0x%x cpuid=%d agent_table[]=\"%s\"\n",
+			   __func__, agent_id, danipc_reg.assigned_lid, lcpuid,
 			agent_table[agent_id].name);
-	} else
+	} else {
 		rc = -ENOBUFS;
+	}
 
 	return rc;
 }
-
 
 static int
 get_name_by_addr(struct net_device *dev, struct danipc_name *danipc_name_p)
@@ -185,72 +202,87 @@ get_name_by_addr(struct net_device *dev, struct danipc_name *danipc_name_p)
 
 	if (*agent_table[addr].name) {
 		if (copy_to_user(danipc_name_p->name,
-				agent_table[danipc_name_p->addr].name,
-				sizeof(danipc_name_p->name)))
+				 agent_table[danipc_name_p->addr].name,
+				 sizeof(danipc_name_p->name)))
 			rc = -EFAULT;
 		else
 			rc = 0;
 		netdev_dbg(dev, "%s(): addr=0x%x -> name=%s\n", __func__,
-			addr, agent_table[danipc_name_p->addr].name);
+			   addr, agent_table[danipc_name_p->addr].name);
 	}
 
 	return rc;
 }
-
 
 static int
 get_addr_by_name(struct net_device *dev, struct danipc_name *danipc_name_p)
 {
 	char			name[MAX_AGENT_NAME];
 	int			rc = -ENODATA;
-	unsigned		aid;
+	uint16_t		aid;
 
 	if (copy_from_user(name, danipc_name_p->name, sizeof(name)))
 		return -EFAULT;
 
 	for (aid = 0; aid < MAX_AGENTS; aid++) {
 		if (danipc_strncmp(name, agent_table[aid].name,
-				MAX_AGENT_NAME, MAX_AGENT_NAME_LEN)) {
-			const unsigned cpuid = aid / MAX_LOCAL_AGENT;
-			const unsigned lid = aid % MAX_LOCAL_AGENT;
+				   MAX_AGENT_NAME, MAX_AGENT_NAME_LEN)) {
+			const unsigned cpuid = ipc_get_node(aid);
+			const unsigned lid = ipc_lid(aid);
+			struct danipc_if    *intf = netdev_priv(dev);
+			struct ipc_to_virt_map *map = &ipc_to_virt_map[cpuid]
+				[ipc_trns_prio_1];
+
+			if (!map->paddr) {
+				char *buf = ipc_buf_alloc(aid, ipc_trns_prio_1);
+
+				if (buf)
+					ipc_buf_free(buf, aid, ipc_trns_prio_1);
+			}
+
+			/* Mark destination agent discovered.
+			 * Used in admision contol of packet.
+			 */
+			DANIPC_AGENT_DISCOVERED(aid, intf->drvr->dst_aid);
+
 			if (put_user(__IPC_AGENT_ID(cpuid, lid),
-						&danipc_name_p->addr))
+				     &danipc_name_p->addr)) {
 				rc = -EFAULT;
-			else
+			} else {
 				rc = 0;
+				break;
+			}
 			netdev_dbg(dev, "%s: name=%s -> addr=0x%x\n", __func__,
-				agent_table[aid].name, aid);
+				   agent_table[aid].name, aid);
 		}
 	}
 
 	return rc;
 }
 
-
-
 int danipc_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 {
-	int			rc = -EINVAL;
+	int rc = -EINVAL;
 
 	if (dev && ifr && ifr->ifr_data) {
-		struct danipc_priv *priv = netdev_priv(dev);
+		struct danipc_if *intf = netdev_priv(dev);
 
-		mutex_lock(&priv->lock);
+		mutex_lock(&intf->lock);
 		switch (cmd) {
 		case DANIPC_IOCS_REGISTER:
 			rc = register_agent(dev,
-					(struct danipc_reg *)ifr->ifr_data);
+					    (struct danipc_reg *)ifr->ifr_data);
 			break;
 		case DANIPC_IOCG_ADDR2NAME:
-			rc = get_name_by_addr(dev,
-					(struct danipc_name *)ifr->ifr_data);
+			rc = get_name_by_addr(dev, (struct danipc_name *)
+					      ifr->ifr_data);
 			break;
 		case DANIPC_IOCG_NAME2ADDR:
-			rc = get_addr_by_name(dev,
-					(struct danipc_name *)ifr->ifr_data);
+			rc = get_addr_by_name(dev, (struct danipc_name *)
+					      ifr->ifr_data);
 			break;
 		}
-		mutex_unlock(&priv->lock);
+		mutex_unlock(&intf->lock);
 	}
 	return rc;
 }
