@@ -1623,11 +1623,9 @@ reinit:
 	}
 
 	/*
-	 * If the host supports the power_off_notify capability then
-	 * set the notification byte in the ext_csd register of device
+	 * Enable power_off_notification byte in the ext_csd register
 	 */
-	if ((host->caps2 & MMC_CAP2_POWEROFF_NOTIFY) &&
-	    (card->ext_csd.rev >= 6)) {
+	if (card->ext_csd.rev >= 6) {
 		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 				 EXT_CSD_POWER_OFF_NOTIFICATION,
 				 EXT_CSD_POWER_ON,
@@ -1907,10 +1905,7 @@ static void mmc_detect(struct mmc_host *host)
 	}
 }
 
-/*
- * Suspend callback from host.
- */
-static int mmc_suspend(struct mmc_host *host)
+static int _mmc_suspend(struct mmc_host *host, bool is_suspend)
 {
 	int err = 0;
 
@@ -1926,7 +1921,7 @@ static int mmc_suspend(struct mmc_host *host)
 	 */
 	mmc_disable_clk_scaling(host);
 
-	err = mmc_cache_ctrl(host, 0);
+	err = mmc_flush_cache(host->card);
 	if (err)
 		goto out;
 
@@ -1939,6 +1934,22 @@ static int mmc_suspend(struct mmc_host *host)
 out:
 	mmc_release_host(host);
 	return err;
+}
+
+/*
+ * Suspend callback from host.
+ */
+static int mmc_suspend(struct mmc_host *host)
+{
+	return _mmc_suspend(host, true);
+}
+
+/*
+ * Shutdown callback
+ */
+static int mmc_shutdown(struct mmc_host *host)
+{
+	return _mmc_suspend(host, false);
 }
 
 /*
@@ -2066,6 +2077,7 @@ static const struct mmc_bus_ops mmc_ops = {
 	.power_restore = mmc_power_restore,
 	.alive = mmc_alive,
 	.change_bus_speed = mmc_change_bus_speed,
+	.shutdown = mmc_shutdown,
 };
 
 static const struct mmc_bus_ops mmc_ops_unsafe = {
@@ -2078,6 +2090,7 @@ static const struct mmc_bus_ops mmc_ops_unsafe = {
 	.power_restore = mmc_power_restore,
 	.alive = mmc_alive,
 	.change_bus_speed = mmc_change_bus_speed,
+	.shutdown = mmc_shutdown,
 };
 
 static void mmc_attach_bus_ops(struct mmc_host *host)

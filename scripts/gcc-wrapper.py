@@ -46,7 +46,7 @@ allowed_warnings = set([
     "af_unix.c:893",
     "nl80211.c:58",
     "jhash.h:137",
-    "cmpxchg.h:162",
+    "cmpxchg.h:201",
     "ping.c:87",
     "nfnetlink_queue_core.c:264",
     "nfnetlink_queue_core.c:265",
