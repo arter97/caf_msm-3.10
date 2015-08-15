@@ -160,11 +160,6 @@
 	};
 };
 
-&pmi8950_haptic{
-	qcom,correct-lra-drive-freq;
-	qcom,misc-trim-error-rc19p2-clk-reg-present;
-};
-
 &sdhc_1 {
 	vdd-supply = <&pm8950_l8>;
 	qcom,vdd-voltage-level = <2900000 2900000>;
