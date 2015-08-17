@@ -35,37 +35,7 @@ static struct gpiomux_setting blsp_uart_pull_up_config = {
 	.pull = GPIOMUX_PULL_UP,
 };
 
-static struct gpiomux_setting blsp_i2c_config = {
-	.func = GPIOMUX_FUNC_3,
-	.drv = GPIOMUX_DRV_6MA,
-	.pull = GPIOMUX_PULL_UP,
-};
-
 static struct msm_gpiomux_config fsm_blsp_configs[] __initdata = {
-	{
-		.gpio      = 2,	       /* BLSP I2C SDA */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &blsp_i2c_config,
-		},
-	},
-	{
-		.gpio      = 3,	       /* BLSP I2C SCL */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &blsp_i2c_config,
-		},
-	},
-	{
-		.gpio      = 6,	       /* BLSP I2C SDA */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &blsp_i2c_config,
-		},
-	},
-	{
-		.gpio      = 7,	       /* BLSP I2C SCL */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &blsp_i2c_config,
-		},
-	},
 #ifdef CONFIG_FSM9900_GSM_NL
 	{
 		.gpio      = 16,       /* BLSP UART5 TX */
@@ -92,19 +62,6 @@ static struct msm_gpiomux_config fsm_blsp_configs[] __initdata = {
 			[GPIOMUX_SUSPENDED] = &blsp_uart_pull_up_config,
 		},
 	},
-	{
-		.gpio      = 38,       /* BLSP I2C10 SDA */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &blsp_i2c_config,
-		},
-	},
-	{
-		.gpio      = 39,       /* BLSP I2C10 SCL */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &blsp_i2c_config,
-		},
-	},
-
 };
 
 static struct gpiomux_setting geni_func4_config = {

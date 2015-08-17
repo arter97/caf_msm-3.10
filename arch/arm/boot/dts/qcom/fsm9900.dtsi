@@ -28,6 +28,9 @@
 	aliases {
 		sdhc1 = &sdhc_1; /* SDC1 eMMC slot */
 		sdhc2 = &sdhc_2; /* SDC2 SD card slot */
+		i2c0 = &i2c_0;
+		i2c1 = &i2c_1;
+		i2c2 = &i2c_2;
 	};
 
 	cpus {
@@ -548,53 +551,86 @@
 		qcom,ipi-ping;
 	};
 
-	i2c@f9966000 { /* BLSP-2 QUP-4 */
-		cell-index = <0>;
-		compatible = "qcom,i2c-qup";
-		reg = <0xf9966000 0x500>;
+	dma_blsp1: qcom,sps-dma@f9904000 { /* BLSP1 */
+		#dma-cells = <4>;
+		compatible = "qcom,sps-dma";
+		reg = <0xf9904000 0x18000>;
+		interrupts = <0 238 0>;
+		qcom,summing-threshold = <10>;
+	};
+
+	dma_blsp2: qcom,sps-dma@f9944000 { /* BLSP2 */
+		#dma-cells = <4>;
+		compatible = "qcom,sps-dma";
+		reg = <0xf9944000 0x18000>;
+		interrupts = <0 239 0>;
+		qcom,summing-threshold = <10>;
+	};
+
+	i2c_0: i2c@f9966000 { /* BLSP-2 QUP-4 */
+		compatible = "qcom,i2c-msm-v2";
 		#address-cells = <1>;
 		#size-cells = <0>;
 		reg-names = "qup_phys_addr";
+		reg = <0xf9966000 0x500>;
+		interrupt-names = "qup_irq";
 		interrupts = <0 103 0>;
-		interrupt-names = "qup_err_intr";
-		qcom,i2c-bus-freq = <100000>;
-		qcom,i2c-src-freq = <19200000>;
-		qcom,sda-gpio = <&msmgpio 38 0>;
-		qcom,scl-gpio = <&msmgpio 39 0>;
+		qcom,clk-freq-out = <100000>;
+		qcom,clk-freq-in  = <19200000>;
+		pinctrl-names = "default", "i2c_active", "i2c_sleep";
+		pinctrl-0 = <&blsp2_i2c3_sda_default &blsp2_i2c3_scl_default>;
+		pinctrl-1 = <&blsp2_i2c3_sda_default &blsp2_i2c3_scl_default>;
+		pinctrl-2 = <&blsp2_i2c3_sda_default &blsp2_i2c3_scl_default>;
+		qcom,noise-rjct-scl = <0>;
+		qcom,noise-rjct-sda = <0>;
+		dmas = <&dma_blsp2 18 64 0x20000020 0x20>,
+			<&dma_blsp2 19 32 0x20000020 0x20>;
+		dma-names = "tx", "rx";
 		qcom,master-id = <84>;
 	};
 
-	i2c@f9967000 { /* BLSP-2 QUP-5 */
-		cell-index = <0>;
-		compatible = "qcom,i2c-qup";
-		reg = <0Xf9967000 0x500>;
+	i2c_2: i2c@f9967000 { /* BLSP-2 QUP-5 */
+		compatible = "qcom,i2c-msm-v2";
 		#address-cells = <1>;
 		#size-cells = <0>;
 		reg-names = "qup_phys_addr";
+		reg = <0xf9967000 0x500>;
+		interrupt-names = "qup_irq";
 		interrupts = <0 105 0>;
-		interrupt-names = "qup_err_intr";
-		qcom,i2c-bus-freq = <100000>;
-		qcom,i2c-src-freq = <19200000>;
-		qcom,sda-gpio = <&msmgpio 137 0>;
-		qcom,scl-gpio = <&msmgpio 141 0>;
+		qcom,clk-freq-out = <100000>;
+		qcom,clk-freq-in  = <19200000>;
+		pinctrl-names = "default", "i2c_active", "i2c_sleep";
+		pinctrl-0 = <&blsp2_i2c4_sda_default &blsp2_i2c4_scl_default>;
+		pinctrl-1 = <&blsp2_i2c4_sda_default &blsp2_i2c4_scl_default>;
+		pinctrl-2 = <&blsp2_i2c4_sda_default &blsp2_i2c4_scl_default>;
+		qcom,noise-rjct-scl = <0>;
+		qcom,noise-rjct-sda = <0>;
+		dmas = <&dma_blsp2 20 64 0x20000020 0x20>,
+			<&dma_blsp2 21 32 0x20000020 0x20>;
+		dma-names = "tx", "rx";
 		qcom,master-id = <84>;
 		status = "disabled";
 	};
 
-
-	i2c@f9924000 { /* BLSP-1 QUP-2 */
-		cell-index = <1>;
-		compatible = "qcom,i2c-qup";
-		reg = <0xf9924000 0x500>;
+	i2c_1: i2c@f9924000 { /* BLSP-1 QUP-2 */
+		compatible = "qcom,i2c-msm-v2";
 		#address-cells = <1>;
 		#size-cells = <0>;
 		reg-names = "qup_phys_addr";
+		reg = <0xf9924000 0x500>;
+		interrupt-names = "qup_irq";
 		interrupts = <0 96 0>;
-		interrupt-names = "qup_err_intr";
-		qcom,i2c-bus-freq = <100000>;
-		qcom,i2c-src-freq = <19200000>;
-		qcom,sda-gpio = <&msmgpio 6 0>;
-		qcom,scl-gpio = <&msmgpio 7 0>;
+		qcom,clk-freq-out = <100000>;
+		qcom,clk-freq-in  = <19200000>;
+		pinctrl-names = "default", "i2c_active", "i2c_sleep";
+		pinctrl-0 = <&blsp1_i2c1_sda_default &blsp1_i2c1_scl_default>;
+		pinctrl-1 = <&blsp1_i2c1_sda_default &blsp1_i2c1_scl_default>;
+		pinctrl-2 = <&blsp1_i2c1_sda_default &blsp1_i2c1_scl_default>;
+		qcom,noise-rjct-scl = <0>;
+		qcom,noise-rjct-sda = <0>;
+		dmas = <&dma_blsp1 14 64 0x20000020 0x20>,
+			<&dma_blsp1 15 32 0x20000020 0x20>;
+		dma-names = "tx", "rx";
 		qcom,master-id = <86>;
 	};
 
