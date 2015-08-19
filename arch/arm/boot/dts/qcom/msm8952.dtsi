@@ -1304,6 +1304,7 @@
 
 		sdhc-msm-crypto = <&sdcc1_ice>;
 		qcom,bus-width = <8>;
+		qcom,large-address-bus;
 
 		qcom,qos-planes = <3>;
 		qcom,cpu-dma-latency-us = <2 360 430>;
@@ -1349,6 +1350,7 @@
 		interrupt-names = "hc_irq", "pwr_irq";
 
 		qcom,bus-width = <4>;
+		qcom,large-address-bus;
 
 		qcom,cpu-dma-latency-us = <701>;
 		qcom,msm-bus,name = "sdhc2";
