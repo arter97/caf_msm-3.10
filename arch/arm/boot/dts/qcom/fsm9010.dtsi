@@ -496,12 +496,13 @@
 	qcom,qcrypto@fe0c0000 {
 		compatible = "qcom,qcrypto";
 		reg = <0xfe0c0000 0x20000>,
-			<0xfe0c4000 0x8000>;
+			<0xfe0c4000 0xc000>;
 		reg-names = "crypto-base","crypto-bam-base";
 		interrupts = <0 109 0>;
 		qcom,bam-pipe-pair = <0>;
 		qcom,ce-hw-instance = <0>;
 		qcom,ce-hw-shared;
+		qcom,use-sw-aes-xts-algo;
 		qcom,ce-device = <0>;
 		clock-names = "core_clk", "iface_clk", "bus_clk",
 				 "core_clk_src";
@@ -597,9 +598,11 @@
 		compatible = "qcom,qseecom";
 		reg = <0x13e62000 0x9e000>;
 		reg-names = "secapp-region";
-		qcom,disk-encrypt-pipe-pair = <2>;
-		qcom,hlos-ce-hw-instance = <1>;
+		qcom,disk-encrypt-pipe-pair = <0>;
+		qcom,hlos-ce-hw-instance = <0>;
 		qcom,qsee-ce-hw-instance = <0>;
+		qcom,support-fde;
+		qcom,no-clock-support;
 		qcom,msm-bus,name = "qseecom-noc";
 		qcom,msm-bus,num-cases = <4>;
 		qcom,msm-bus,num-paths = <1>;
