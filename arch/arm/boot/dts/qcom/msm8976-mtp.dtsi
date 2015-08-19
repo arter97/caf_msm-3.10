@@ -240,6 +240,10 @@
 	qcom,chg-led-sw-controls;
 };
 
+&flash_led {
+	qcom,follow-otst2-rb-disabled;
+};
+
 /* CoreSight */
 &tpiu {
 	pinctrl-names = "sdcard", "trace", "swduart",
