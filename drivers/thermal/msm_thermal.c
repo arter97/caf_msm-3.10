@@ -162,6 +162,7 @@ static bool online_core;
 static bool cluster_info_probed;
 static bool cluster_info_nodes_called;
 static bool in_suspend, retry_in_progress;
+static bool cpr_temp_band_enable;
 static int *tsens_id_map;
 static int *zone_id_tsens_map;
 static DEFINE_MUTEX(vdd_rstr_mutex);
@@ -180,7 +181,7 @@ static struct kobj_attribute mx_enabled_attr;
 static struct attribute_group cx_attr_gp;
 static struct attribute_group gfx_attr_gp;
 static struct attribute_group mx_attr_group;
-static struct regulator *vdd_mx;
+static struct regulator *vdd_mx, *vdd_cx;
 static struct cpufreq_frequency_table *pending_freq_table_ptr;
 static int pending_cpu_freq = -1;
 static long *tsens_temp_at_panic;
@@ -192,6 +193,7 @@ static int tsens_scaling_factor = SENSOR_SCALING_FACTOR;
 static LIST_HEAD(devices_list);
 static LIST_HEAD(thresholds_list);
 static int mitigation = 1;
+static uint32_t curr_cpr_band;
 
 enum thermal_threshold {
 	HOTPLUG_THRESHOLD_HIGH,
@@ -439,6 +441,38 @@ static ssize_t thermal_config_debugfs_write(struct file *file,
 		_flag = 0; \
 	} while (0)
 
+#define APPLY_VDD_RESTRICTION(vdd, level, name, ret)                   \
+	do {                                                              \
+		ret = regulator_set_voltage(vdd, level, INT_MAX);         \
+		if (ret) {                                                \
+			pr_err("Failed to vote %s to level %d, err %d\n", \
+			 #name, level, ret);                              \
+		} else {                                                  \
+			ret = regulator_enable(vdd);                      \
+			if (ret)                                          \
+				pr_err("Failed to enable %s, err %d\n",   \
+					#name, ret);                      \
+			else                                              \
+				pr_debug("Vote %s with level %d\n",       \
+					#name, level);                    \
+		}                                                         \
+	} while (0)
+
+#define REMOVE_VDD_RESTRICTION(vdd, name, ret)                             \
+	do {                                                                  \
+		ret = regulator_disable(vdd);                                 \
+		if (ret) {                                                    \
+			pr_err("Failed to disable %s, error %d\n",            \
+				#name, ret);                                  \
+		} else {                                                      \
+			ret = regulator_set_voltage(vdd, 0, INT_MAX);      \
+			if (ret)                                              \
+				pr_err("Failed to remove %s vote, error %d\n",\
+					#name, ret);                          \
+			else                                                  \
+				pr_debug("Remove voting to %s\n", #name);     \
+		}                                                             \
+	} while (0)
 
 static uint32_t get_mask_from_core_handle(struct platform_device *pdev,
 						const char *key)
@@ -2438,50 +2472,37 @@ set_threshold_exit:
 
 static int apply_vdd_mx_restriction(void)
 {
-	int ret = 0;
+	int ret_mx = 0, ret_cx = 0;
 
 	if (mx_restr_applied)
 		goto done;
 
-	ret = regulator_set_voltage(vdd_mx, msm_thermal_info.vdd_mx_min,
-			INT_MAX);
-	if (ret) {
-		pr_err("Failed to add mx vote, error %d\n", ret);
-		goto done;
-	}
-
-	ret = regulator_enable(vdd_mx);
-	if (ret)
-		pr_err("Failed to vote for mx voltage %d, error %d\n",
-				msm_thermal_info.vdd_mx_min, ret);
-	else
+	APPLY_VDD_RESTRICTION(vdd_mx, msm_thermal_info.vdd_mx_min, mx, ret_mx);
+	if (vdd_cx)
+		APPLY_VDD_RESTRICTION(vdd_cx, msm_thermal_info.vdd_cx_min,
+			cx, ret_cx);
+	if (!ret_mx && !ret_cx)
 		mx_restr_applied = true;
 
 done:
-	return ret;
+	return (ret_mx | ret_cx);
 }
 
 static int remove_vdd_mx_restriction(void)
 {
-	int ret = 0;
+	int ret_mx = 0, ret_cx = 0;
 
 	if (!mx_restr_applied)
 		goto done;
 
-	ret = regulator_disable(vdd_mx);
-	if (ret) {
-		pr_err("Failed to disable mx voting, error %d\n", ret);
-		goto done;
-	}
-
-	ret = regulator_set_voltage(vdd_mx, 0, INT_MAX);
-	if (ret)
-		pr_err("Failed to remove mx vote, error %d\n", ret);
-	else
+	REMOVE_VDD_RESTRICTION(vdd_mx, mx, ret_mx);
+	if (vdd_cx)
+		REMOVE_VDD_RESTRICTION(vdd_cx, cx, ret_cx);
+	if (!ret_mx && !ret_cx)
 		mx_restr_applied = false;
 
 done:
-	return ret;
+	return (ret_mx | ret_cx);
 }
 
 static int do_vdd_mx(void)
@@ -5134,6 +5155,86 @@ static int msm_thermal_add_sensor_info_nodes(void)
 	return ret;
 }
 
+static ssize_t msm_thermal_cpr_band_show(struct kobject *kobj,
+	struct kobj_attribute *attr, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%u\n", curr_cpr_band);
+}
+
+static ssize_t msm_thermal_cpr_band_store(struct kobject *kobj,
+	struct kobj_attribute *attr, const char *buf, size_t count)
+{
+	int ret = 0;
+	uint32_t val = 0;
+	struct msm_rpm_kvp cpr_kvp;
+
+	ret = kstrtouint(buf, 0, &val);
+	if (ret || val < MSM_COLD_CRITICAL || val > MSM_HOT_CRITICAL) {
+		pr_err("Invalid input %s\n", buf);
+		goto cpr_temp_store_exit;
+	}
+
+	if (curr_cpr_band == val)
+		goto cpr_temp_store_exit;
+	cpr_kvp.key = msm_thermal_str_to_int("temp");
+	cpr_kvp.data = (uint8_t *)&val;
+	cpr_kvp.length = sizeof(val);
+	ret = msm_rpm_send_message(MSM_RPM_CTX_ACTIVE_SET,
+		msm_thermal_str_to_int("cpr"), 0, &cpr_kvp, 1);
+	if (ret) {
+		pr_err("Temperature band send failed. old:%u new %u err:%d\n",
+			curr_cpr_band, val, ret);
+		goto cpr_temp_store_exit;
+	}
+	curr_cpr_band = val;
+	pr_debug("CPR notified for temperature band:%d\n", curr_cpr_band);
+
+cpr_temp_store_exit:
+	return count;
+}
+
+static struct kobj_attribute cpr_temp_attr =  __ATTR(curr_cpr_band, 0644,
+	msm_thermal_cpr_band_show, msm_thermal_cpr_band_store);
+
+static int msm_thermal_add_cpr_temp_nodes(void)
+{
+	struct kobject *module_kobj = NULL;
+	struct kobject *cpr_temp_kobj = NULL;
+	int ret = 0;
+
+	if (!cpr_temp_band_enable)
+		goto cpr_sysfs_add_exit;
+
+	/* By default send a cool temperature band */
+	msm_thermal_cpr_band_store(NULL, NULL, "3", 1);
+	module_kobj = kset_find_obj(module_kset, KBUILD_MODNAME);
+	if (!module_kobj) {
+		pr_err("cannot find kobject\n");
+		ret = -ENOENT;
+		goto cpr_sysfs_add_exit;
+	}
+
+	cpr_temp_kobj = kobject_create_and_add("cpr_band", module_kobj);
+	if (!cpr_temp_kobj) {
+		pr_err("cannot create curr_cpr_band kobject\n");
+		ret = -ENOMEM;
+		goto cpr_sysfs_add_exit;
+	}
+
+	sysfs_attr_init(&cpr_temp_attr.attr);
+	ret = sysfs_create_file(cpr_temp_kobj, &cpr_temp_attr.attr);
+	if (ret) {
+		pr_err("CPR temperature band sysfs create fail. err:%d\n",
+			ret);
+		goto cpr_sysfs_add_exit;
+	}
+
+cpr_sysfs_add_exit:
+	if (ret && cpr_temp_kobj)
+		kobject_del(cpr_temp_kobj);
+	return ret;
+}
+
 static int msm_thermal_add_vdd_rstr_nodes(void)
 {
 	struct kobject *module_kobj = NULL;
@@ -5561,6 +5662,21 @@ static int probe_vdd_mx(struct device_node *node,
 			"Could not get regulator: vdd-mx, err:%d\n", ret);
 		}
 		goto read_node_done;
+	}
+
+	key = "qcom,cx-retention-min";
+	ret = of_property_read_u32(node, key, &data->vdd_cx_min);
+	if (!ret) {
+		vdd_cx = devm_regulator_get(&pdev->dev, "vdd-cx");
+		if (IS_ERR_OR_NULL(vdd_cx)) {
+			ret = PTR_ERR(vdd_cx);
+			if (ret != -EPROBE_DEFER) {
+				pr_err(
+				"Could not get regulator: vdd-cx, err:%d\n",
+				ret);
+			}
+			goto read_node_done;
+		}
 	}
 
 	ret = sensor_mgr_init_threshold(&pdev->dev,
@@ -6404,8 +6520,11 @@ static void thermal_mx_config_read(struct seq_file *m, void *data)
 		seq_printf(m, "threshold clear:%d degC\n",
 				msm_thermal_info.vdd_mx_temp_degC
 				+ msm_thermal_info.vdd_mx_temp_hyst_degC);
-		seq_printf(m, "retention value:%d\n",
+		seq_printf(m, "mx retention value:%d\n",
 				msm_thermal_info.vdd_mx_min);
+		if (vdd_cx)
+			seq_printf(m, "cx retention value:%d\n",
+				msm_thermal_info.vdd_cx_min);
 	}
 }
 
@@ -6730,6 +6849,11 @@ static int msm_thermal_dev_probe(struct platform_device *pdev)
 	ret = probe_ocr(node, &data, pdev);
 
 	update_cpu_topology(&pdev->dev);
+	if (of_property_read_bool(node, "qcom,cpr-temp-band-enable"))
+		cpr_temp_band_enable = 1;
+	else
+		pr_debug("CPR temperature band support disabled\n");
+
 
 	/*
 	 * In case sysfs add nodes get called before probe function.
@@ -6871,6 +6995,8 @@ int __init msm_thermal_late_init(void)
 	create_cpu_topology_sysfs();
 	create_thermal_debugfs();
 	msm_thermal_add_bucket_info_nodes();
+	msm_thermal_add_cpr_temp_nodes();
+
 	return 0;
 }
 late_initcall(msm_thermal_late_init);
