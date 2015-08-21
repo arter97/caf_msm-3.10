@@ -181,6 +181,8 @@
 		reg = <0xf9960000 0x1000>;
 		interrupts = <0 104 0>;
 		status = "disabled";
+		pinctrl-names = "default";
+		pinctrl-0 = <&blsp2_uart3_tx_default &blsp2_uart3_rx_default>;
 	};
 
 	serial@f9921000 {
@@ -188,6 +190,8 @@
 		reg = <0xf9921000 0x1000>;
 		interrupts = <0 102 0>;
 		status = "disabled";
+		pinctrl-names = "default";
+		pinctrl-0 = <&blsp1_uart4_tx_default &blsp1_uart4_rx_default>;
 	};
 
 	qcom,uim@f995d000 { /* BLSP2_UART1 */

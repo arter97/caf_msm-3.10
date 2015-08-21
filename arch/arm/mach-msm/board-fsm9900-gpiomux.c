@@ -23,47 +23,6 @@
  */
 #define MDIO_DRV_8MA	GPIOMUX_DRV_16MA
 
-static struct gpiomux_setting blsp_uart_no_pull_config = {
-	.func = GPIOMUX_FUNC_2,
-	.drv = GPIOMUX_DRV_6MA,
-	.pull = GPIOMUX_PULL_NONE,
-};
-
-static struct gpiomux_setting blsp_uart_pull_up_config = {
-	.func = GPIOMUX_FUNC_2,
-	.drv = GPIOMUX_DRV_6MA,
-	.pull = GPIOMUX_PULL_UP,
-};
-
-static struct msm_gpiomux_config fsm_blsp_configs[] __initdata = {
-#ifdef CONFIG_FSM9900_GSM_NL
-	{
-		.gpio      = 16,       /* BLSP UART5 TX */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &blsp_uart_no_pull_config,
-		},
-	},
-	{
-		.gpio      = 17,       /* BLSP UART5 RX */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &blsp_uart_pull_up_config,
-		},
-	},
-#endif
-	{
-		.gpio      = 36,       /* BLSP UART10 TX */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &blsp_uart_no_pull_config,
-		},
-	},
-	{
-		.gpio      = 37,       /* BLSP UART10 RX */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &blsp_uart_pull_up_config,
-		},
-	},
-};
-
 static struct gpiomux_setting geni_func4_config = {
 	.func = GPIOMUX_FUNC_4,
 	.drv = GPIOMUX_DRV_8MA,
@@ -955,7 +914,6 @@ void __init fsm9900_init_gpiomux(void)
 		return;
 	}
 
-	msm_gpiomux_install(fsm_blsp_configs, ARRAY_SIZE(fsm_blsp_configs));
 	msm_gpiomux_install(fsm_geni_configs, ARRAY_SIZE(fsm_geni_configs));
 #ifndef CONFIG_FSM9900_GSM_NL
 	msm_gpiomux_install(fsm_dan_spi_configs,
