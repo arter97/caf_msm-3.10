@@ -118,6 +118,7 @@ static int emac_clk_prepare_enable(struct emac_adapter *adpt,
 {
 	struct emac_clk *clk = &adpt->clk[id];
 	int ret = clk_prepare_enable(clk->clk);
+
 	if (ret)
 		emac_err(adpt, "error:%d on clk_prepare_enable(%s)\n", ret,
 			 emac_clk_name[id]);
@@ -131,6 +132,7 @@ int emac_clk_set_rate(struct emac_adapter *adpt, enum emac_clk_id id,
 		      enum emac_clk_rate rate)
 {
 	int ret = clk_set_rate(adpt->clk[id].clk, rate);
+
 	if (ret)
 		emac_err(adpt, "error:%d on clk_set_rate(%s, %d)\n", ret,
 			 emac_clk_name[id], rate);
@@ -240,6 +242,7 @@ static void emac_receive_skb(struct emac_rx_queue *rxque,
 {
 	if (vlan_flag) {
 		u16 vlan;
+
 		EMAC_TAG_TO_VLAN(vlan_tag, vlan);
 		__vlan_hwaccel_put_tag(skb, htons(ETH_P_8021Q), vlan);
 	}
@@ -265,7 +268,7 @@ static bool emac_get_rrdesc(struct emac_rx_queue *rxque,
 		srrd->dfmt.dw[3] = *(hrrd + 5);
 	else
 		srrd->dfmt.dw[3] = *(hrrd + 3);
-	rmb();
+	rmb(); /* ensure hw receive returned descriptor timestamp is read */
 
 	if (!srrd->genr.update)
 		return false;
@@ -426,7 +429,7 @@ static int emac_refresh_rx_buffer(struct emac_rx_queue *rxque)
 		wmb(); /* ensure that the descriptors are properly set */
 		emac_reg_update32(hw, EMAC, rxque->produce_reg,
 				  rxque->produce_mask, prod_idx);
-		wmb();
+		wmb(); /* ensure that the producer's index is flushed to HW */
 		emac_dbg(adpt, rx_status, "RX[%d]: prod idx 0x%x\n",
 			 rxque->que_idx, rxque->rfd.produce_idx);
 	}
@@ -479,7 +482,7 @@ static void emac_poll_hwtxtstamp(struct emac_adapter *adpt)
 				EMAC_HWTXTSTAMP_CB(skb)->sec = hwtxtstamp.sec;
 				EMAC_HWTXTSTAMP_CB(skb)->ns = hwtxtstamp.ns;
 				/* the tx timestamps for all the pending
-				   packets before this one are lost
+				 * packets before this one are lost
 				 */
 				while ((pskb = __skb_dequeue(pending_q))
 				       != skb) {
@@ -619,7 +622,7 @@ static void emac_handle_rx(struct emac_adapter *adpt,
 		 */
 		if (srrd.dfmt.dw[EMAC_RRDES_STATS_DW_IDX] & EMAC_RRDES_ERROR) {
 			emac_dbg(adpt, rx_status,
-				"Drop error packet[RRD: 0x%x:0x%x:0x%x:0x%x]\n",
+				 "Drop error packet[RRD: 0x%x:0x%x:0x%x:0x%x]\n",
 				 srrd.dfmt.dw[0], srrd.dfmt.dw[1],
 				 srrd.dfmt.dw[2], srrd.dfmt.dw[3]);
 
@@ -658,7 +661,7 @@ static void emac_handle_rx(struct emac_adapter *adpt,
 		wmb(); /* ensure that the descriptors are properly cleared */
 		emac_reg_update32(hw, EMAC, rxque->process_reg,
 				  rxque->process_mask, proc_idx);
-		wmb();
+		wmb(); /* ensure that RFD producer index is flushed to HW */
 		emac_dbg(adpt, rx_status, "RX[%d]: proc idx 0x%x\n",
 			 rxque->que_idx, rxque->rfd.process_idx);
 
@@ -738,7 +741,7 @@ quit_polling:
 		irq->mask |= rxque->intr;
 		emac_reg_w32(hw, EMAC, emac_irq_cmn_tbl[irq->idx].mask_reg,
 			     irq->mask);
-		wmb();
+		wmb(); /* ensure that interrupt enable is flushed to HW */
 	}
 
 	return work_done;
@@ -750,8 +753,8 @@ static bool emac_check_num_tpdescs(struct emac_tx_queue *txque,
 {
 	u32 num_required = 1;
 	u16 i;
-
 	u16 proto_hdr_len = 0;
+
 	if (skb_is_gso(skb)) {
 		proto_hdr_len = skb_transport_offset(skb) + tcp_hdrlen(skb);
 		if (proto_hdr_len < skb_headlen(skb))
@@ -840,13 +843,12 @@ do_csum:
 		if (unlikely(cso & 0x1)) {
 			emac_err(adpt, "payload offset should be even\n");
 			return -EINVAL;
-		} else {
-			css = cso + skb->csum_offset;
-
-			stpd->csum.payld_offset = cso >> 1;
-			stpd->csum.cxsum_offset = css >> 1;
-			stpd->csum.c_csum = 0x1;
 		}
+		css = cso + skb->csum_offset;
+
+		stpd->csum.payld_offset = cso >> 1;
+		stpd->csum.cxsum_offset = css >> 1;
+		stpd->csum.c_csum = 0x1;
 	}
 
 	return 0;
@@ -869,7 +871,8 @@ static void emac_tx_map(struct emac_adapter *adpt,
 	u32 tso = stpd->tso.lso;
 
 	if (tso) {
-		map_len = hdr_len = skb_transport_offset(skb) + tcp_hdrlen(skb);
+		hdr_len = skb_transport_offset(skb) + tcp_hdrlen(skb);
+		map_len = hdr_len;
 
 		tpbuf = GET_TPD_BUFFER(txque, txque->tpd.produce_idx);
 		tpbuf->length = map_len;
@@ -976,6 +979,7 @@ static int emac_start_xmit_frame(struct emac_adapter *adpt,
 	if (vlan_tx_tag_present(skb)) {
 		u16 vlan = vlan_tx_tag_get(skb);
 		u16 tag;
+
 		EMAC_VLAN_TO_TAG(vlan, tag);
 		stpd.genr.cvlan_tag = tag;
 		stpd.genr.ins_cvtag = 0x1;
@@ -994,7 +998,7 @@ static int emac_start_xmit_frame(struct emac_adapter *adpt,
 	wmb(); /* ensure that the descriptors are properly set */
 	emac_reg_update32(hw, EMAC, txque->produce_reg,
 			  txque->produce_mask, prod_idx);
-	wmb();
+	wmb(); /* ensure that RFD producer index is flushed to HW */
 	emac_dbg(adpt, tx_queued, "TX[%d]: prod idx 0x%x\n",
 		 txque->que_idx, txque->tpd.produce_idx);
 
@@ -1032,7 +1036,7 @@ static irqreturn_t emac_isr(int _irq, void *data)
 	emac_dbg(emac_irq_get_adpt(data), wol, "EMAC wol interrupt received\n");
 	/* disable the interrupt */
 	emac_reg_w32(hw, EMAC, irq_cmn->mask_reg, 0);
-	wmb();
+	wmb(); /* ensure that interrupt disable is flushed to HW */
 
 	do {
 		isr = emac_reg_r32(hw, EMAC, irq_cmn->status_reg);
@@ -1086,7 +1090,7 @@ static irqreturn_t emac_isr(int _irq, void *data)
 
 	/* enable the interrupt */
 	emac_reg_w32(hw, EMAC, irq_cmn->mask_reg, irq->mask);
-	wmb();
+	wmb(); /* ensure that interrupt enable is flushed to HW */
 	return IRQ_HANDLED;
 }
 
@@ -1160,8 +1164,8 @@ static void emac_clean_tx_queue(struct emac_tx_queue *txque)
 		return;
 
 	for (i = 0; i < txque->tpd.count; i++) {
-		struct emac_buffer *tpbuf;
-		tpbuf = GET_TPD_BUFFER(txque, i);
+		struct emac_buffer *tpbuf = GET_TPD_BUFFER(txque, i);
+
 		if (tpbuf->dma) {
 			dma_unmap_single(dev, tpbuf->dma, tpbuf->length,
 					 DMA_TO_DEVICE);
@@ -1204,8 +1208,8 @@ static void emac_clean_rx_queue(struct emac_rx_queue *rxque)
 		return;
 
 	for (i = 0; i < rxque->rfd.count; i++) {
-		struct emac_buffer *rfbuf;
-		rfbuf = GET_RFD_BUFFER(rxque, i);
+		struct emac_buffer *rfbuf = GET_RFD_BUFFER(rxque, i);
+
 		if (rfbuf->dma) {
 			dma_unmap_single(dev, rfbuf->dma, rfbuf->length,
 					 DMA_FROM_DEVICE);
@@ -1310,9 +1314,14 @@ static void emac_free_rx_descriptor(struct emac_rx_queue *rxque)
 
 	kfree(rxque->rfd.rfbuff);
 	rxque->rfd.rfbuff = NULL;
-	rxque->rrd.rrdesc = rxque->rfd.rfdesc = NULL;
-	rxque->rrd.rrdma = rxque->rfd.rfdma = 0;
-	rxque->rrd.size = rxque->rfd.size = 0;
+
+	rxque->rfd.rfdesc = NULL;
+	rxque->rfd.rfdma  = 0;
+	rxque->rfd.size   = 0;
+
+	rxque->rrd.rrdesc = NULL;
+	rxque->rrd.rrdma  = 0;
+	rxque->rrd.size   = 0;
 }
 
 static void emac_free_all_rx_descriptor(struct emac_adapter *adpt)
@@ -1440,8 +1449,9 @@ err_alloc_tx:
 			  ring_header->desc, ring_header->dma);
 
 	ring_header->desc = NULL;
-	ring_header->dma = 0;
-	ring_header->size = ring_header->used = 0;
+	ring_header->dma  = 0;
+	ring_header->size = 0;
+	ring_header->used = 0;
 err_alloc_dma:
 	return retval;
 }
@@ -1459,8 +1469,9 @@ static void emac_free_all_rtx_descriptor(struct emac_adapter *adpt)
 			  ring_header->desc, ring_header->dma);
 
 	ring_header->desc = NULL;
-	ring_header->dma = 0;
-	ring_header->size = ring_header->used = 0;
+	ring_header->dma  = 0;
+	ring_header->size = 0;
+	ring_header->used = 0;
 }
 
 /* Initialize descriptor rings */
@@ -1471,6 +1482,7 @@ static void emac_init_ring_ptrs(struct emac_adapter *adpt)
 	for (i = 0; i < adpt->num_txques; i++) {
 		struct emac_tx_queue *txque = &adpt->tx_queue[i];
 		struct emac_buffer *tpbuf = txque->tpd.tpbuff;
+
 		txque->tpd.produce_idx = 0;
 		txque->tpd.consume_idx = 0;
 		for (j = 0; j < txque->tpd.count; j++)
@@ -1480,6 +1492,7 @@ static void emac_init_ring_ptrs(struct emac_adapter *adpt)
 	for (i = 0; i < adpt->num_rxques; i++) {
 		struct emac_rx_queue *rxque = &adpt->rx_queue[i];
 		struct emac_buffer *rfbuf = rxque->rfd.rfbuff;
+
 		rxque->rrd.produce_idx = 0;
 		rxque->rrd.consume_idx = 0;
 		rxque->rfd.produce_idx = 0;
@@ -1771,7 +1784,7 @@ static int emac_mii_ioctl(struct net_device *netdev,
 			break;
 		}
 
-		if (adpt->no_ephy == false && data->phy_id != hw->phy_addr) {
+		if (!adpt->no_ephy && data->phy_id != hw->phy_addr) {
 			retval = -EFAULT;
 			break;
 		}
@@ -1796,7 +1809,7 @@ static int emac_mii_ioctl(struct net_device *netdev,
 			break;
 		}
 
-		if (adpt->no_ephy == false && data->phy_id != hw->phy_addr) {
+		if (!adpt->no_ephy && data->phy_id != hw->phy_addr) {
 			retval = -EFAULT;
 			break;
 		}
@@ -1808,7 +1821,6 @@ static int emac_mii_ioctl(struct net_device *netdev,
 	}
 
 	return retval;
-
 }
 
 /* IOCTL support for the interface */
@@ -1850,7 +1862,7 @@ void emac_update_hw_stats(struct emac_adapter *adpt)
 
 	/* additional rx status */
 	val = emac_reg_r32(&adpt->hw, EMAC, EMAC_RXMAC_STATC_REG23);
-	adpt->hw_stats.rx_crc_allign += val;
+	adpt->hw_stats.rx_crc_align += val;
 	val = emac_reg_r32(&adpt->hw, EMAC, EMAC_RXMAC_STATC_REG24);
 	adpt->hw_stats.rx_jubbers += val;
 
@@ -1933,6 +1945,7 @@ static void emac_reinit_task_routine(struct emac_adapter *adpt)
 
 	emac_reinit_locked(adpt);
 }
+
 static inline char *emac_get_link_speed_desc(u32 speed)
 {
 	switch (speed) {
@@ -1962,7 +1975,7 @@ static void emac_link_task_routine(struct emac_adapter *adpt)
 		return;
 	CLR_FLAG(adpt, ADPT_TASK_LSC_REQ);
 
-	/* ensure that no reset is in progess while link task is running */
+	/* ensure that no reset is in progress while link task is running */
 	while (TEST_N_SET_FLAG(adpt, ADPT_STATE_RESETTING))
 		msleep(20); /* Reset might take few 10s of ms */
 
@@ -2060,16 +2073,16 @@ static void emac_init_rtx_queues(struct platform_device *pdev,
 		struct emac_tx_queue *txque = &adpt->tx_queue[que_idx];
 
 		txque->que_idx = que_idx;
-		txque->netdev = adpt->netdev;
-		txque->dev = &(pdev->dev);
+		txque->netdev  = adpt->netdev;
+		txque->dev     = &pdev->dev;
 	}
 
 	for (que_idx = 0; que_idx < adpt->num_rxques; que_idx++) {
 		struct emac_rx_queue *rxque = &adpt->rx_queue[que_idx];
 
 		rxque->que_idx = que_idx;
-		rxque->netdev = adpt->netdev;
-		rxque->dev = &(pdev->dev);
+		rxque->netdev  = adpt->netdev;
+		rxque->dev     = &pdev->dev;
 	}
 
 	switch (adpt->num_rxques) {
@@ -2088,6 +2101,8 @@ static void emac_init_rtx_queues(struct platform_device *pdev,
 
 		adpt->rx_queue[3].irq = &adpt->irq[3];
 		adpt->rx_queue[3].intr = adpt->irq[3].mask & ISR_RX_PKT;
+
+		/* fall through */
 	case 3:
 		adpt->rx_queue[2].produce_reg = EMAC_MAILBOX_6;
 		adpt->rx_queue[2].produce_mask = RFD2_PROD_IDX_BMSK;
@@ -2103,6 +2118,8 @@ static void emac_init_rtx_queues(struct platform_device *pdev,
 
 		adpt->rx_queue[2].irq = &adpt->irq[2];
 		adpt->rx_queue[2].intr = adpt->irq[2].mask & ISR_RX_PKT;
+
+		/* fall through */
 	case 2:
 		adpt->rx_queue[1].produce_reg = EMAC_MAILBOX_5;
 		adpt->rx_queue[1].produce_mask = RFD1_PROD_IDX_BMSK;
@@ -2118,6 +2135,8 @@ static void emac_init_rtx_queues(struct platform_device *pdev,
 
 		adpt->rx_queue[1].irq = &adpt->irq[1];
 		adpt->rx_queue[1].intr = adpt->irq[1].mask & ISR_RX_PKT;
+
+		/* fall through */
 	case 1:
 		adpt->rx_queue[0].produce_reg = EMAC_MAILBOX_0;
 		adpt->rx_queue[0].produce_mask = RFD0_PROD_IDX_BMSK;
@@ -2145,6 +2164,8 @@ static void emac_init_rtx_queues(struct platform_device *pdev,
 		adpt->tx_queue[3].consume_reg = EMAC_MAILBOX_12;
 		adpt->tx_queue[3].consume_mask = H3TPD_CONS_IDX_BMSK;
 		adpt->tx_queue[3].consume_shft = H3TPD_CONS_IDX_SHFT;
+
+		/* fall through */
 	case 3:
 		adpt->tx_queue[2].produce_reg = EMAC_MAILBOX_9;
 		adpt->tx_queue[2].produce_mask = H2TPD_PROD_IDX_BMSK;
@@ -2153,6 +2174,8 @@ static void emac_init_rtx_queues(struct platform_device *pdev,
 		adpt->tx_queue[2].consume_reg = EMAC_MAILBOX_10;
 		adpt->tx_queue[2].consume_mask = H2TPD_CONS_IDX_BMSK;
 		adpt->tx_queue[2].consume_shft = H2TPD_CONS_IDX_SHFT;
+
+		/* fall through */
 	case 2:
 		adpt->tx_queue[1].produce_reg = EMAC_MAILBOX_16;
 		adpt->tx_queue[1].produce_mask = H1TPD_PROD_IDX_BMSK;
@@ -2161,6 +2184,8 @@ static void emac_init_rtx_queues(struct platform_device *pdev,
 		adpt->tx_queue[1].consume_reg = EMAC_MAILBOX_10;
 		adpt->tx_queue[1].consume_mask = H1TPD_CONS_IDX_BMSK;
 		adpt->tx_queue[1].consume_shft = H1TPD_CONS_IDX_SHFT;
+
+		/* fall through */
 	case 1:
 		adpt->tx_queue[0].produce_reg = EMAC_MAILBOX_15;
 		adpt->tx_queue[0].produce_mask = NTPD_PROD_IDX_BMSK;
@@ -2251,8 +2276,8 @@ static int emac_runtime_idle(struct device *device)
 	struct net_device *netdev = dev_get_drvdata(&pdev->dev);
 
 	/* schedule to enter runtime suspend state if the link does
-	   not come back up within the specified time
-	*/
+	 * not come back up within the specified time
+	 */
 	pm_schedule_suspend(netdev->dev.parent,
 			    jiffies_to_msecs(EMAC_TRY_LINK_TIMEOUT));
 	return -EBUSY;
@@ -2436,6 +2461,7 @@ static void emac_disable_clks(struct emac_adapter *adpt)
 
 	for (i = 0; i < EMAC_CLK_CNT; i++) {
 		struct emac_clk *clk = &adpt->clk[i];
+
 		if (clk->enabled) {
 			clk_disable_unprepare(clk->clk);
 			clk->enabled = false;

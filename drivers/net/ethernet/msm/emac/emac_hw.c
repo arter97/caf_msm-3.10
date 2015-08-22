@@ -82,7 +82,7 @@ static int emac_disable_mdio_autopoll(struct emac_hw *hw)
 		if (!(val & MDIO_BUSY))
 			return 0;
 
-		udelay(100);
+		udelay(100); /* atomic context */
 	}
 
 	/* failed to disable; ensure it is enabled before returning */
@@ -106,7 +106,7 @@ int emac_hw_read_phy_reg(struct emac_hw *hw, bool ext, u8 dev, bool fast,
 	*phy_data = 0;
 	clk_sel = fast ? MDIO_CLK_25_4 : MDIO_CLK_25_28;
 
-	if (emac_hw_get_adap(hw)->no_ephy == false) {
+	if (!emac_hw_get_adap(hw)->no_ephy) {
 		retval = emac_disable_mdio_autopoll(hw);
 		if (retval)
 			return retval;
@@ -144,13 +144,13 @@ int emac_hw_read_phy_reg(struct emac_hw *hw, bool ext, u8 dev, bool fast,
 					MDIO_DATA_BMSK);
 			break;
 		}
-		udelay(100);
+		udelay(100); /* atomic context */
 	}
 
 	if (i == MDIO_WAIT_TIMES)
 		retval = -EIO;
 
-	if (emac_hw_get_adap(hw)->no_ephy == false)
+	if (!emac_hw_get_adap(hw)->no_ephy)
 		emac_enable_mdio_autopoll(hw);
 
 	return retval;
@@ -164,7 +164,7 @@ int emac_hw_write_phy_reg(struct emac_hw *hw, bool ext, u8 dev,
 
 	clk_sel = fast ? MDIO_CLK_25_4 : MDIO_CLK_25_28;
 
-	if (emac_hw_get_adap(hw)->no_ephy == false) {
+	if (!emac_hw_get_adap(hw)->no_ephy) {
 		retval = emac_disable_mdio_autopoll(hw);
 		if (retval)
 			return retval;
@@ -201,13 +201,13 @@ int emac_hw_write_phy_reg(struct emac_hw *hw, bool ext, u8 dev,
 		val = emac_reg_r32(hw, EMAC, EMAC_MDIO_CTRL);
 		if (!(val & (MDIO_START | MDIO_BUSY)))
 			break;
-		udelay(100);
+		udelay(100); /* atomic context */
 	}
 
 	if (i == MDIO_WAIT_TIMES)
 		retval = -EIO;
 
-	if (emac_hw_get_adap(hw)->no_ephy == false)
+	if (!emac_hw_get_adap(hw)->no_ephy)
 		emac_enable_mdio_autopoll(hw);
 
 	return retval;
@@ -307,7 +307,7 @@ int emac_hw_init_ephy(struct emac_hw *hw)
 	u16 phy_id[2];
 	int retval = 0;
 
-	if (emac_hw_get_adap(hw)->no_ephy == false) {
+	if (!emac_hw_get_adap(hw)->no_ephy) {
 		retval = emac_read_phy_reg(hw, hw->phy_addr,
 					   MII_PHYSID1, &phy_id[0]);
 		if (retval)
@@ -524,7 +524,7 @@ void emac_hw_enable_intr(struct emac_hw *hw)
 	if (adpt->tstamp_en)
 		emac_reg_w32(hw, EMAC_1588, EMAC_P1588_PTP_EXPANDED_INT_MASK,
 			     hw->ptp_intr_mask);
-	wmb();
+	wmb(); /* ensure that irq and ptp setting are flushed to HW */
 }
 
 void emac_hw_disable_intr(struct emac_hw *hw)
@@ -534,6 +534,7 @@ void emac_hw_disable_intr(struct emac_hw *hw)
 
 	for (i = 0; i < EMAC_NUM_CORE_IRQ; i++) {
 		const struct emac_irq_common *irq_cmn = &emac_irq_cmn_tbl[i];
+
 		emac_reg_w32(hw, EMAC, irq_cmn->status_reg, DIS_INT);
 		emac_reg_w32(hw, EMAC, irq_cmn->mask_reg, 0);
 	}
@@ -542,7 +543,7 @@ void emac_hw_disable_intr(struct emac_hw *hw)
 		emac_reg_w32(hw, EMAC_1588, EMAC_P1588_PTP_EXPANDED_INT_MASK,
 			     0);
 
-	wmb();
+	wmb(); /* ensure that irq and ptp setting are flushed to HW */
 }
 
 /* MC */
@@ -563,14 +564,14 @@ void emac_hw_set_mc_addr(struct emac_hw *hw, u8 *addr)
 	mta = emac_reg_r32(hw, EMAC, EMAC_HASH_TAB_REG0 + (reg << 2));
 	mta |= (0x1 << bit);
 	emac_reg_w32(hw, EMAC, EMAC_HASH_TAB_REG0 + (reg << 2), mta);
-	wmb();
+	wmb(); /* ensure that the mac address is flushed to HW */
 }
 
 void emac_hw_clear_mc_addr(struct emac_hw *hw)
 {
 	emac_reg_w32(hw, EMAC, EMAC_HASH_TAB_REG0, 0);
 	emac_reg_w32(hw, EMAC, EMAC_HASH_TAB_REG1, 0);
-	wmb();
+	wmb(); /* ensure that clearing the mac address is flushed to HW */
 }
 
 /* definitions for RSS */
@@ -590,6 +591,7 @@ void emac_hw_config_rss(struct emac_hw *hw)
 	/* Fill out hash function keys */
 	for (i = 0; i < key_len_by_u32; i++) {
 		u32 key, idx_base;
+
 		idx_base = (key_len_by_u32 - i) * 4;
 		key = ((hw->rss_key[idx_base - 1])       |
 		       (hw->rss_key[idx_base - 2] << 8)  |
@@ -631,13 +633,14 @@ void emac_hw_config_rss(struct emac_hw *hw)
 
 	wmb(); /* ensure all parameters are written before we enable RSS */
 	emac_reg_w32(hw, EMAC, EMAC_RXQ_CTRL_0, rxq0);
-	wmb();
+	wmb(); /* ensure that enabling RSS is flushed to HW */
 }
 
 /* Config MAC modes */
 void emac_hw_config_mac_ctrl(struct emac_hw *hw)
 {
 	u32 mac;
+
 	mac = emac_reg_r32(hw, EMAC, EMAC_MAC_CTRL);
 
 	if (TEST_FLAG(hw, HW_VLANSTRIP_EN))
@@ -661,7 +664,7 @@ void emac_hw_config_mac_ctrl(struct emac_hw *hw)
 		mac &= ~MAC_LP_EN;
 
 	emac_reg_w32(hw, EMAC, EMAC_MAC_CTRL, mac);
-	wmb();
+	wmb(); /* ensure MAC setting is flushed to HW */
 }
 
 /* Wake On LAN (WOL) */
@@ -678,7 +681,7 @@ void emac_hw_config_wol(struct emac_hw *hw, u32 wufc)
 		wol |=  LK_CHG_EN | LK_CHG_PME;
 
 	emac_reg_w32(hw, EMAC, EMAC_WOL_CTRL0, wol);
-	wmb();
+	wmb(); /* ensure that WOL setting is flushed to HW */
 }
 
 /* Power Management */
@@ -717,7 +720,7 @@ void emac_hw_config_pow_save(struct emac_hw *hw, u32 speed,
 
 	emac_reg_w32(hw, EMAC, EMAC_DMA_MAS_CTRL, dma_mas);
 	emac_reg_w32(hw, EMAC, EMAC_MAC_CTRL, mac);
-	wmb();
+	wmb(); /* ensure that power setting is flushed to HW */
 }
 
 /* Config descriptor rings */
@@ -737,12 +740,15 @@ static void emac_hw_config_ring_ctrl(struct emac_hw *hw)
 	case 4:
 		emac_reg_w32(hw, EMAC, EMAC_H3TPD_BASE_ADDR_LO,
 			     EMAC_DMA_ADDR_LO(adpt->tx_queue[3].tpd.tpdma));
+		/* fall through */
 	case 3:
 		emac_reg_w32(hw, EMAC, EMAC_H2TPD_BASE_ADDR_LO,
 			     EMAC_DMA_ADDR_LO(adpt->tx_queue[2].tpd.tpdma));
+		/* fall through */
 	case 2:
 		emac_reg_w32(hw, EMAC, EMAC_H1TPD_BASE_ADDR_LO,
 			     EMAC_DMA_ADDR_LO(adpt->tx_queue[1].tpd.tpdma));
+		/* fall through */
 	case 1:
 		emac_reg_w32(hw, EMAC, EMAC_DESC_CTRL_8,
 			     EMAC_DMA_ADDR_LO(adpt->tx_queue[0].tpd.tpdma));
@@ -764,16 +770,19 @@ static void emac_hw_config_ring_ctrl(struct emac_hw *hw)
 			     EMAC_DMA_ADDR_LO(adpt->rx_queue[3].rfd.rfdma));
 		emac_reg_w32(hw, EMAC, EMAC_DESC_CTRL_16,
 			     EMAC_DMA_ADDR_LO(adpt->rx_queue[3].rrd.rrdma));
+		/* fall through */
 	case 3:
 		emac_reg_w32(hw, EMAC, EMAC_DESC_CTRL_12,
 			     EMAC_DMA_ADDR_LO(adpt->rx_queue[2].rfd.rfdma));
 		emac_reg_w32(hw, EMAC, EMAC_DESC_CTRL_15,
 			     EMAC_DMA_ADDR_LO(adpt->rx_queue[2].rrd.rrdma));
+		/* fall through */
 	case 2:
 		emac_reg_w32(hw, EMAC, EMAC_DESC_CTRL_10,
 			     EMAC_DMA_ADDR_LO(adpt->rx_queue[1].rfd.rfdma));
 		emac_reg_w32(hw, EMAC, EMAC_DESC_CTRL_14,
 			     EMAC_DMA_ADDR_LO(adpt->rx_queue[1].rrd.rrdma));
+		/* fall through */
 	case 1:
 		emac_reg_w32(hw, EMAC, EMAC_DESC_CTRL_2,
 			     EMAC_DMA_ADDR_LO(adpt->rx_queue[0].rfd.rfdma));
@@ -797,7 +806,7 @@ static void emac_hw_config_ring_ctrl(struct emac_hw *hw)
 	wmb(); /* ensure all parameters are written before we enable them */
 	/* Load all of base address above */
 	emac_reg_w32(hw, EMAC, EMAC_INTER_SRAM_PART9, 1);
-	wmb();
+	wmb(); /* ensure triggering HW to read ring pointers is flushed */
 }
 
 /* Config transmit parameters */
@@ -807,7 +816,8 @@ static void emac_hw_config_tx_ctrl(struct emac_hw *hw)
 	u32 val;
 
 	emac_reg_w32(hw, EMAC, EMAC_TXQ_CTRL_1,
-		(tx_offload_thresh >> 3) & JUMBO_TASK_OFFLOAD_THRESHOLD_BMSK);
+		     (tx_offload_thresh >> 3) &
+		     JUMBO_TASK_OFFLOAD_THRESHOLD_BMSK);
 
 	val = (hw->tpd_burst << NUM_TPD_BURST_PREF_SHFT) &
 		NUM_TPD_BURST_PREF_BMSK;
@@ -819,7 +829,7 @@ static void emac_hw_config_tx_ctrl(struct emac_hw *hw)
 	emac_reg_w32(hw, EMAC, EMAC_TXQ_CTRL_0, val);
 	emac_reg_update32(hw, EMAC, EMAC_TXQ_CTRL_2,
 			  (TXF_HWM_BMSK | TXF_LWM_BMSK), 0);
-	wmb();
+	wmb(); /* ensure that Tx control settings are flushed to HW */
 }
 
 /* Config receive parameters */
@@ -851,7 +861,7 @@ static void emac_hw_config_rx_ctrl(struct emac_hw *hw)
 	val &= ~(RXD_TIMER_BMSK | RXD_THRESHOLD_BMSK);
 	val |= RXD_TH << RXD_THRESHOLD_SHFT;
 	emac_reg_w32(hw, EMAC, EMAC_RXQ_CTRL_3, val);
-	wmb();
+	wmb(); /* ensure that Rx control settings are flushed to HW */
 }
 
 /* Config dma */
@@ -881,11 +891,11 @@ static void emac_hw_config_dma_ctrl(struct emac_hw *hw)
 						REGWRBLEN_BMSK;
 	dma_ctrl |= (((u32)hw->dmar_dly_cnt) << DMAR_DLY_CNT_SHFT) &
 						DMAR_DLY_CNT_BMSK;
-	dma_ctrl |= (((u32) hw->dmaw_dly_cnt) << DMAW_DLY_CNT_SHFT) &
+	dma_ctrl |= (((u32)hw->dmaw_dly_cnt) << DMAW_DLY_CNT_SHFT) &
 						DMAW_DLY_CNT_BMSK;
 
 	emac_reg_w32(hw, EMAC, EMAC_DMA_CTRL, dma_ctrl);
-	wmb();
+	wmb(); /* ensure that the DMA configuration is flushed to HW */
 }
 
 /* Flow Control (fc)  */
@@ -974,7 +984,7 @@ int emac_hw_config_fc(struct emac_hw *hw)
 	}
 
 	emac_reg_w32(hw, EMAC, EMAC_MAC_CTRL, mac);
-	wmb();
+	wmb(); /* ensure that the flow-control configuration is flushed to HW */
 	return 0;
 }
 
@@ -1004,7 +1014,7 @@ void emac_hw_config_mac(struct emac_hw *hw)
 
 	emac_reg_w32(hw, EMAC, EMAC_CLK_GATE_CTRL, 0);
 	emac_reg_w32(hw, EMAC, EMAC_MISC_CTRL, RX_UNCPL_INT_EN);
-	wmb();
+	wmb(); /* ensure that the MAC configuration is flushed to HW */
 }
 
 /* Reset MAC */
@@ -1017,10 +1027,10 @@ void emac_hw_reset_mac(struct emac_hw *hw)
 
 	emac_reg_update32(hw, EMAC, EMAC_DMA_MAS_CTRL, 0, SOFT_RST);
 	wmb(); /* ensure mac is fully reset */
-	udelay(100);
+	usleep_range(100, 150);
 
 	emac_reg_update32(hw, EMAC, EMAC_DMA_MAS_CTRL, 0, INT_RD_CLR_EN);
-	wmb();
+	wmb(); /* ensure the interrupt clear-on-read setting is flushed to HW */
 }
 
 /* Start MAC */
@@ -1094,8 +1104,8 @@ void emac_hw_start_mac(struct emac_hw *hw)
 	emac_reg_w32(hw, EMAC, EMAC_MAC_CTRL, mac);
 
 	/* enable interrupt read clear, low power sleep mode and
-	   the irq moderators
-	*/
+	 * the irq moderators
+	 */
 	emac_reg_w32(hw, EMAC, EMAC_IRQ_MOD_TIM_INIT, hw->irq_mod);
 	emac_reg_w32(hw, EMAC, EMAC_DMA_MAS_CTRL,
 		     (INT_RD_CLR_EN | LPW_MODE |
@@ -1110,7 +1120,7 @@ void emac_hw_start_mac(struct emac_hw *hw)
 			  (HEADER_ENABLE | HEADER_CNT_EN), 0);
 
 	emac_reg_update32(hw, EMAC_CSR, EMAC_EMAC_WRAPPER_CSR2, 0, WOL_EN);
-	wmb();
+	wmb(); /* ensure that MAC setting are flushed to HW */
 }
 
 /* Stop MAC */
@@ -1119,8 +1129,8 @@ void emac_hw_stop_mac(struct emac_hw *hw)
 	emac_reg_update32(hw, EMAC, EMAC_RXQ_CTRL_0, RXQ_EN, 0);
 	emac_reg_update32(hw, EMAC, EMAC_TXQ_CTRL_0, TXQ_EN, 0);
 	emac_reg_update32(hw, EMAC, EMAC_MAC_CTRL, (TXEN | RXEN), 0);
-	wmb(); /* make sure mac is stopped before we proceede */
-	udelay(1000);
+	wmb(); /* ensure mac is stopped before we proceed */
+	usleep_range(1000, 1050);
 }
 
 /* set MAC address */
@@ -1140,7 +1150,7 @@ void emac_hw_set_mac_addr(struct emac_hw *hw, u8 *addr)
 	/* hight dword */
 	sta = (((u32)addr[0]) << 8) | (((u32)addr[1]));
 	emac_reg_w32(hw, EMAC, EMAC_MAC_STA_ADDR1, sta);
-	wmb();
+	wmb(); /* ensure that the MAC address is flushed to HW */
 }
 
 /* Read one entry from the HW tx timestamp FIFO */

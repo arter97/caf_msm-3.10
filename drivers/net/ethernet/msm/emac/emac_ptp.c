@@ -52,6 +52,7 @@ static const struct emac_tstamp_hw_delay emac_ptp_hw_delay[] = {
 static inline u32 get_rtc_ref_clkrate(struct emac_hw *hw)
 {
 	struct emac_adapter *adpt = emac_hw_get_adap(hw);
+
 	return clk_get_rate(adpt->clk[EMAC_CLK_125M].clk);
 }
 
@@ -160,7 +161,7 @@ static int emac_hw_adjust_tstamp_offset(struct emac_hw *hw,
 
 		emac_reg_update32(hw, EMAC_1588, EMAC_P1588_TX_LATENCY,
 				  TX_LATENCY_BMSK, latency << TX_LATENCY_SHFT);
-		wmb();
+		wmb(); /* ensure that the latency time is flushed to HW */
 	}
 
 	if (delay_info) {
@@ -180,19 +181,19 @@ static int emac_hw_config_tx_tstamp(struct emac_hw *hw, bool enable)
 		/* Reset the TX timestamp FIFO */
 		emac_reg_update32(hw, EMAC_CSR, EMAC_EMAC_WRAPPER_CSR1,
 				  TS_TX_FIFO_SYNC_RST, TS_TX_FIFO_SYNC_RST);
-		wmb();
+		wmb(); /* ensure that the Tx timestamp reset is flushed to HW */
 		emac_reg_update32(hw, EMAC_CSR, EMAC_EMAC_WRAPPER_CSR1,
 				  TS_TX_FIFO_SYNC_RST, 0);
-		wmb();
+		wmb(); /* ensure that the Tx timestamp is out of reset */
 
 		emac_reg_update32(hw, EMAC_CSR, EMAC_EMAC_WRAPPER_CSR1,
 				  TX_TS_ENABLE, TX_TS_ENABLE);
-		wmb();
+		wmb(); /* ensure enabling the Tx timestamp is flushed to HW */
 		SET_FLAG(hw, HW_TS_TX_EN);
 	} else {
 		emac_reg_update32(hw, EMAC_CSR, EMAC_EMAC_WRAPPER_CSR1,
 				  TX_TS_ENABLE, 0);
-		wmb();
+		wmb(); /* ensure disabling the Tx timestamp is flushed to HW */
 		CLR_FLAG(hw, HW_TS_TX_EN);
 	}
 
@@ -205,10 +206,10 @@ static int emac_hw_config_rx_tstamp(struct emac_hw *hw, bool enable)
 		/* Reset the RX timestamp FIFO */
 		emac_reg_update32(hw, EMAC_CSR, EMAC_EMAC_WRAPPER_CSR1,
 				  TS_RX_FIFO_SYNC_RST, TS_RX_FIFO_SYNC_RST);
-		wmb();
+		wmb(); /* ensure that the Rx timestamp reset is flushed to HW */
 		emac_reg_update32(hw, EMAC_CSR, EMAC_EMAC_WRAPPER_CSR1,
 				  TS_RX_FIFO_SYNC_RST, 0);
-		wmb();
+		wmb(); /* ensure that the Rx timestamp is out of reset */
 
 		SET_FLAG(hw, HW_TS_RX_EN);
 	} else {
@@ -232,7 +233,7 @@ static int emac_hw_1588_core_disable(struct emac_hw *hw)
 	emac_reg_update32(hw, EMAC_1588, EMAC_P1588_CTRL_REG,
 			  BYPASS_O, BYPASS_O);
 	emac_reg_w32(hw, EMAC_1588, EMAC_P1588_PTP_EXPANDED_INT_MASK, 0);
-	wmb();
+	wmb(); /* ensure that disabling PTP is flushed to HW */
 
 	CLR_FLAG(hw, HW_PTP_EN);
 	return 0;
@@ -274,17 +275,17 @@ static int emac_hw_1588_core_enable(struct emac_hw *hw,
 
 	emac_reg_update32(hw, EMAC_CSR, EMAC_EMAC_WRAPPER_CSR10,
 			  RD_CLR_1588, RD_CLR_1588);
-	wmb();
+	wmb(); /* ensure clear-on-read is enabled on PTP config registers */
 
 	emac_reg_r32(hw, EMAC_1588, EMAC_P1588_PTP_EXPANDED_INT_STATUS);
 
 	/* Reset the timestamp FIFO */
 	emac_reg_update32(hw, EMAC_CSR, EMAC_EMAC_WRAPPER_CSR1,
 			  TS_FIFO_SYNC_RST, TS_FIFO_SYNC_RST);
-	wmb();
+	wmb(); /* ensure timestamp reset is complete */
 	emac_reg_update32(hw, EMAC_CSR, EMAC_EMAC_WRAPPER_CSR1,
 			  TS_FIFO_SYNC_RST, 0);
-	wmb();
+	wmb(); /* ensure timestamp is out of reset */
 
 	if (mode == emac_ptp_mode_master)
 		emac_reg_update32(hw, EMAC_1588,
@@ -295,7 +296,7 @@ static int emac_hw_1588_core_enable(struct emac_hw *hw,
 		emac_reg_update32(hw, EMAC_1588,
 				  EMAC_P1588_GRAND_MASTER_CONFIG_0,
 				  GRANDMASTER_MODE | GM_PPS_SYNC, 0);
-	wmb();
+	wmb(); /* ensure gradmaster mode setting is flushed to HW */
 
 	SET_FLAG(hw, HW_PTP_EN);
 	return 0;
@@ -316,14 +317,14 @@ static void rtc_settime(struct emac_hw *hw, const struct timespec *ts)
 
 	emac_reg_update32(hw, EMAC_1588, EMAC_P1588_RTC_EXPANDED_CONFIG,
 			  LOAD_RTC, LOAD_RTC);
-	wmb();
+	wmb(); /* ensure RTC setting is flushed to HW */
 }
 
 static void rtc_gettime(struct emac_hw *hw, struct timespec *ts)
 {
 	emac_reg_update32(hw, EMAC_1588, EMAC_P1588_RTC_EXPANDED_CONFIG,
 			  RTC_SNAPSHOT, RTC_SNAPSHOT);
-	wmb();
+	wmb(); /* ensure snapshot is saved before reading it back */
 
 	ts->tv_sec = emac_reg_field_r32(hw, EMAC_1588, EMAC_P1588_REAL_TIME_5,
 					REAL_TIME_5_BMSK, REAL_TIME_5_SHFT);
@@ -358,7 +359,7 @@ static void rtc_adjtime(struct emac_hw *hw, s64 delta)
 	emac_reg_w32(hw, EMAC_1588, EMAC_P1588_NANO_OFFSET_1,
 		     (delta_ns & NANO_OFFSET_1_BMSK));
 	emac_reg_w32(hw, EMAC_1588, EMAC_P1588_ADJUST_RTC, 1);
-	wmb();
+	wmb(); /* ensure that RTC adjustment is flushed to HW */
 }
 
 static void rtc_ns_sync_pps_in(struct emac_hw *hw)
@@ -449,7 +450,8 @@ int emac_ptp_set_linkspeed(struct emac_hw *hw, u32 link_speed)
 
 	spin_lock_irqsave(&hw->ptp_lock, flag);
 	emac_reg_update32(hw, EMAC_1588, EMAC_P1588_CTRL_REG, ETH_MODE_SW,
-		  (link_speed == EMAC_LINK_SPEED_1GB_FULL) ? 0 : ETH_MODE_SW);
+			  (link_speed == EMAC_LINK_SPEED_1GB_FULL) ? 0 :
+			  ETH_MODE_SW);
 	wmb(); /* ensure ETH_MODE_SW is set before we proceed */
 	emac_hw_adjust_tstamp_offset(hw, hw->ptp_clk_mode, link_speed);
 	spin_unlock_irqrestore(&hw->ptp_lock, flag);
@@ -469,7 +471,6 @@ void emac_ptp_intr(struct emac_hw *hw)
 
 	if (status & PPS_IN)
 		emac_ptp_rtc_ns_sync(hw);
-
 }
 
 static int emac_ptp_settime(struct emac_hw *hw, const struct timespec *ts)
@@ -560,19 +561,18 @@ int emac_tstamp_ioctl(struct net_device *netdev, struct ifreq *ifr, int cmd)
 		-EFAULT : 0;
 }
 
-static int emac_ptp_sysfs_cmd(struct device *dev, struct device_attribute *attr,
-			      const char *buf, size_t count)
+static int emac_ptp_sysfs_tstamp_set(struct device *dev,
+				     struct device_attribute *attr,
+				     const char *buf, size_t count)
 {
 	struct emac_adapter *adpt = netdev_priv(to_net_dev(dev));
 	struct timespec ts;
-	int ret = -EINVAL;
+	int ret;
 
-	if (!strncmp(buf, "setTs", 5)) {
-		getnstimeofday(&ts);
-		ret = emac_ptp_settime(&adpt->hw, &ts);
-		if (!ret)
-			ret = count;
-	}
+	getnstimeofday(&ts);
+	ret = emac_ptp_settime(&adpt->hw, &ts);
+	if (!ret)
+		ret = count;
 
 	return ret;
 }
@@ -592,9 +592,9 @@ static int emac_ptp_sysfs_tstamp_show(struct device *dev,
 
 	getnstimeofday(&ts_now);
 	retval = scnprintf(buf, count,
-			  "%12u.%09u tstamp  %12u.%08u time-of-day\n",
-			  (int)ts.tv_sec, (int)ts.tv_nsec,
-			  (int)ts_now.tv_sec, (int)ts_now.tv_nsec);
+			   "%12u.%09u tstamp  %12u.%08u time-of-day\n",
+			   (int)ts.tv_sec, (int)ts.tv_nsec,
+			   (int)ts_now.tv_sec, (int)ts_now.tv_nsec);
 
 	return retval;
 }
@@ -635,14 +635,16 @@ static int emac_ptp_sysfs_slam(
 
 	if (sscanf(buf, "%u %u", &sec, &nsec) == 2) {
 		struct timespec ts = {sec, nsec};
+
 		ret = emac_ptp_settime(&adpt->hw, &ts);
 		if (ret) {
 			pr_err("%s: emac_ptp_settime failed.\n", __func__);
 			return ret;
 		}
 		ret = count;
-	} else
+	} else {
 		pr_err("%s: sscanf failed.\n", __func__);
+	}
 
 	return ret;
 }
@@ -660,7 +662,7 @@ static int emac_ptp_sysfs_cadj(
 	int64_t              offset = 0;
 	int                  ret = -EINVAL;
 
-	if (sscanf(buf, "%lld", &offset) == 1) {
+	if (!kstrtos64(buf, 10, &offset)) {
 		struct timespec ts;
 		uint64_t        new_offset;
 		uint32_t        sec;
@@ -675,8 +677,8 @@ static int emac_ptp_sysfs_cadj(
 		sec  = ts.tv_sec;
 		nsec = ts.tv_nsec;
 
-		new_offset = (((uint64_t) sec * NSEC_PER_SEC) +
-			      (uint64_t) nsec) + offset;
+		new_offset = (((uint64_t)sec * NSEC_PER_SEC) +
+			      (uint64_t)nsec) + offset;
 
 		nsec = do_div(new_offset, NSEC_PER_SEC);
 		sec  = new_offset;
@@ -690,8 +692,9 @@ static int emac_ptp_sysfs_cadj(
 			return ret;
 		}
 		ret = count;
-	} else
+	} else {
 		pr_err("%s: sscanf failed.\n", __func__);
+	}
 
 	return ret;
 }
@@ -709,7 +712,7 @@ static int emac_ptp_sysfs_fadj(
 	int64_t              offset = 0;
 	int                  ret = -EINVAL;
 
-	if (sscanf(buf, "%lld", &offset) == 1) {
+	if (!kstrtos64(buf, 10, &offset)) {
 		ret = emac_ptp_adjtime(&adpt->hw, offset);
 		if (ret) {
 			pr_err("%s: emac_ptp_adjtime failed.\n", __func__);
@@ -826,8 +829,8 @@ static int emac_ptp_sysfs_frac_ns_adj_set(
 }
 
 static struct device_attribute ptp_sysfs_devattr[] = {
-	__ATTR(cmd, S_IWUSR|S_IWGRP, NULL, emac_ptp_sysfs_cmd),
-	__ATTR(tstamp, S_IRUSR|S_IRGRP, emac_ptp_sysfs_tstamp_show, NULL),
+	__ATTR(tstamp, S_IRUSR|S_IRGRP|S_IWUSR|S_IWGRP,
+	       emac_ptp_sysfs_tstamp_show, emac_ptp_sysfs_tstamp_set),
 	__ATTR(mtnp, S_IRUSR|S_IRGRP, emac_ptp_sysfs_mtnp_show, NULL),
 	__ATTR(slam, S_IWUSR|S_IWGRP, NULL, emac_ptp_sysfs_slam),
 	__ATTR(cadj, S_IWUSR|S_IWGRP, NULL, emac_ptp_sysfs_cadj),
@@ -890,10 +893,8 @@ static void emac_ptp_of_get_property(struct emac_adapter *adpt)
 	tbl_size = size / sizeof(struct emac_ptp_frac_ns_adj);
 
 	adj_tbl = kzalloc(size, GFP_KERNEL);
-	if (!adj_tbl) {
-		emac_err(adpt, "emac_ptp: failed to alloc frac_ns_adj tbl\n");
+	if (!adj_tbl)
 		return;
-	}
 
 	if (of_property_read_u32_array(node, "qcom,emac-ptp-frac-ns-adj",
 				       (u32 *)adj_tbl, size/sizeof(u32))) {
@@ -904,7 +905,6 @@ static void emac_ptp_of_get_property(struct emac_adapter *adpt)
 
 	hw->frac_ns_adj_tbl = adj_tbl;
 	hw->frac_ns_adj_tbl_sz = tbl_size;
-	return;
 }
 
 int emac_ptp_init(struct net_device *netdev)
