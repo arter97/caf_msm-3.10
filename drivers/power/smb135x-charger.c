@@ -3366,6 +3366,10 @@ static void dump_regs(struct smb135x_chg *chip)
 {
 }
 #endif
+
+#define UPDATE_IRQ_STAT(irq_reg, value) \
+		handlers[irq_reg - IRQ_A_REG].prev_val = value
+
 static int determine_initial_status(struct smb135x_chg *chip)
 {
 	int rc;
@@ -3384,6 +3388,8 @@ static int determine_initial_status(struct smb135x_chg *chip)
 		dev_err(chip->dev, "Couldn't read irq b rc = %d\n", rc);
 		return rc;
 	}
+	UPDATE_IRQ_STAT(IRQ_B_REG, reg);
+
 	if (reg & IRQ_B_BATT_TERMINAL_BIT || reg & IRQ_B_BATT_MISSING_BIT)
 		chip->batt_present = false;
 	rc = smb135x_read(chip, STATUS_4_REG, &reg);
@@ -3400,6 +3406,7 @@ static int determine_initial_status(struct smb135x_chg *chip)
 		dev_err(chip->dev, "Couldn't read irq A rc = %d\n", rc);
 		return rc;
 	}
+	UPDATE_IRQ_STAT(IRQ_A_REG, reg);
 
 	if (reg & IRQ_A_HOT_HARD_BIT)
 		chip->batt_hot = true;
@@ -3415,6 +3422,7 @@ static int determine_initial_status(struct smb135x_chg *chip)
 		dev_err(chip->dev, "Couldn't read irq A rc = %d\n", rc);
 		return rc;
 	}
+	UPDATE_IRQ_STAT(IRQ_C_REG, reg);
 	if (reg & IRQ_C_TERM_BIT)
 		chip->chg_done_batt_full = true;
 
@@ -3423,6 +3431,7 @@ static int determine_initial_status(struct smb135x_chg *chip)
 		dev_err(chip->dev, "Couldn't read irq E rc = %d\n", rc);
 		return rc;
 	}
+	UPDATE_IRQ_STAT(IRQ_E_REG, reg);
 	chip->usb_uv = !!(reg & IRQ_E_USB_UV_BIT);
 	chip->usb_present = !(reg & IRQ_E_USB_OV_BIT)
 				&& !(reg & IRQ_E_USB_UV_BIT);
@@ -3454,6 +3463,28 @@ static int determine_initial_status(struct smb135x_chg *chip)
 		power_supply_set_usb_otg(chip->usb_psy,
 			chip->usb_slave_present);
 	}
+
+	rc = smb135x_read(chip, IRQ_D_REG, &reg);
+	if (rc < 0) {
+		dev_err(chip->dev, "Couldn't read irq D rc = %d\n", rc);
+		return rc;
+	}
+	UPDATE_IRQ_STAT(IRQ_D_REG, reg);
+
+	rc = smb135x_read(chip, IRQ_F_REG, &reg);
+	if (rc < 0) {
+		dev_err(chip->dev, "Couldn't read irq F rc = %d\n", rc);
+		return rc;
+	}
+	UPDATE_IRQ_STAT(IRQ_F_REG, reg);
+
+	rc = smb135x_read(chip, IRQ_G_REG, &reg);
+	if (rc < 0) {
+		dev_err(chip->dev, "Couldn't read irq G rc = %d\n", rc);
+		return rc;
+	}
+	UPDATE_IRQ_STAT(IRQ_G_REG, reg);
+
 	return 0;
 }
 
