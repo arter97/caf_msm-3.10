@@ -39,6 +39,7 @@ Optional properties:
 - qcom,crypto-enabled: Enables the cryptography feature for the platform.
 - qcom,gmac0-enabled: Enables GMAC0 port.
 - qcom,gmac1-enabled: Enables GMAC1 port.
+- qcom,tstamp-enabled: Enables Timestamping feature.
 
 example:
 nss: nss@e6000000 {
@@ -55,4 +56,5 @@ nss: nss@e6000000 {
 	qcom,crypto-enabled;
 	qcom,gmac0-enabled;
 	qcom,gmac1-enabled;
+	qcom,tstamp-enabled;
 };

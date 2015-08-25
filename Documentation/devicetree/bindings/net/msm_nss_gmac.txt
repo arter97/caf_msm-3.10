@@ -37,6 +37,7 @@ Required properties:
 - qcom,forced-speed: The speed setting forced onto the GMAC, rather then probed.
 - qcom,forced-duplex: The Duplex setting forced onto the GMAC,rather then probed.
 - local-mac-address: Dummy MAC Address to be used at the time of GMAC initialization
+- qcom,aux-clk-freq: Set the Auxillary clock frequency in unit Hertz
 
 Optional properties:
 
@@ -55,4 +56,5 @@ gmac0: ethernet@e7000000 {
 	qcom,forced-duplex = <10>;
 	local-mac-address = [000000000000];
 	mdiobus = <&mdio0>;
+	qcom,aux-clk-freq = <100000000>;
 };

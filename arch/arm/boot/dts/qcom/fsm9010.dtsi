@@ -1052,6 +1052,7 @@
 		qcom,crypto-enabled;
 		qcom,gmac0-enabled;
 		qcom,gmac1-enabled;
+		qcom,tstamp-enabled;
 	};
 
 	nss-gmac-common@fc800000 {
@@ -1077,6 +1078,7 @@
 		qcom,forced-duplex = <10>;
 		local-mac-address = [000000000000];
 		mdiobus = <&mdio0>;
+		qcom,aux-clk-freq = <100000000>;
 	};
 
 	gmac1: ethernet@e7200000 {
@@ -1094,6 +1096,7 @@
 		qcom,forced-duplex = <10>;
 		local-mac-address = [000000000000];
 		mdiobus = <&mdio0>;
+		qcom,aux-clk-freq = <100000000>;
 	};
 
 	mdio0: mdio {
