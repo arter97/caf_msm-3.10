@@ -79,6 +79,20 @@
 			05 01 00 00 14 00 02 29 00];
 		qcom,mdss-dsi-off-command = [05 01 00 00 14 00 02 28 00
 				 05 01 00 00 78 00 02 10 00];
+		qcom,video-to-cmd-mode-switch-commands =
+			[23 01 00 00 00 00 02 d6 01
+			23 01 00 00 00 00 02 b0 04
+			29 01 00 00 00 00 07 b3 04 00 00 00 00 00
+			29 01 00 00 00 00 29 c6 78 69 00 69 00 69 00 00 00 00 00
+			69 00 69 00 69 10 19 07 00 78 00 69 00 69 00 69 00 00 00
+			00 00 69 00 69 00 69 10 19 07];
+		qcom,cmd-to-video-mode-switch-commands =
+			[23 01 00 00 00 00 02 b0 00
+			29 01 00 00 00 00 07 b3 14 00 00 00 00 00
+			29 01 00 00 00 00 29 c6 00 69 00 69 00 69 00 00 00 00 00
+			69 00 69 00 69 10 19 07 00 01 00 69 00 69 00 69 00 00 00
+			00 00 69 00 69 00 69 10 19 07];
+		qcom,dynamic-mode-switch-enabled;
 		qcom,mdss-dsi-on-command-state = "dsi_lp_mode";
 		qcom,mdss-dsi-off-command-state = "dsi_lp_mode";
 		qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_wled";
