@@ -705,7 +705,7 @@
 		cti_trigout_a {
 			qcom,pins = <&gp 56>;
 			qcom,num-grp-pins = <1>;
-			qcom,pin-func = <9>;
+			qcom,pin-func = <7>;
 			label = "cti-trigout-a";
 			trigout_a: trigout_a {
 				drive-strength = <2>;
