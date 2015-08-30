@@ -65,7 +65,6 @@ static unsigned int nb_cci_ports;
 static void __iomem *cci_ctrl_base;
 static unsigned long cci_ctrl_phys;
 
-static u32 from_idle;
 static u32 cci_version;
 
 #ifdef CONFIG_HW_PERF_EVENTS
@@ -143,6 +142,8 @@ enum cci400_perf_events {
 #define CCI_REV_R1_SLAVE_PORT_MAX_EV	0x14
 #define CCI_REV_R1_MASTER_PORT_MIN_EV	0x00
 #define CCI_REV_R1_MASTER_PORT_MAX_EV	0x11
+
+static u32 from_idle;
 
 struct pmu_port_event_ranges {
 	u8 slave_min;
