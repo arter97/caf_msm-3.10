@@ -125,6 +125,31 @@ static DEFINE_CLK_MEASURE(gcc_bimc_clk);
 #define RPM_MISC_CLK_TYPE	0x306b6c63
 #define CXO_ID			0x0
 
+static struct pll_config_regs mmpll10_regs = {
+	.l_reg = (void __iomem *)MPLL10_L_VAL,
+	.m_reg = (void __iomem *)MPLL10_M_VAL,
+	.n_reg = (void __iomem *)MPLL10_N_VAL,
+	.config_reg = (void __iomem *)MPLL10_USER_CTL,
+	.mode_reg = (void __iomem *)MPLL10_MODE,
+	.base = &virt_bases[GCC_BASE],
+};
+
+/* PLL10 at 288MHz, main output enabled.*/
+static struct pll_config mmpll10_config = {
+	.m = 0,
+	.n = 1,
+	.vco_val = 0,
+	.vco_mask = BM(29, 28),
+	.pre_div_val = 0x0,
+	.pre_div_mask = BM(14, 12),
+	.post_div_val = BIT(8),
+	.post_div_mask = BM(9, 8),
+	.mn_ena_val = BIT(24),
+	.mn_ena_mask = BIT(24),
+	.main_output_val = BIT(0),
+	.main_output_mask = BIT(0),
+};
+
 DEFINE_CLK_RPM_SMD_BRANCH(xo_clk_src, xo_a_clk_src,
 				RPM_MISC_CLK_TYPE, CXO_ID, 19200000);
 
@@ -1416,6 +1441,19 @@ struct branch_clk gcc_usb2a_phy_sleep_clk = {
 	},
 };
 
+static struct pll_clk mmpll10_clk_src = {
+	.mode_reg = (void __iomem *)MPLL10_MODE,
+	.status_reg = (void __iomem *)MPLL10_STATUS,
+	.base = &virt_bases[GCC_BASE],
+	.c = {
+		.parent = &xo_clk_src.c,
+		.dbg_name = "mmpll10_pll_clk_src",
+		.rate = 288000000,
+		.ops = &clk_ops_local_pll,
+		CLK_INIT(mmpll10_clk_src.c),
+	},
+};
+
 static struct mux_clk gcc_debug_mux = {
 	.priv = &debug_mux_priv,
 	.ops = &mux_reg_ops,
@@ -1640,6 +1678,30 @@ static struct platform_driver msm_clock_debug_driver = {
 static int __init msm_clock_debug_init(void)
 {
 	return platform_driver_register(&msm_clock_debug_driver);
+}
+
+void mpll10_2304_clk_init(void)
+{
+	mmpll10_config.l = 24;
+	configure_sr_hpm_lp_pll(&mmpll10_config, &mmpll10_regs, 1);
+}
+
+void mpll10_2496_clk_init(void)
+{
+	mmpll10_config.l = 26;
+	configure_sr_hpm_lp_pll(&mmpll10_config, &mmpll10_regs, 1);
+}
+
+void mpll10_2688_clk_init(void)
+{
+	mmpll10_config.l = 28;
+	configure_sr_hpm_lp_pll(&mmpll10_config, &mmpll10_regs, 1);
+}
+
+void mpll10_2880_clk_init(void)
+{
+	mmpll10_config.l = 30;
+	configure_sr_hpm_lp_pll(&mmpll10_config, &mmpll10_regs, 1);
 }
 
 arch_initcall(msm_gcc_init);
