@@ -895,7 +895,7 @@
 		clock-names = "pdm2_clk", "ahb_clk";
 		pinctrl-names = "default";
 		pinctrl-0 = <&rf_ssbi_default &grfc_f2_default &grfc_f3_default
-			&grfc_f4_default &grfc_f5_default &grfc_f6_default
+			&grfc_f4_default &grfc_f5_default
 			&grfc_f7_default &pdm_f2_default>;
 	};
 
