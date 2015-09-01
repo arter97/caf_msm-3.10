@@ -259,7 +259,7 @@ static void msm_enqueue(struct msm_device_queue *queue,
 	queue->len++;
 	if (queue->len > queue->max) {
 		queue->max = queue->len;
-		pr_info("queue %s new max is %d\n", queue->name, queue->max);
+		pr_debug("queue %s new max is %d\n", queue->name, queue->max);
 	}
 	list_add_tail(entry, &queue->list);
 	wake_up(&queue->wait);
@@ -604,7 +604,7 @@ static void msm_cpp_delete_buff_queue(struct cpp_device *cpp_dev)
 
 	for (i = 0; i < cpp_dev->num_buffq; i++) {
 		if (cpp_dev->buff_queue[i].used == 1) {
-			pr_info("Queue not free sessionid: %d, streamid: %d\n",
+			pr_warn("Queue not free sessionid: %d, streamid: %d\n",
 				cpp_dev->buff_queue[i].session_id,
 				cpp_dev->buff_queue[i].stream_id);
 			msm_cpp_dequeue_buff_info_list
@@ -1118,7 +1118,7 @@ static void cpp_release_hardware(struct cpp_device *cpp_dev)
 	regulator_put(cpp_dev->fs_cpp);
 	cpp_dev->fs_cpp = NULL;
 	if (cpp_dev->stream_cnt > 0) {
-		pr_info("stream count active\n");
+		pr_warn("stream count active\n");
 		if (cpp_dev->bus_master_flag)
 			rc = msm_cpp_update_bandwidth(cpp_dev, 0, 0);
 		else
@@ -1554,7 +1554,7 @@ static void msm_cpp_do_timeout_work(struct work_struct *work)
 	struct msm_cpp_frame_info_t *processed_frame[MAX_CPP_PROCESSING_FRAME];
 	struct cpp_device *cpp_dev = cpp_timer.data.cpp_dev;
 
-	pr_info("cpp_timer_callback called. (jiffies=%lu)\n",
+	pr_warn("cpp_timer_callback called. (jiffies=%lu)\n",
 		jiffies);
 	mutex_lock(&cpp_dev->mutex);
 
@@ -1564,16 +1564,16 @@ static void msm_cpp_do_timeout_work(struct work_struct *work)
 		goto end;
 	}
 	if (!atomic_read(&cpp_timer.used)) {
-		pr_info("Delayed trigger, IRQ serviced\n");
+		pr_warn("Delayed trigger, IRQ serviced\n");
 		goto end;
 	}
 
 	disable_irq(cpp_timer.data.cpp_dev->irq->start);
-	pr_info("Reloading firmware\n");
+	pr_debug("Reloading firmware\n");
 	atomic_set(&cpp_timer.used, 0);
 	cpp_load_fw(cpp_timer.data.cpp_dev,
 		cpp_timer.data.cpp_dev->fw_name_bin);
-	pr_info("Firmware loading done\n");
+	pr_warn("Firmware loading done\n");
 	enable_irq(cpp_timer.data.cpp_dev->irq->start);
 	msm_camera_io_w_mb(0x8, cpp_timer.data.cpp_dev->base +
 		MSM_CPP_MICRO_IRQGEN_MASK);
@@ -1586,7 +1586,7 @@ static void msm_cpp_do_timeout_work(struct work_struct *work)
 
 	if (cpp_dev->timeout_trial_cnt >=
 		cpp_dev->max_timeout_trial_cnt) {
-		pr_info("Max trial reached\n");
+		pr_warn("Max trial reached\n");
 		while (queue_len) {
 			msm_cpp_notify_frame_done(cpp_dev, 1);
 			queue_len--;
@@ -1599,7 +1599,7 @@ static void msm_cpp_do_timeout_work(struct work_struct *work)
 	}
 
 	atomic_set(&cpp_timer.used, 1);
-	pr_info("Starting timer to fire in %d ms. (jiffies=%lu)\n",
+	pr_debug("Starting timer to fire in %d ms. (jiffies=%lu)\n",
 		CPP_CMD_TIMEOUT_MS, jiffies);
 	mod_timer(&cpp_timer.cpp_timer,
 		jiffies + msecs_to_jiffies(CPP_CMD_TIMEOUT_MS));
@@ -1608,7 +1608,7 @@ static void msm_cpp_do_timeout_work(struct work_struct *work)
 		processed_frame[i] = cpp_timer.data.processed_frame[i];
 
 	for (i = 0; i < queue_len; i++) {
-		pr_info("Rescheduling for identity=0x%x, frame_id=%03d\n",
+		pr_warn("Rescheduling for identity=0x%x, frame_id=%03d\n",
 			processed_frame[i]->identity,
 			processed_frame[i]->frame_id);
 
@@ -1635,7 +1635,7 @@ static void msm_cpp_do_timeout_work(struct work_struct *work)
 		}
 		/* send trailer */
 		msm_cpp_write(0xabcdefaa, cpp_dev->base);
-		pr_info("After frame:%d write\n", i+1);
+		pr_debug("After frame:%d write\n", i+1);
 	}
 
 	cpp_timer.data.cpp_dev->timeout_trial_cnt++;
@@ -1643,7 +1643,7 @@ static void msm_cpp_do_timeout_work(struct work_struct *work)
 end:
 	mutex_unlock(&cpp_dev->mutex);
 
-	pr_info("exit\n");
+	pr_debug("exit\n");
 	return;
 }
 
@@ -1998,7 +1998,7 @@ static int msm_cpp_cfg_frame(struct cpp_device *cpp_dev,
 	}
 
 	if (cpp_dev->iommu_state != CPP_IOMMU_STATE_ATTACHED) {
-		pr_info("IOMMU is not attached\n");
+		pr_err("IOMMU is not attached\n");
 		return -EAGAIN;
 	}
 
@@ -2269,7 +2269,7 @@ void msm_cpp_clean_queue(struct cpp_device *cpp_dev)
 	struct msm_device_queue *queue = NULL;
 
 	while (cpp_dev->processing_q.len) {
-		pr_info("queue len:%d\n", cpp_dev->processing_q.len);
+		pr_debug("queue len:%d\n", cpp_dev->processing_q.len);
 		queue = &cpp_dev->processing_q;
 		frame_qcmd = msm_dequeue(queue, list_frame);
 		if (frame_qcmd) {
@@ -2325,22 +2325,49 @@ static int msm_cpp_copy_from_ioctl_ptr(void *dst_ptr,
 }
 #endif
 
+static int msm_cpp_validate_input(unsigned int cmd, void *arg,
+	struct msm_camera_v4l2_ioctl_t **ioctl_ptr)
+{
+	switch (cmd) {
+	case MSM_SD_SHUTDOWN:
+		break;
+	default:
+		if (ioctl_ptr == NULL) {
+			pr_err("Wrong ioctl_ptr %p\n", ioctl_ptr);
+			return -EINVAL;
+		}
+
+		*ioctl_ptr = arg;
+		if ((*ioctl_ptr == NULL) ||
+			((*ioctl_ptr)->ioctl_ptr == NULL)) {
+			pr_err("Wrong arg %p\n", arg);
+			return -EINVAL;
+		}
+		break;
+	}
+	return 0;
+}
+
 long msm_cpp_subdev_ioctl(struct v4l2_subdev *sd,
 			unsigned int cmd, void *arg)
 {
 	struct cpp_device *cpp_dev = NULL;
-	struct msm_camera_v4l2_ioctl_t *ioctl_ptr = arg;
+	struct msm_camera_v4l2_ioctl_t *ioctl_ptr = NULL;
 	int rc = 0;
 
-	if ((sd == NULL) || (ioctl_ptr == NULL) ||
-		(ioctl_ptr->ioctl_ptr == NULL)) {
-		pr_err("Wrong ioctl_ptr %p, sd %p\n", ioctl_ptr, sd);
+	if (sd == NULL) {
+		pr_err("sd %p\n", sd);
 		return -EINVAL;
 	}
 	cpp_dev = v4l2_get_subdevdata(sd);
 	if (cpp_dev == NULL) {
 		pr_err("cpp_dev is null\n");
 		return -EINVAL;
+	}
+	rc = msm_cpp_validate_input(cmd, arg, &ioctl_ptr);
+	if (rc != 0) {
+		pr_err("input validation failed\n");
+		return rc;
 	}
 	mutex_lock(&cpp_dev->mutex);
 	CPP_DBG("E cmd: 0x%x\n", cmd);
@@ -2567,7 +2594,7 @@ STREAM_BUFF_END:
 			buff_queue_info->stream_id);
 		if (cpp_dev->stream_cnt > 0) {
 			cpp_dev->stream_cnt--;
-			pr_info("stream_cnt:%d\n", cpp_dev->stream_cnt);
+			pr_debug("stream_cnt:%d\n", cpp_dev->stream_cnt);
 			if (cpp_dev->stream_cnt == 0) {
 				if (cpp_dev->bus_master_flag)
 					rc = msm_cpp_update_bandwidth(cpp_dev,
@@ -2687,11 +2714,11 @@ STREAM_BUFF_END:
 	case MSM_SD_SHUTDOWN:
 		CPP_DBG("MSM_SD_SHUTDOWN\n");
 		mutex_unlock(&cpp_dev->mutex);
-		pr_info("shutdown cpp node. open cnt:%d\n",
+		pr_warn("shutdown cpp node. open cnt:%d\n",
 			cpp_dev->cpp_open_cnt);
 
 		if (atomic_read(&cpp_timer.used))
-			pr_info("Timer state not cleared\n");
+			pr_debug("Timer state not cleared\n");
 
 		while (cpp_dev->cpp_open_cnt != 0)
 			cpp_close_node(sd, NULL);
@@ -3328,9 +3355,10 @@ static long msm_cpp_subdev_fops_compat_ioctl(struct file *file,
 	{
 		struct msm_cpp_clock_settings32_t *clock_settings32 =
 			(struct msm_cpp_clock_settings32_t *)kp_ioctl.ioctl_ptr;
-		clock_settings.clock_rate = clock_settings32->clock_rate;
-		clock_settings.avg = clock_settings32->avg;
-		clock_settings.inst = clock_settings32->inst;
+		get_user(clock_settings.clock_rate,
+			&clock_settings32->clock_rate);
+		get_user(clock_settings.avg, &clock_settings32->avg);
+		get_user(clock_settings.inst, &clock_settings32->inst);
 		kp_ioctl.ioctl_ptr = (void *)&clock_settings;
 		if (is_compat_task()) {
 			if (kp_ioctl.len != sizeof(
@@ -3348,25 +3376,27 @@ static long msm_cpp_subdev_fops_compat_ioctl(struct file *file,
 		struct msm_pproc_queue_buf_info32_t *u32_queue_buf =
 		  (struct msm_pproc_queue_buf_info32_t *)kp_ioctl.ioctl_ptr;
 
-		k_queue_buf.is_buf_dirty = u32_queue_buf->is_buf_dirty;
-		k_queue_buf.buff_mgr_info.session_id =
-			u32_queue_buf->buff_mgr_info.session_id;
-		k_queue_buf.buff_mgr_info.stream_id =
-			u32_queue_buf->buff_mgr_info.stream_id;
-		k_queue_buf.buff_mgr_info.frame_id =
-			u32_queue_buf->buff_mgr_info.frame_id;
-		k_queue_buf.buff_mgr_info.index =
-			u32_queue_buf->buff_mgr_info.index;
-		k_queue_buf.buff_mgr_info.timestamp.tv_sec =
-			u32_queue_buf->buff_mgr_info.timestamp.tv_sec;
-		k_queue_buf.buff_mgr_info.timestamp.tv_usec =
-			u32_queue_buf->buff_mgr_info.timestamp.tv_usec;
+		get_user(k_queue_buf.is_buf_dirty,
+			&u32_queue_buf->is_buf_dirty);
+		get_user(k_queue_buf.buff_mgr_info.session_id,
+			&u32_queue_buf->buff_mgr_info.session_id);
+		get_user(k_queue_buf.buff_mgr_info.stream_id,
+			&u32_queue_buf->buff_mgr_info.stream_id);
+		get_user(k_queue_buf.buff_mgr_info.frame_id,
+			&u32_queue_buf->buff_mgr_info.frame_id);
+		get_user(k_queue_buf.buff_mgr_info.index,
+			&u32_queue_buf->buff_mgr_info.index);
+		get_user(k_queue_buf.buff_mgr_info.timestamp.tv_sec,
+			&u32_queue_buf->buff_mgr_info.timestamp.tv_sec);
+		get_user(k_queue_buf.buff_mgr_info.timestamp.tv_usec,
+			&u32_queue_buf->buff_mgr_info.timestamp.tv_usec);
+
 		/*
 		 * Update the reserved field (cds information) to buffer
 		 * manager structure so that it is propogated back to HAL
 		 */
-		k_queue_buf.buff_mgr_info.reserved =
-			u32_queue_buf->buff_mgr_info.reserved;
+		get_user(k_queue_buf.buff_mgr_info.reserved,
+			&u32_queue_buf->buff_mgr_info.reserved);
 
 		kp_ioctl.ioctl_ptr = (void *)&k_queue_buf;
 		kp_ioctl.len = sizeof(struct msm_pproc_queue_buf_info);
