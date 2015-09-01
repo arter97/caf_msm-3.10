@@ -62,6 +62,7 @@ static void write_pen_release(u64 val)
 static int secondary_pen_release(unsigned int cpu)
 {
 	unsigned long timeout;
+	int ret;
 
 	/*
 	 * Set synchronisation state between this boot processor
@@ -81,9 +82,15 @@ static int secondary_pen_release(unsigned int cpu)
 			break;
 		udelay(10);
 	}
+	ret = secondary_holding_pen_release != INVALID_HWID ? -ENOSYS : 0;
+	/*
+	 * If cpu boot timed out, the cpu may still start running at some
+	 * later time. Ensure it stays in the pen.
+	 */
+	write_pen_release(INVALID_HWID);
 	raw_spin_unlock(&boot_lock);
 
-	return secondary_holding_pen_release != INVALID_HWID ? -ENOSYS : 0;
+	return ret;
 }
 
 static int __init msm_cpu_init(struct device_node *dn, unsigned int cpu)
