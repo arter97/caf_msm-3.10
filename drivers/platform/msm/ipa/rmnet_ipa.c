@@ -1831,6 +1831,38 @@ static int get_ipa_rmnet_dts_configuration(struct platform_device *pdev,
 
 struct ipa_rmnet_context ipa_rmnet_ctx;
 
+static int rmnet_ipa_panic_notifier(struct notifier_block *this,
+	unsigned long event, void *ptr)
+{
+	struct wwan_private *wwan_ptr = NULL;
+	char dbg_buff[128];
+
+	if (ipa_netdevs[0])
+		wwan_ptr = netdev_priv(ipa_netdevs[0]);
+	if (wwan_ptr) {
+		if (wwan_ptr->device_status)
+			scnprintf(dbg_buff, sizeof(dbg_buff),
+				  "RMNET-IPA is LOADED, Status: ACTIVE,");
+		else
+			scnprintf(dbg_buff, sizeof(dbg_buff),
+				  "RMNET-IPA is LOADED, Status: INACTIVE,");
+		pr_err("%s outstanding packts: %d\n",
+		       dbg_buff, atomic_read(&wwan_ptr->outstanding_pkts));
+	}
+
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block rmnet_ipa_panic_blk = {
+	.notifier_call = rmnet_ipa_panic_notifier,
+};
+
+void rmnet_ipa_register_panic_func(void)
+{
+	atomic_notifier_chain_register(&panic_notifier_list,
+		&rmnet_ipa_panic_blk);
+}
+
 /**
  * ipa_wwan_probe() - Initialized the module and registers as a
  * network interface to the network stack
@@ -1988,6 +2020,7 @@ static int ipa_wwan_probe(struct platform_device *pdev)
 	}
 	atomic_set(&is_ssr, 0);
 
+	rmnet_ipa_register_panic_func();
 	pr_info("rmnet_ipa completed initialization\n");
 	return 0;
 config_err:

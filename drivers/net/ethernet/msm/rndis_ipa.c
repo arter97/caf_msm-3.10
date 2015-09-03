@@ -500,6 +500,27 @@ struct rndis_pkt_hdr rndis_template_hdr = {
 	.zeroes = {0},
 };
 
+static int rndis_ipa_panic_notifier(struct notifier_block *this,
+				    unsigned long event, void *ptr)
+{
+	if (rndis_ipa)
+		pr_err("RNDIS-IPA is LOADED, State: %s, outstanding pkts: %d\n",
+		       rndis_ipa_state_string(rndis_ipa->state),
+		       atomic_read(&rndis_ipa->outstanding_pkts));
+
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block rndis_ipa_panic_blk = {
+	.notifier_call = rndis_ipa_panic_notifier,
+};
+
+static void rndis_ipa_register_panic_func(void)
+{
+	atomic_notifier_chain_register(&panic_notifier_list,
+				       &rndis_ipa_panic_blk);
+}
+
 /**
  * rndis_ipa_init() - create network device and initialize internal
  *  data structures
@@ -642,6 +663,7 @@ int rndis_ipa_init(struct ipa_usb_init_params *params)
 	params->skip_ep_cfg = false;
 	rndis_ipa_ctx->state = RNDIS_IPA_INITIALIZED;
 	RNDIS_IPA_STATE_DEBUG(rndis_ipa_ctx);
+	rndis_ipa_register_panic_func();
 	pr_info("RNDIS_IPA NetDev was initialized");
 
 	RNDIS_IPA_LOG_EXIT();

@@ -1567,7 +1567,7 @@ int ipa_uc_monitor_holb(enum ipa_client_type ipa_client, bool enable);
 int ipa_uc_state_check(void);
 int ipa_uc_send_cmd(u32 cmd, u32 opcode, u32 expected_status,
 		    bool polling_mode, unsigned long timeout_jiffies);
-void ipa_register_panic_hdlr(void);
+void ipa_register_panic_uc_hdlr(void);
 void ipa_uc_register_handlers(enum ipa_hw_features feature,
 			      struct ipa_uc_hdlrs *hdlrs);
 int create_nat_device(void);
@@ -1600,4 +1600,7 @@ struct iommu_domain *ipa_get_uc_smmu_domain(void);
 void ipa_flow_control(enum ipa_client_type ipa_client, bool enable,
 			uint32_t qmap_id);
 void ipa_suspend_apps_pipes(bool suspend);
+
+void ipa_register_panic_gen_notifier(void);
+
 #endif /* _IPA_I_H_ */

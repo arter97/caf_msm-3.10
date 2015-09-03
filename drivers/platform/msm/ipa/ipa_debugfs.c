@@ -84,6 +84,72 @@ const char *ipa_hdr_proc_type_name[] = {
 	__stringify(IPA_HDR_PROC_802_3_TO_802_3),
 };
 
+const char *ipa_ep_client_type[] = {
+	__stringify(IPA_CLIENT_PROD),
+	__stringify(IPA_CLIENT_WLAN1_PROD),
+	__stringify(IPA_CLIENT_HSIC2_PROD),
+	__stringify(IPA_CLIENT_USB2_PROD),
+	__stringify(IPA_CLIENT_HSIC3_PROD),
+	__stringify(IPA_CLIENT_USB3_PROD),
+	__stringify(IPA_CLIENT_HSIC4_PROD),
+	__stringify(IPA_CLIENT_USB4_PROD),
+	__stringify(IPA_CLIENT_HSIC5_PROD),
+	__stringify(IPA_CLIENT_USB_PROD),
+	__stringify(IPA_CLIENT_A5_WLAN_AMPDU_PROD),
+	__stringify(IPA_CLIENT_A2_EMBEDDED_PROD),
+	__stringify(IPA_CLIENT_A2_TETHERED_PROD),
+	__stringify(IPA_CLIENT_APPS_LAN_WAN_PROD),
+	__stringify(IPA_CLIENT_APPS_CMD_PROD),
+	__stringify(IPA_CLIENT_ODU_PROD),
+	__stringify(IPA_CLIENT_MHI_PROD),
+	__stringify(IPA_CLIENT_Q6_LAN_PROD),
+	__stringify(IPA_CLIENT_Q6_CMD_PROD),
+	__stringify(IPA_CLIENT_MEMCPY_DMA_SYNC_PROD),
+	__stringify(IPA_CLIENT_MEMCPY_DMA_ASYNC_PROD),
+	__stringify(IPA_CLIENT_Q6_DECOMP_PROD),
+	__stringify(IPA_CLIENT_Q6_DECOMP2_PROD),
+	__stringify(IPA_CLIENT_TEST_PROD),
+	__stringify(IPA_CLIENT_TEST1_PROD),
+	__stringify(IPA_CLIENT_TEST2_PROD),
+	__stringify(IPA_CLIENT_TEST3_PROD),
+	__stringify(IPA_CLIENT_TEST4_PROD),
+	__stringify(IPA_CLIENT_CONS),
+	__stringify(IPA_CLIENT_WLAN1_CONS),
+	__stringify(IPA_CLIENT_HSIC2_CONS),
+	__stringify(IPA_CLIENT_USB2_CONS),
+	__stringify(IPA_CLIENT_WLAN2_CONS),
+	__stringify(IPA_CLIENT_HSIC3_CONS),
+	__stringify(IPA_CLIENT_USB3_CONS),
+	__stringify(IPA_CLIENT_WLAN3_CONS),
+	__stringify(IPA_CLIENT_HSIC4_CONS),
+	__stringify(IPA_CLIENT_USB4_CONS),
+	__stringify(IPA_CLIENT_WLAN4_CONS),
+	__stringify(IPA_CLIENT_HSIC5_CONS),
+	__stringify(IPA_CLIENT_USB_CONS),
+	__stringify(IPA_CLIENT_USB_DPL_CONS),
+	__stringify(IPA_CLIENT_A2_EMBEDDED_CONS),
+	__stringify(IPA_CLIENT_A2_TETHERED_CONS),
+	__stringify(IPA_CLIENT_A5_LAN_WAN_CONS),
+	__stringify(IPA_CLIENT_APPS_LAN_CONS),
+	__stringify(IPA_CLIENT_APPS_WAN_CONS),
+	__stringify(IPA_CLIENT_ODU_EMB_CONS),
+	__stringify(IPA_CLIENT_ODU_TETH_CONS),
+	__stringify(IPA_CLIENT_MHI_CONS),
+	__stringify(IPA_CLIENT_Q6_LAN_CONS),
+	__stringify(IPA_CLIENT_Q6_WAN_CONS),
+	__stringify(IPA_CLIENT_Q6_DUN_CONS),
+	__stringify(IPA_CLIENT_MEMCPY_DMA_SYNC_CONS),
+	__stringify(IPA_CLIENT_MEMCPY_DMA_ASYNC_CONS),
+	__stringify(IPA_CLIENT_Q6_DECOMP_CONS),
+	__stringify(IPA_CLIENT_Q6_DECOMP2_CONS),
+	__stringify(IPA_CLIENT_TEST_CONS),
+	__stringify(IPA_CLIENT_TEST1_CONS),
+	__stringify(IPA_CLIENT_TEST2_CONS),
+	__stringify(IPA_CLIENT_TEST3_CONS),
+	__stringify(IPA_CLIENT_TEST4_CONS),
+	__stringify(IPA_CLIENT_MAX),
+};
+
 static struct dentry *dent;
 static struct dentry *dfile_gen_reg;
 static struct dentry *dfile_ep_reg;
@@ -102,8 +168,10 @@ static struct dentry *dfile_dbg_cnt;
 static struct dentry *dfile_msg;
 static struct dentry *dfile_ip4_nat;
 static struct dentry *dfile_rm_stats;
+static struct dentry *dfile_enable_panic_dump;
 static char dbg_buff[IPA_MAX_MSG_LEN];
 static s8 ep_reg_idx;
+static int ipa_enable_panic_dump;
 
 int _ipa_read_gen_reg_v1_1(char *buff, int max_len)
 {
@@ -232,7 +300,7 @@ static ssize_t ipa_write_ep_reg(struct file *file, const char __user *buf,
 
 int _ipa_read_ep_reg_v1_1(char *buf, int max_len, int pipe)
 {
-	return scnprintf(dbg_buff, IPA_MAX_MSG_LEN,
+	return scnprintf(buf, max_len,
 			"IPA_ENDP_INIT_NAT_%u=0x%x\n"
 			"IPA_ENDP_INIT_HDR_%u=0x%x\n"
 			"IPA_ENDP_INIT_MODE_%u=0x%x\n"
@@ -343,6 +411,58 @@ static ssize_t ipa_read_ep_reg(struct file *file, char __user *ubuf,
 	return size;
 }
 
+void print_pipe_info(int pipe_num, char *dbg_buff, int size)
+{
+	int result;
+	u32 free_slots;
+	u32 is_empty;
+
+	pr_err("pipe num:%d\npipe client type:%s\n", pipe_num,
+		ipa_ep_client_type[ipa_ctx->ep[pipe_num].client]);
+	result = sps_is_pipe_empty(ipa_ctx->ep[pipe_num].ep_hdl,
+		&is_empty);
+	if (result) {
+		pr_err("error reading pipe fifo free slots\n");
+	} else {
+		if (is_empty)
+			scnprintf(dbg_buff, size, "bam pipe is EMPTY,");
+		else
+			scnprintf(dbg_buff, size, "bam pipe is NOT-EMPTY,");
+		if (sps_get_unused_desc_num(ipa_ctx->ep[pipe_num].ep_hdl,
+					    &free_slots))
+			pr_err("%s error reading unused descriptors in FIFO\n",
+				dbg_buff);
+		else
+			pr_err("%s unused descriptors in descriptor FIFO: %d\n",
+				dbg_buff, free_slots);
+	}
+	ipa_ctx->ctrl->ipa_read_ep_reg(dbg_buff, size, pipe_num);
+	pr_err("%s\n", dbg_buff);
+}
+
+void ipa_print_active_ep_reg(char *dbg_buff, int size)
+{
+	int start_idx = 0;
+	int end_idx;
+	int i;
+	int count = 0;
+
+	end_idx = ipa_ctx->ipa_num_pipes;
+
+	ipa_inc_client_enable_clks();
+
+	for (i = start_idx; i < end_idx; i++)
+		if (ipa_ctx->ep[i].valid)
+			count++;
+	pr_err("number of active pipes:%d\n\n", count);
+	for (i = start_idx; i < end_idx; i++) {
+		if (ipa_ctx->ep[i].valid)
+			print_pipe_info(i, dbg_buff, size);
+	}
+
+	ipa_dec_client_disable_clks();
+}
+
 static ssize_t ipa_write_keep_awake(struct file *file, const char __user *buf,
 	size_t count, loff_t *ppos)
 {
@@ -387,13 +507,13 @@ static ssize_t ipa_read_keep_awake(struct file *file, char __user *ubuf,
 	return simple_read_from_buffer(ubuf, count, ppos, dbg_buff, nbytes);
 }
 
-static ssize_t ipa_read_hdr(struct file *file, char __user *ubuf, size_t count,
-		loff_t *ppos)
+int ipa_get_hdr_buff(char *dbg_buff, int size)
 {
 	int nbytes = 0;
 	int i = 0;
 	struct ipa_hdr_entry *entry;
 
+	*dbg_buff = 0;
 	mutex_lock(&ipa_ctx->lock);
 
 	if (ipa_ctx->hdr_tbl_lcl)
@@ -405,7 +525,7 @@ static ssize_t ipa_read_hdr(struct file *file, char __user *ubuf, size_t count,
 			link) {
 		nbytes = scnprintf(
 			dbg_buff,
-			IPA_MAX_MSG_LEN,
+			size,
 			"name:%s len=%d ref=%d partial=%d type=%s ",
 			entry->name,
 			entry->hdr_len,
@@ -416,27 +536,35 @@ static ssize_t ipa_read_hdr(struct file *file, char __user *ubuf, size_t count,
 		if (entry->is_hdr_proc_ctx) {
 			nbytes += scnprintf(
 				dbg_buff + nbytes,
-				IPA_MAX_MSG_LEN - nbytes,
+				size - nbytes,
 				"phys_base=0x%pa ",
 				&entry->phys_base);
 		} else {
 			nbytes += scnprintf(
 				dbg_buff + nbytes,
-				IPA_MAX_MSG_LEN - nbytes,
+				size - nbytes,
 				"ofst=%u ",
 				entry->offset_entry->offset >> 2);
 		}
 		for (i = 0; i < entry->hdr_len; i++) {
 			scnprintf(dbg_buff + nbytes + i * 2,
-				  IPA_MAX_MSG_LEN - nbytes - i * 2,
-				  "%02x", entry->hdr[i]);
+				size - nbytes - i * 2,
+				"%02x", entry->hdr[i]);
 		}
 		scnprintf(dbg_buff + nbytes + entry->hdr_len * 2,
-			  IPA_MAX_MSG_LEN - nbytes - entry->hdr_len * 2,
-			  "\n");
+			size - nbytes - entry->hdr_len * 2,
+			"\n");
 		pr_err("%s", dbg_buff);
 	}
 	mutex_unlock(&ipa_ctx->lock);
+
+	return nbytes;
+}
+
+static ssize_t ipa_read_hdr(struct file *file, char __user *ubuf, size_t count,
+	loff_t *ppos)
+{
+	ipa_get_hdr_buff(dbg_buff, IPA_MAX_MSG_LEN);
 
 	return 0;
 }
@@ -638,14 +766,12 @@ static int ipa_open_dbg(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t ipa_read_rt(struct file *file, char __user *ubuf, size_t count,
-		loff_t *ppos)
+void ipa_print_rt(enum ipa_ip_type ip)
 {
 	int i = 0;
 	struct ipa_rt_tbl *tbl;
 	struct ipa_rt_entry *entry;
 	struct ipa_rt_tbl_set *set;
-	enum ipa_ip_type ip = (enum ipa_ip_type)file->private_data;
 	u32 ofst;
 	u32 ofst_words;
 
@@ -653,7 +779,7 @@ static ssize_t ipa_read_rt(struct file *file, char __user *ubuf, size_t count,
 
 	mutex_lock(&ipa_ctx->lock);
 
-	if (ip ==  IPA_IP_v6) {
+	if (ip == IPA_IP_v6) {
 		if (ipa_ctx->ip6_rt_tbl_lcl)
 			pr_err("Table resides on local memory\n");
 		else
@@ -708,12 +834,20 @@ static ssize_t ipa_read_rt(struct file *file, char __user *ubuf, size_t count,
 		}
 	}
 	mutex_unlock(&ipa_ctx->lock);
+}
+
+static ssize_t ipa_read_rt(struct file *file, char __user *ubuf, size_t count,
+	loff_t *ppos)
+{
+	enum ipa_ip_type ip;
+
+	ip = (enum ipa_ip_type)file->private_data;
+	ipa_print_rt(ip);
 
 	return 0;
 }
 
-static ssize_t ipa_read_proc_ctx(struct file *file, char __user *ubuf,
-		size_t count, loff_t *ppos)
+int ipa_get_proc_ctx(char *dbg_buff, int size)
 {
 	int nbytes = 0;
 	struct ipa_hdr_proc_ctx_tbl *tbl;
@@ -721,6 +855,7 @@ static ssize_t ipa_read_proc_ctx(struct file *file, char __user *ubuf,
 	u32 ofst_words;
 
 	tbl = &ipa_ctx->hdr_proc_ctx_tbl;
+	*dbg_buff = 0;
 
 	mutex_lock(&ipa_ctx->lock);
 
@@ -735,41 +870,49 @@ static ssize_t ipa_read_proc_ctx(struct file *file, char __user *ubuf,
 			>> 5;
 		if (entry->hdr->is_hdr_proc_ctx) {
 			nbytes += scnprintf(dbg_buff + nbytes,
-				IPA_MAX_MSG_LEN - nbytes,
+				size - nbytes,
 				"id:%u hdr_proc_type:%s proc_ctx[32B]:%u ",
 				entry->id,
 				ipa_hdr_proc_type_name[entry->type],
 				ofst_words);
 			nbytes += scnprintf(dbg_buff + nbytes,
-				IPA_MAX_MSG_LEN - nbytes,
+				size - nbytes,
 				"hdr_phys_base:0x%pa\n",
 				&entry->hdr->phys_base);
 		} else {
 			nbytes += scnprintf(dbg_buff + nbytes,
-				IPA_MAX_MSG_LEN - nbytes,
+				size - nbytes,
 				"id:%u hdr_proc_type:%s proc_ctx[32B]:%u ",
 				entry->id,
 				ipa_hdr_proc_type_name[entry->type],
 				ofst_words);
 			nbytes += scnprintf(dbg_buff + nbytes,
-				IPA_MAX_MSG_LEN - nbytes,
+				size - nbytes,
 				"hdr[words]:%u\n",
 				entry->hdr->offset_entry->offset >> 2);
 		}
 	}
 	mutex_unlock(&ipa_ctx->lock);
 
-	return simple_read_from_buffer(ubuf, count, ppos, dbg_buff, nbytes);
+	return nbytes;
 }
 
-static ssize_t ipa_read_flt(struct file *file, char __user *ubuf, size_t count,
-		loff_t *ppos)
+static ssize_t ipa_read_proc_ctx(struct file *file, char __user *ubuf,
+	size_t count, loff_t *ppos)
+{
+	int ret;
+
+	ret = ipa_get_proc_ctx(dbg_buff, IPA_MAX_MSG_LEN);
+
+	return simple_read_from_buffer(ubuf, count, ppos, dbg_buff, ret);
+}
+
+void ipa_print_flt(enum ipa_ip_type ip)
 {
 	int i;
 	int j;
 	struct ipa_flt_tbl *tbl;
 	struct ipa_flt_entry *entry;
-	enum ipa_ip_type ip = (enum ipa_ip_type)file->private_data;
 	struct ipa_rt_tbl *rt_tbl;
 	u32 rt_tbl_idx;
 	u32 bitmap;
@@ -838,12 +981,20 @@ static ssize_t ipa_read_flt(struct file *file, char __user *ubuf, size_t count,
 		}
 	}
 	mutex_unlock(&ipa_ctx->lock);
+}
+
+static ssize_t ipa_read_flt(struct file *file, char __user *ubuf, size_t count,
+	loff_t *ppos)
+{
+	enum ipa_ip_type ip;
+
+	ip = (enum ipa_ip_type)file->private_data;
+	ipa_print_flt(ip);
 
 	return 0;
 }
 
-static ssize_t ipa_read_stats(struct file *file, char __user *ubuf,
-		size_t count, loff_t *ppos)
+int ipa_get_stats(char *dbg_buff, int size)
 {
 	int nbytes;
 	int i;
@@ -854,7 +1005,7 @@ static ssize_t ipa_read_stats(struct file *file, char __user *ubuf,
 		connect |= (ipa_ctx->ep[i].valid << i);
 
 	if (ipa_ctx->ipa_hw_type >= IPA_HW_v2_0) {
-		nbytes = scnprintf(dbg_buff, IPA_MAX_MSG_LEN,
+		nbytes = scnprintf(dbg_buff, size,
 			"sw_tx=%u\n"
 			"hw_tx=%u\n"
 			"tx_compl=%u\n"
@@ -889,14 +1040,14 @@ static ssize_t ipa_read_stats(struct file *file, char __user *ubuf,
 
 		for (i = 0; i < MAX_NUM_EXCP; i++) {
 			nbytes = scnprintf(dbg_buff + cnt,
-				IPA_MAX_MSG_LEN - cnt,
+				size - cnt,
 				"lan_rx_excp[%u:%20s]=%u\n", i,
 				ipa_status_excp_name[i],
 				ipa_ctx->stats.rx_excp_pkts[i]);
 			cnt += nbytes;
 		}
-	} else{
-		nbytes = scnprintf(dbg_buff, IPA_MAX_MSG_LEN,
+	} else {
+		nbytes = scnprintf(dbg_buff, size,
 			"sw_tx=%u\n"
 			"hw_tx=%u\n"
 			"rx=%u\n"
@@ -911,24 +1062,32 @@ static ssize_t ipa_read_stats(struct file *file, char __user *ubuf,
 			ipa_ctx->stats.rx_q_len,
 			ipa_ctx->ipa_active_clients.cnt,
 			connect);
-	cnt += nbytes;
+		cnt += nbytes;
 
 		for (i = 0; i < MAX_NUM_EXCP; i++) {
 			nbytes = scnprintf(dbg_buff + cnt,
-				IPA_MAX_MSG_LEN - cnt,
+				size - cnt,
 				"rx_excp[%u:%35s]=%u\n", i, ipa_excp_name[i],
 				ipa_ctx->stats.rx_excp_pkts[i]);
 			cnt += nbytes;
 		}
 	}
 
-	return simple_read_from_buffer(ubuf, count, ppos, dbg_buff, cnt);
+	return cnt;
 }
 
-static ssize_t ipa_read_wstats(struct file *file, char __user *ubuf,
-		size_t count, loff_t *ppos)
+static ssize_t ipa_read_stats(struct file *file, char __user *ubuf,
+	size_t count, loff_t *ppos)
 {
+	int ret;
 
+	ret = ipa_get_stats(dbg_buff, IPA_MAX_MSG_LEN);
+
+	return simple_read_from_buffer(ubuf, count, ppos, dbg_buff, ret);
+}
+
+int ipa_get_wstats(char *dbg_buff, int size)
+{
 #define HEAD_FRMT_STR "%25s\n"
 #define FRMT_STR "%25s %10u\n"
 #define FRMT_STR1 "%25s %10u\n\n"
@@ -940,14 +1099,14 @@ static ssize_t ipa_read_wstats(struct file *file, char __user *ubuf,
 	struct ipa_ep_context *ep;
 
 	do {
-		nbytes = scnprintf(dbg_buff + cnt, IPA_MAX_MSG_LEN - cnt,
+		nbytes = scnprintf(dbg_buff + cnt, size - cnt,
 			HEAD_FRMT_STR, "Client IPA_CLIENT_WLAN1_PROD Stats:");
 		cnt += nbytes;
 
 		ipa_ep_idx = ipa_get_ep_mapping(client);
 		if (ipa_ep_idx == -1) {
 			nbytes = scnprintf(dbg_buff + cnt,
-				IPA_MAX_MSG_LEN - cnt, HEAD_FRMT_STR, "Not up");
+				size - cnt, HEAD_FRMT_STR, "Not up");
 			cnt += nbytes;
 			break;
 		}
@@ -955,57 +1114,57 @@ static ssize_t ipa_read_wstats(struct file *file, char __user *ubuf,
 		ep = &ipa_ctx->ep[ipa_ep_idx];
 		if (ep->valid != 1) {
 			nbytes = scnprintf(dbg_buff + cnt,
-				IPA_MAX_MSG_LEN - cnt, HEAD_FRMT_STR, "Not up");
+				size - cnt, HEAD_FRMT_STR, "Not up");
 			cnt += nbytes;
 			break;
 		}
 
-		nbytes = scnprintf(dbg_buff + cnt, IPA_MAX_MSG_LEN - cnt,
+		nbytes = scnprintf(dbg_buff + cnt, size - cnt,
 			FRMT_STR, "Avail Fifo Desc:",
 			atomic_read(&ep->avail_fifo_desc));
 		cnt += nbytes;
 
-		nbytes = scnprintf(dbg_buff + cnt, IPA_MAX_MSG_LEN - cnt,
+		nbytes = scnprintf(dbg_buff + cnt, size - cnt,
 			FRMT_STR, "Rx Pkts Rcvd:", ep->wstats.rx_pkts_rcvd);
 		cnt += nbytes;
 
-		nbytes = scnprintf(dbg_buff + cnt, IPA_MAX_MSG_LEN - cnt,
+		nbytes = scnprintf(dbg_buff + cnt, size - cnt,
 			FRMT_STR, "Rx Pkts Status Rcvd:",
 			ep->wstats.rx_pkts_status_rcvd);
 		cnt += nbytes;
 
-		nbytes = scnprintf(dbg_buff + cnt, IPA_MAX_MSG_LEN - cnt,
+		nbytes = scnprintf(dbg_buff + cnt, size - cnt,
 			FRMT_STR, "Rx DH Rcvd:", ep->wstats.rx_hd_rcvd);
 		cnt += nbytes;
 
-		nbytes = scnprintf(dbg_buff + cnt, IPA_MAX_MSG_LEN - cnt,
+		nbytes = scnprintf(dbg_buff + cnt, size - cnt,
 			FRMT_STR, "Rx DH Processed:",
 			ep->wstats.rx_hd_processed);
 		cnt += nbytes;
 
-		nbytes = scnprintf(dbg_buff + cnt, IPA_MAX_MSG_LEN - cnt,
+		nbytes = scnprintf(dbg_buff + cnt, size - cnt,
 			FRMT_STR, "Rx DH Sent Back:", ep->wstats.rx_hd_reply);
 		cnt += nbytes;
 
-		nbytes = scnprintf(dbg_buff + cnt, IPA_MAX_MSG_LEN - cnt,
+		nbytes = scnprintf(dbg_buff + cnt, size - cnt,
 			FRMT_STR, "Rx Pkt Leak:", ep->wstats.rx_pkt_leak);
 		cnt += nbytes;
 
-		nbytes = scnprintf(dbg_buff + cnt, IPA_MAX_MSG_LEN - cnt,
+		nbytes = scnprintf(dbg_buff + cnt, size - cnt,
 			FRMT_STR1, "Rx DP Fail:", ep->wstats.rx_dp_fail);
 		cnt += nbytes;
 
 	} while (0);
 
 	client = IPA_CLIENT_WLAN1_CONS;
-	nbytes = scnprintf(dbg_buff + cnt, IPA_MAX_MSG_LEN - cnt, HEAD_FRMT_STR,
+	nbytes = scnprintf(dbg_buff + cnt, size - cnt, HEAD_FRMT_STR,
 		"Client IPA_CLIENT_WLAN1_CONS Stats:");
 	cnt += nbytes;
 	while (1) {
 		ipa_ep_idx = ipa_get_ep_mapping(client);
 		if (ipa_ep_idx == -1) {
 			nbytes = scnprintf(dbg_buff + cnt,
-				IPA_MAX_MSG_LEN - cnt, HEAD_FRMT_STR, "Not up");
+				size - cnt, HEAD_FRMT_STR, "Not up");
 			cnt += nbytes;
 			goto nxt_clnt_cons;
 		}
@@ -1013,20 +1172,20 @@ static ssize_t ipa_read_wstats(struct file *file, char __user *ubuf,
 		ep = &ipa_ctx->ep[ipa_ep_idx];
 		if (ep->valid != 1) {
 			nbytes = scnprintf(dbg_buff + cnt,
-				IPA_MAX_MSG_LEN - cnt, HEAD_FRMT_STR, "Not up");
+				size - cnt, HEAD_FRMT_STR, "Not up");
 			cnt += nbytes;
 			goto nxt_clnt_cons;
 		}
 
-		nbytes = scnprintf(dbg_buff + cnt, IPA_MAX_MSG_LEN - cnt,
+		nbytes = scnprintf(dbg_buff + cnt, size - cnt,
 			FRMT_STR, "Tx Pkts Received:", ep->wstats.tx_pkts_rcvd);
 		cnt += nbytes;
 
-		nbytes = scnprintf(dbg_buff + cnt, IPA_MAX_MSG_LEN - cnt,
+		nbytes = scnprintf(dbg_buff + cnt, size - cnt,
 			FRMT_STR, "Tx Pkts Sent:", ep->wstats.tx_pkts_sent);
 		cnt += nbytes;
 
-		nbytes = scnprintf(dbg_buff + cnt, IPA_MAX_MSG_LEN - cnt,
+		nbytes = scnprintf(dbg_buff + cnt, size - cnt,
 			FRMT_STR1, "Tx Pkts Dropped:",
 			ep->wstats.tx_pkts_dropped);
 		cnt += nbytes;
@@ -1036,21 +1195,21 @@ nxt_clnt_cons:
 			case IPA_CLIENT_WLAN1_CONS:
 				client = IPA_CLIENT_WLAN2_CONS;
 				nbytes = scnprintf(dbg_buff + cnt,
-					IPA_MAX_MSG_LEN - cnt, HEAD_FRMT_STR,
+					size - cnt, HEAD_FRMT_STR,
 					"Client IPA_CLIENT_WLAN2_CONS Stats:");
 				cnt += nbytes;
 				continue;
 			case IPA_CLIENT_WLAN2_CONS:
 				client = IPA_CLIENT_WLAN3_CONS;
 				nbytes = scnprintf(dbg_buff + cnt,
-					IPA_MAX_MSG_LEN - cnt, HEAD_FRMT_STR,
+					size - cnt, HEAD_FRMT_STR,
 					"Client IPA_CLIENT_WLAN3_CONS Stats:");
 				cnt += nbytes;
 				continue;
 			case IPA_CLIENT_WLAN3_CONS:
 				client = IPA_CLIENT_WLAN4_CONS;
 				nbytes = scnprintf(dbg_buff + cnt,
-					IPA_MAX_MSG_LEN - cnt, HEAD_FRMT_STR,
+					size - cnt, HEAD_FRMT_STR,
 					"Client IPA_CLIENT_WLAN4_CONS Stats:");
 				cnt += nbytes;
 				continue;
@@ -1061,35 +1220,44 @@ nxt_clnt_cons:
 		break;
 	}
 
-	nbytes = scnprintf(dbg_buff + cnt, IPA_MAX_MSG_LEN - cnt,
+	nbytes = scnprintf(dbg_buff + cnt, size - cnt,
 		"\n"HEAD_FRMT_STR, "All Wlan Consumer pipes stats:");
 	cnt += nbytes;
 
-	nbytes = scnprintf(dbg_buff + cnt, IPA_MAX_MSG_LEN - cnt, FRMT_STR,
+	nbytes = scnprintf(dbg_buff + cnt, size - cnt, FRMT_STR,
 		"Tx Comm Buff Allocated:",
 		ipa_ctx->wc_memb.wlan_comm_total_cnt);
 	cnt += nbytes;
 
-	nbytes = scnprintf(dbg_buff + cnt, IPA_MAX_MSG_LEN - cnt, FRMT_STR,
+	nbytes = scnprintf(dbg_buff + cnt, size - cnt, FRMT_STR,
 		"Tx Comm Buff Avail:", ipa_ctx->wc_memb.wlan_comm_free_cnt);
 	cnt += nbytes;
 
-	nbytes = scnprintf(dbg_buff + cnt, IPA_MAX_MSG_LEN - cnt, FRMT_STR1,
+	nbytes = scnprintf(dbg_buff + cnt, size - cnt, FRMT_STR1,
 		"Total Tx Pkts Freed:", ipa_ctx->wc_memb.total_tx_pkts_freed);
 	cnt += nbytes;
 
-	return simple_read_from_buffer(ubuf, count, ppos, dbg_buff, cnt);
+	return cnt;
 }
 
-static ssize_t ipa_read_wdi(struct file *file, char __user *ubuf,
-		size_t count, loff_t *ppos)
+static ssize_t ipa_read_wstats(struct file *file, char __user *ubuf,
+	size_t count, loff_t *ppos)
+{
+	int ret = 0;
+
+	ret = ipa_get_wstats(dbg_buff, IPA_MAX_MSG_LEN);
+
+	return simple_read_from_buffer(ubuf, count, ppos, dbg_buff, ret);
+}
+
+int ipa_get_wdi(char *dbg_buff, int size)
 {
 	struct IpaHwStatsWDIInfoData_t stats;
 	int nbytes;
 	int cnt = 0;
 
 	if (!ipa_get_wdi_stats(&stats)) {
-		nbytes = scnprintf(dbg_buff, IPA_MAX_MSG_LEN,
+		nbytes = scnprintf(dbg_buff, size,
 			"TX num_pkts_processed=%u\n"
 			"TX copy_engine_doorbell_value=%u\n"
 			"TX num_db_fired=%u\n"
@@ -1130,7 +1298,7 @@ static ssize_t ipa_read_wdi(struct file *file, char __user *ubuf,
 			stats.tx_ch_stats.
 				num_bam_int_handled_while_wait_for_bam);
 		cnt += nbytes;
-		nbytes = scnprintf(dbg_buff + cnt, IPA_MAX_MSG_LEN - cnt,
+		nbytes = scnprintf(dbg_buff + cnt, size - cnt,
 			"RX max_outstanding_pkts=%u\n"
 			"RX num_pkts_processed=%u\n"
 			"RX rx_ring_rp_value=%u\n"
@@ -1175,12 +1343,22 @@ static ssize_t ipa_read_wdi(struct file *file, char __user *ubuf,
 			stats.rx_ch_stats.reserved2);
 		cnt += nbytes;
 	} else {
-		nbytes = scnprintf(dbg_buff, IPA_MAX_MSG_LEN,
+		nbytes = scnprintf(dbg_buff, size,
 				"Fail to read WDI stats\n");
 		cnt += nbytes;
 	}
 
-	return simple_read_from_buffer(ubuf, count, ppos, dbg_buff, cnt);
+	return cnt;
+}
+
+static ssize_t ipa_read_wdi(struct file *file, char __user *ubuf,
+		size_t count, loff_t *ppos)
+{
+	int ret;
+
+	ret = ipa_get_wdi(dbg_buff, IPA_MAX_MSG_LEN);
+
+	return simple_read_from_buffer(ubuf, count, ppos, dbg_buff, ret);
 }
 
 void _ipa_write_dbg_cnt_v1_1(int option)
@@ -1280,10 +1458,8 @@ static ssize_t ipa_read_msg(struct file *file, char __user *ubuf,
 	return simple_read_from_buffer(ubuf, count, ppos, dbg_buff, cnt);
 }
 
-static ssize_t ipa_read_nat4(struct file *file,
-		char __user *ubuf, size_t count,
-		loff_t *ppos) {
-
+void ipa_print_ip4_nat(void)
+{
 #define ENTRY_U32_FIELDS 8
 #define NAT_ENTRY_ENABLE 0x8000
 #define NAT_ENTRY_RST_FIN_BIT 0x4000
@@ -1449,6 +1625,12 @@ static ssize_t ipa_read_nat4(struct file *file,
 		}
 	}
 	pr_err("Current No. Nat Entries: %d\n", no_entrys);
+}
+
+static ssize_t ipa_read_nat4(struct file *file,
+		char __user *ubuf, size_t count,
+		loff_t *ppos) {
+	ipa_print_ip4_nat();
 
 	return 0;
 }
@@ -1465,6 +1647,90 @@ static ssize_t ipa_rm_read_stats(struct file *file, char __user *ubuf,
 	} else
 		cnt += result;
 	return simple_read_from_buffer(ubuf, count, ppos, dbg_buff, cnt);
+}
+
+static ssize_t write_ipa_enable_panic(struct file *file, const char __user *buf,
+	size_t count, loff_t *ppos)
+{
+	if (copy_from_user(dbg_buff, buf, count))
+		return -EFAULT;
+
+	if (dbg_buff[0] != '0') {
+		ipa_enable_panic_dump = 1;
+		pr_err("ipa panic crash dump enabled\n");
+	} else {
+		ipa_enable_panic_dump = 0;
+		pr_err("ipa panic crash dump disabled\n");
+	}
+
+	return count;
+}
+
+static int ipa_gen_panic_notifier(struct notifier_block *this,
+	unsigned long event, void *ptr)
+{
+	int result;
+
+	if (!ipa_enable_panic_dump)
+		goto exit_panic_notifier;
+
+	pr_err("---------------- IPA INFO PANIC DUMP START ---------------");
+
+	result = ipa_rm_stat(dbg_buff, IPA_MAX_MSG_LEN);
+	if (result < 0) {
+		scnprintf(dbg_buff, IPA_MAX_MSG_LEN,
+			"Error in printing RM stats %d\n", result);
+	}
+	pr_err("RM stats:\n%s", dbg_buff);
+	pr_err("----------------------------------------------------------\n");
+	ipa_get_stats(dbg_buff, IPA_MAX_MSG_LEN);
+	pr_err("IPA statistics:\n%s", dbg_buff);
+	pr_err("----------------------------------------------------------\n");
+	pr_err("IPA proccessing context stats:\n");
+	ipa_get_proc_ctx(dbg_buff, IPA_MAX_MSG_LEN);
+	pr_err("%s", dbg_buff);
+	pr_err("----------------------------------------------------------\n");
+	pr_err("IPA hdr stats:\n");
+	ipa_get_hdr_buff(dbg_buff, IPA_MAX_MSG_LEN);
+	pr_err("%s", dbg_buff);
+	pr_err("----------------------------------------------------------\n");
+	pr_err("IPA wdi stats:\n");
+	ipa_get_wdi(dbg_buff, IPA_MAX_MSG_LEN);
+	pr_err("%s", dbg_buff);
+	pr_err("----------------------------------------------------------\n");
+	ipa_get_wstats(dbg_buff, IPA_MAX_MSG_LEN);
+	pr_err("IPA wstats:\n%s", dbg_buff);
+	pr_err("----------------------------------------------------------\n");
+	pr_err("IPA IPv4 filtering table SW view:\n");
+	ipa_print_flt(IPA_IP_v4);
+	pr_err("----------------------------------------------------------\n");
+	pr_err("IPA IPv6 filtering table SW view:\n");
+	ipa_print_flt(IPA_IP_v6);
+	pr_err("----------------------------------------------------------\n");
+	pr_err("IPA IPv4 routing table SW view:\n");
+	ipa_print_rt(IPA_IP_v4);
+	pr_err("----------------------------------------------------------\n");
+	pr_err("IPA IPv6 routing table SW view:\n");
+	ipa_print_rt(IPA_IP_v6);
+	pr_err("----------------------------------------------------------\n");
+	pr_err("IPA IPv4 NAT table SW view:\n");
+	ipa_print_ip4_nat();
+	pr_err("----------------------------------------------------------\n");
+	pr_err("IPA active end-point registers:\n");
+	ipa_print_active_ep_reg(dbg_buff, IPA_MAX_MSG_LEN);
+	pr_err("----------------------------------------------------------\n");
+
+exit_panic_notifier:
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block ipa_panic_blk = {
+	.notifier_call = ipa_gen_panic_notifier,
+};
+
+void ipa_register_panic_gen_notifier(void)
+{
+	atomic_notifier_chain_register(&panic_notifier_list, &ipa_panic_blk);
 }
 
 const struct file_operations ipa_gen_reg_ops = {
@@ -1532,6 +1798,10 @@ const struct file_operations ipa_rm_stats = {
 	.read = ipa_rm_read_stats,
 };
 
+const struct file_operations ipa_panic_ops = {
+	.write = write_ipa_enable_panic,
+};
+
 void ipa_debugfs_init(void)
 {
 	const mode_t read_only_mode = S_IRUSR | S_IRGRP | S_IROTH;
@@ -1539,6 +1809,8 @@ void ipa_debugfs_init(void)
 			S_IWUSR | S_IWGRP;
 	const mode_t write_only_mode = S_IWUSR | S_IWGRP;
 	struct dentry *file;
+
+	ipa_enable_panic_dump = 0;
 
 	dent = debugfs_create_dir("ipa", 0);
 	if (IS_ERR(dent)) {
@@ -1673,6 +1945,13 @@ void ipa_debugfs_init(void)
 		goto fail;
 	}
 
+	dfile_enable_panic_dump = debugfs_create_file("enable_panic_dump",
+		write_only_mode, dent, 0, &ipa_panic_ops);
+	if (!dfile_enable_panic_dump || IS_ERR(dfile_enable_panic_dump)) {
+		IPAERR("fail to create file for enable panic dump\n");
+		goto fail;
+	}
+
 	file = debugfs_create_u32("enable_clock_scaling", read_write_mode,
 		dent, &ipa_ctx->enable_clock_scaling);
 	if (!file) {
@@ -1740,5 +2019,6 @@ int _ipa_read_dbg_cnt_v2_0(char *buf, int max_len)
 {
 	return 0;
 }
+void ipa_register_panic_gen_notifier(void) {}
 #endif
 

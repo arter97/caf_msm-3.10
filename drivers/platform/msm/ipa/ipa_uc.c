@@ -395,7 +395,7 @@ static struct notifier_block ipa_uc_panic_blk = {
 	.notifier_call  = ipa_uc_panic_notifier,
 };
 
-void ipa_register_panic_hdlr(void)
+void ipa_register_panic_uc_hdlr(void)
 {
 	atomic_notifier_chain_register(&panic_notifier_list,
 			&ipa_uc_panic_blk);
