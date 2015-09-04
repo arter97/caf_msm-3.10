@@ -1600,7 +1600,6 @@ struct iommu_domain *ipa_get_uc_smmu_domain(void);
 void ipa_flow_control(enum ipa_client_type ipa_client, bool enable,
 			uint32_t qmap_id);
 void ipa_suspend_apps_pipes(bool suspend);
-
 void ipa_register_panic_gen_notifier(void);
-
+void ipa_update_repl_threshold(enum ipa_client_type ipa_client);
 #endif /* _IPA_I_H_ */
