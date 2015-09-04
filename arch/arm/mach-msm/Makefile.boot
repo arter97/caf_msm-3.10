@@ -20,7 +20,7 @@
    zreladdr-$(CONFIG_ARCH_FSM9900)	:= 0x0b608000
 
 # FSM9010
-   zreladdr-$(CONFIG_ARCH_FSM9010)	:= 0x0b608000
+   zreladdr-$(CONFIG_ARCH_FSM9010)	:= 0x06008000
 
 # MSM8610
    zreladdr-$(CONFIG_ARCH_MSM8610)	:= 0x00008000
