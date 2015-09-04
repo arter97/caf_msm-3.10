@@ -149,6 +149,8 @@ struct ecm_ipa_dev {
 	enum ipa_rm_resource_name ipa_rm_resource_name_cons;
 };
 
+static struct ecm_ipa_dev *ecm_ipa_ctx_ptr;
+
 static int ecm_ipa_open(struct net_device *net);
 static void ecm_ipa_packet_receive_notify(void *priv,
 		enum ipa_dp_evt_type evt, unsigned long data);
@@ -229,6 +231,36 @@ const struct file_operations ecm_ipa_debugfs_stall_ops = {
 static void ecm_ipa_msg_free_cb(void *buff, u32 len, u32 type)
 {
 	kfree(buff);
+}
+
+int get_ecm_outstanding_pkts(void)
+{
+	return atomic_read(&ecm_ipa_ctx_ptr->outstanding_pkts);
+}
+
+const char *get_ecm_state(void)
+{
+	return ecm_ipa_state_string(ecm_ipa_ctx_ptr->state);
+}
+
+static int ecm_ipa_panic_notifier(struct notifier_block *this,
+				  unsigned long event, void *ptr)
+{
+	if (ecm_ipa_ctx_ptr != NULL)
+		pr_err("ECM-IPA is LOADED, ECM state:%s, outstanding pkts:%d\n",
+		       get_ecm_state(), get_ecm_outstanding_pkts());
+
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block ecm_ipa_panic_blk = {
+	.notifier_call = ecm_ipa_panic_notifier,
+};
+
+void ecm_ipa_register_panic_func(void)
+{
+	atomic_notifier_chain_register(&panic_notifier_list,
+				       &ecm_ipa_panic_blk);
 }
 
 /**
@@ -341,6 +373,9 @@ int ecm_ipa_init(struct ecm_ipa_params *params)
 	params->skip_ep_cfg = false;
 	ecm_ipa_ctx->state = ECM_IPA_INITIALIZED;
 	ECM_IPA_STATE_DEBUG(ecm_ipa_ctx);
+
+	ecm_ipa_ctx_ptr = ecm_ipa_ctx;
+	ecm_ipa_register_panic_func();
 
 	ECM_IPA_INFO("ECM_IPA was initialized successfully\n");
 
@@ -843,6 +878,7 @@ void ecm_ipa_cleanup(void *priv)
 	ecm_ipa_debugfs_destroy(ecm_ipa_ctx);
 
 	unregister_netdev(ecm_ipa_ctx->net);
+	ecm_ipa_ctx_ptr = NULL;
 	free_netdev(ecm_ipa_ctx->net);
 
 	ECM_IPA_INFO("ECM_IPA was destroyed successfully\n");
