@@ -670,10 +670,13 @@ static enum codec_variant codec_ver;
 
 int tasha_enable_efuse_sensing(struct snd_soc_codec *codec)
 {
+	struct tasha_priv *priv = snd_soc_codec_get_drvdata(codec);
+
 	tasha_cdc_mclk_enable(codec, true, false);
 
-	snd_soc_update_bits(codec, WCD9335_CHIP_TIER_CTRL_EFUSE_CTL,
-			    0x1E, 0x02);
+	if (!TASHA_IS_2_0(priv->wcd9xxx->version))
+		snd_soc_update_bits(codec, WCD9335_CHIP_TIER_CTRL_EFUSE_CTL,
+				    0x1E, 0x02);
 	snd_soc_update_bits(codec, WCD9335_CHIP_TIER_CTRL_EFUSE_CTL,
 			    0x01, 0x01);
 	/*
@@ -1362,6 +1365,26 @@ static void tasha_mbhc_gnd_det_ctrl(struct snd_soc_codec *codec, bool enable)
 	}
 }
 
+static void tasha_mbhc_hph_pull_down_ctrl(struct snd_soc_codec *codec,
+					  bool enable)
+{
+	struct tasha_priv *tasha = snd_soc_codec_get_drvdata(codec);
+
+	if (enable) {
+		snd_soc_update_bits(codec, WCD9335_HPH_PA_CTL2,
+				    0x40, 0x40);
+		if (TASHA_IS_2_0(tasha->wcd9xxx->version))
+			snd_soc_update_bits(codec, WCD9335_HPH_PA_CTL2,
+					    0x10, 0x10);
+	} else {
+		snd_soc_update_bits(codec, WCD9335_HPH_PA_CTL2,
+				    0x40, 0x00);
+		if (TASHA_IS_2_0(tasha->wcd9xxx->version))
+			snd_soc_update_bits(codec, WCD9335_HPH_PA_CTL2,
+					    0x10, 0x00);
+	}
+}
+
 static const struct wcd_mbhc_cb mbhc_cb = {
 	.request_irq = tasha_mbhc_request_irq,
 	.irq_control = tasha_mbhc_irq_control,
@@ -1381,6 +1404,7 @@ static const struct wcd_mbhc_cb mbhc_cb = {
 	.mbhc_micb_ctrl_thr_mic = tasha_mbhc_micb_ctrl_threshold_mic,
 	.compute_impedance = tasha_wcd_mbhc_calc_impedance,
 	.mbhc_gnd_det_ctrl = tasha_mbhc_gnd_det_ctrl,
+	.hph_pull_down_ctrl = tasha_mbhc_hph_pull_down_ctrl,
 };
 
 static int tasha_get_anc_slot(struct snd_kcontrol *kcontrol,
@@ -9250,6 +9274,9 @@ static const struct tasha_reg_mask_val tasha_codec_reg_init_val_1_0[] = {
 
 static const struct tasha_reg_mask_val tasha_codec_reg_init_val_2_0[] = {
 	{WCD9335_RX_BIAS_FLYB_MID_RST, 0xF0, 0x10},
+	{WCD9335_HPH_OCP_CTL, 0xFF, 0x52},
+	{WCD9335_HPH_L_TEST, 0x01, 0x01},
+	{WCD9335_HPH_R_TEST, 0x01, 0x01},
 };
 
 static const struct tasha_reg_mask_val tasha_codec_reg_defaults[] = {
@@ -9359,7 +9386,6 @@ static const struct tasha_reg_mask_val tasha_codec_reg_init_1_x_val[] = {
 	{WCD9335_CDC_RX6_RX_PATH_MIX_CFG, 0x01, 0x01},
 	{WCD9335_CDC_RX7_RX_PATH_MIX_CFG, 0x01, 0x01},
 	{WCD9335_CDC_RX8_RX_PATH_MIX_CFG, 0x01, 0x01},
-	{WCD9335_HPH_PA_CTL2, 0x40, 0x00},
 };
 
 static void tasha_update_reg_reset_values(struct snd_soc_codec *codec)
@@ -10417,6 +10443,11 @@ static int tasha_swrm_clock(void *handle, bool enable)
 	if (enable) {
 		tasha->swr_clk_users++;
 		if (tasha->swr_clk_users == 1) {
+			if (TASHA_IS_2_0(tasha->wcd9xxx->version))
+				wcd9xxx_reg_update_bits(
+					&tasha->wcd9xxx->core_res,
+					WCD9335_TEST_DEBUG_NPL_DLY_TEST_1,
+					0x10, 0x00);
 			__tasha_cdc_mclk_enable(tasha, true);
 			wcd9xxx_reg_update_bits(&tasha->wcd9xxx->core_res,
 				WCD9335_CDC_CLK_RST_CTRL_SWR_CONTROL,
@@ -10429,6 +10460,11 @@ static int tasha_swrm_clock(void *handle, bool enable)
 				WCD9335_CDC_CLK_RST_CTRL_SWR_CONTROL,
 				0x01, 0x00);
 			__tasha_cdc_mclk_enable(tasha, false);
+			if (TASHA_IS_2_0(tasha->wcd9xxx->version))
+				wcd9xxx_reg_update_bits(
+					&tasha->wcd9xxx->core_res,
+					WCD9335_TEST_DEBUG_NPL_DLY_TEST_1,
+					0x10, 0x10);
 		}
 	}
 	dev_dbg(tasha->dev, "%s: swrm clock users %d\n",
