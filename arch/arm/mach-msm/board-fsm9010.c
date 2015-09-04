@@ -65,7 +65,7 @@ static struct uio_info fsm9010_uio_info[] = {
 static struct resource fsm9010_uio0_resources[] = {
 	{
 		.start = FSM9010_SCLTE_DDR_PHYS,
-		.end   = FSM9010_SCLTE_DDR_PHYS + 181 * SZ_1M - 1,
+		.end   = FSM9010_SCLTE_DDR_PHYS + 94 * SZ_1M - 1,
 		.name  = "sclte_ddr",
 		.flags = IORESOURCE_MEM,
 	},
