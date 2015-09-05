@@ -162,6 +162,7 @@ struct sdhci_msm_host {
 	atomic_t controller_clock;
 	bool use_cdclp533;
 	bool use_updated_dll_reset;
+	bool rclk_delay_fix;
 	u32 caps_0;
 	enum dev_state mmc_dev_state;
 	struct sdhci_msm_ice_data ice;
