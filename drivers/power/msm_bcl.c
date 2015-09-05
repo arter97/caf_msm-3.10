@@ -1,4 +1,4 @@
-/* Copyright (c) 2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2014-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -29,6 +29,7 @@
 #define BCL_PARAM_MAX_ATTR      3
 
 #define BCL_DEFINE_RO_PARAM(_attr, _name, _attr_gp, _index) \
+	sysfs_attr_init(&_attr.attr); \
 	_attr.attr.name = __stringify(_name); \
 	_attr.attr.mode = 0444; \
 	_attr.show = _name##_show; \
