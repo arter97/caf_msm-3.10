@@ -407,6 +407,12 @@
 	qcom,panel-supply-entries = <&dsi_panel_pwr_supply>;
 };
 
+&dsi_hx8394d_720_vid {
+	qcom,cont-splash-enabled;
+	qcom,panel-supply-entries = <&dsi_panel_pwr_supply>;
+	qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_wled";
+};
+
 &pmx_mdss {
 	qcom,num-grp-pins = <3>;
 	qcom,pins = <&gp 90>, <&gp 0>, <&gp 91>;
