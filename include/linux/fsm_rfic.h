@@ -22,6 +22,10 @@ void fsm9900_mtr_init(void);
 
 void mpll10_326_clk_init(void);
 void mpll10_345_clk_init(void);
+void mpll10_2304_clk_init(void);
+void mpll10_2496_clk_init(void);
+void mpll10_2688_clk_init(void);
+void mpll10_2880_clk_init(void);
 
 /*
  * Device interface
