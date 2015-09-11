@@ -639,10 +639,24 @@
 		qcom,cpr-init-voltage-step = <12500>;
 		qcom,cpr-ro-count = <8>;
 		qcom,cpr-init-voltage-as-ceiling;
+		qcom,cpr-fuse-version-map =
+			/* <foundry_id> <fuse_revision> <process_id> */
+				<(-1)   3 (-1)>,
+				<(-1) (-1)(-1)>;
 		qcom,cpr-init-voltage-adjustment =
+			<(-55000) 0 (-60000) 0 (60000) 0 (60000) 0 (50000)>,
 			<(-55000) 0 (-60000) 0 (60000) 0 (60000) 0 (50000)>;
 		qcom,cpr-target-quotients =
-			<513  489  620  574  237 272 144 177>,
+			<513  489  620  574  237 272 144 177>, /* 1st row */
+			<575  547  688  638  272 312 169 206>,
+			<706  672  819  765  363 410 241 287>,
+			<768  741  890  843  404 450 277 323>,
+			<917  880  1039 982  514 562 369 421>,
+			<998  960  1126 1069 571 617 422 472>,
+			<1074 1028 1198 1135 635 675 483 531>,
+			<1188 1135 1317 1246 720 753 562 605>,
+			<1276 1212 1405 1323 776 816 604 654>,
+			<513  489  620  574  237 272 144 177>, /* 2nd row */
 			<575  547  688  638  272 312 169 206>,
 			<706  672  819  765  363 410 241 287>,
 			<768  741  890  843  404 450 277 323>,
@@ -651,6 +665,28 @@
 			<1074 1028 1198 1135 635 675 483 531>,
 			<1188 1135 1317 1246 720 753 562 605>,
 			<1276 1212 1405 1323 776 816 604 654>;
+
+		qcom,fuse-remap-base-row = <1000>;
+		qcom,fuse-remap-source =
+				<59 12 6>,
+				<72 30 2>;
+
+		qcom,cpr-fuse-revision = <75 44 3>;
+		qcom,cpr-aging-sensor-id = <3>;
+		qcom,cpr-aging-ref-corner = <6>;
+		qcom,cpr-aging-min-gfx-corner = <4>;
+		qcom,cpr-aging-ref-voltage = <1050000>;
+		qcom,cpr-max-aging-margin = <15000>;
+		qcom,cpr-de-aging-allowed =
+				<1>,
+				<0>;
+		qcom,cpr-aging-ro-scaling-factor = <1600>;
+		qcom,cpr-ro-scaling-factor =
+				<2500 2200 2500 2200 1600 1800 1200 1400>;
+		qcom,cpr-aging-derate =
+				<1000 1000 1000 1000 1000 1000 1000 1000 1000>;
+		qcom,cpr-fuse-aging-init-quot-diff = <1000 0 8 0>;
+
 		qcom,cpr-enable;
 	};
 };
