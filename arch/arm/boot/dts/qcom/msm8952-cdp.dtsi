@@ -447,6 +447,12 @@
 	qcom,ulps-enabled;
 };
 
+&dsi_hx8394d_720_vid {
+	qcom,cont-splash-enabled;
+	qcom,panel-supply-entries = <&dsi_panel_pwr_supply>;
+	qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_wled";
+};
+
 &labibb {
 	status = "ok";
 	qpnp,qpnp-labibb-mode = "lcd";
