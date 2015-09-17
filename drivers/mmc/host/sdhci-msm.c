@@ -161,6 +161,8 @@ enum sdc_mpm_pin_state {
 #define DDR_CONFIG_POR_VAL		0x80040853
 #define DDR_CONFIG_PRG_RCLK_DLY_MASK	0x1FF
 #define DDR_CONFIG_PRG_RCLK_DLY		115
+#define CORE_DDR_CONFIG_2		0x1BC
+#define DDR_CONFIG_2_POR_VAL		0x80040873
 
 #define CORE_MCI_DATA_CTRL	0x2C
 #define CORE_MCI_DPSM_ENABLE	(1 << 0)
@@ -796,6 +798,8 @@ out:
 
 static int sdhci_msm_cm_dll_sdc4_calibration(struct sdhci_host *host)
 {
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
+	struct sdhci_msm_host *msm_host = pltfm_host->priv;
 	u32 dll_status, ddr_config;
 	int ret = 0;
 
@@ -805,9 +809,15 @@ static int sdhci_msm_cm_dll_sdc4_calibration(struct sdhci_host *host)
 	 * Reprogramming the value in case it might have been modified by
 	 * bootloaders.
 	 */
-	ddr_config = DDR_CONFIG_POR_VAL & ~DDR_CONFIG_PRG_RCLK_DLY_MASK;
-	ddr_config |= DDR_CONFIG_PRG_RCLK_DLY;
-	writel_relaxed(ddr_config, host->ioaddr + CORE_DDR_CONFIG);
+	if (msm_host->rclk_delay_fix) {
+		writel_relaxed(DDR_CONFIG_2_POR_VAL,
+				host->ioaddr + CORE_DDR_CONFIG_2);
+	} else {
+		ddr_config = DDR_CONFIG_POR_VAL &
+				~DDR_CONFIG_PRG_RCLK_DLY_MASK;
+		ddr_config |= DDR_CONFIG_PRG_RCLK_DLY;
+		writel_relaxed(ddr_config, host->ioaddr + CORE_DDR_CONFIG);
+	}
 
 	/* Write 1 to DDR_CAL_EN field in CORE_DLL_CONFIG_2 */
 	writel_relaxed((readl_relaxed(host->ioaddr + CORE_DLL_CONFIG_2)
@@ -3348,6 +3358,9 @@ static void sdhci_set_default_hw_caps(struct sdhci_msm_host *msm_host,
 	 */
 	if ((major == 1) && (minor >= 0x42))
 		msm_host->use_updated_dll_reset = true;
+
+	if ((major == 1) && (minor >= 0x49))
+		msm_host->rclk_delay_fix = true;
 
 	/*
 	 * Mask 64-bit support for controller with 32-bit address bus so that
