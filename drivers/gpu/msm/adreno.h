@@ -92,16 +92,14 @@
 #define ADRENO_SPTP_PC BIT(3)
 /* The core supports Peak Power Detection(PPD)*/
 #define ADRENO_PPD BIT(4)
-/* The microcode supports register to register copy and compare */
-#define ADRENO_HAS_REG_TO_REG_CMDS BIT(5)
 /* The GPU supports content protection */
-#define ADRENO_CONTENT_PROTECTION BIT(6)
+#define ADRENO_CONTENT_PROTECTION BIT(5)
 /* The GPU supports preemption */
-#define ADRENO_PREEMPTION BIT(7)
+#define ADRENO_PREEMPTION BIT(6)
 /* The core uses GPMU for power and limit management */
-#define ADRENO_GPMU BIT(8)
+#define ADRENO_GPMU BIT(7)
 /* The GPMU supports Limits Management */
-#define ADRENO_LM BIT(9)
+#define ADRENO_LM BIT(8)
 
 /* Flags to control command packet settings */
 #define KGSL_CMD_FLAGS_NONE             0
