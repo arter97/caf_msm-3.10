@@ -186,28 +186,27 @@ static void _next_entry(struct kgsl_process_private *priv,
 	}
 }
 
-static void _find_mem_entries(struct kgsl_mmu *mmu, uint64_t faultaddr,
+static int _find_mem_entries(struct kgsl_mmu *mmu, uint64_t faultaddr,
 	phys_addr_t ptbase, struct _mem_entry *preventry,
 	struct _mem_entry *nextentry)
 {
 	struct kgsl_process_private *private = NULL, *p;
 	int id = kgsl_mmu_get_ptname_from_ptbase(mmu, ptbase);
 
-	memset(preventry, 0, sizeof(*preventry));
-	memset(nextentry, 0, sizeof(*nextentry));
-
 	/* Set the maximum possible size as an initial value */
 	nextentry->gpuaddr = (uint64_t) -1;
 
-	mutex_lock(&kgsl_driver.process_mutex);
-	list_for_each_entry(p, &kgsl_driver.process_list, list) {
-		if (p->pagetable && (p->pagetable->name == id)) {
-			if (kgsl_process_private_get(p))
-				private = p;
-			break;
+	/* Try to get the lock but don't sleep for it to avoid a deadlock */
+	if (mutex_trylock(&kgsl_driver.process_mutex)) {
+		list_for_each_entry(p, &kgsl_driver.process_list, list) {
+			if (p->pagetable && (p->pagetable->name == id)) {
+				if (kgsl_process_private_get(p))
+					private = p;
+				break;
+			}
 		}
+		mutex_unlock(&kgsl_driver.process_mutex);
 	}
-	mutex_unlock(&kgsl_driver.process_mutex);
 
 	if (private != NULL) {
 		spin_lock(&private->mem_lock);
@@ -216,13 +215,18 @@ static void _find_mem_entries(struct kgsl_mmu *mmu, uint64_t faultaddr,
 		spin_unlock(&private->mem_lock);
 
 		kgsl_process_private_put(private);
+
+		/* Return true if we found entries */
+		return 1;
 	}
+
+	/* Nothing was found  - return false so no logs are printed */
+	return 0;
 }
 
 static void _print_entry(struct kgsl_device *device, struct _mem_entry *entry)
 {
-	char name[32];
-	memset(name, 0, sizeof(name));
+	char name[32] = { 0 };
 
 	kgsl_get_memory_usage(name, sizeof(name) - 1, entry->flags);
 
@@ -235,23 +239,66 @@ static void _print_entry(struct kgsl_device *device, struct _mem_entry *entry)
 		entry->pid, name);
 }
 
-static void _check_if_freed(struct kgsl_iommu_context *ctx,
+static void _show_nearby_memory(struct kgsl_device *device,
+		uint64_t addr, phys_addr_t ptbase)
+{
+	struct _mem_entry prev = { 0 };
+	struct _mem_entry next = { 0 };
+
+	if (!_find_mem_entries(&device->mmu, addr, ptbase, &prev, &next)) {
+		KGSL_LOG_DUMP(device, "Unable to determine nearby memory\n");
+		return;
+	}
+
+	/*
+	 * Try to identify situations where we think the address is allocated,
+	 * but the IOMMU doesn't
+	 */
+
+	if (addr >= prev.gpuaddr || addr <= (prev.gpuaddr + prev.size)) {
+		KGSL_LOG_DUMP(device,
+			"WARNING: Address 0x%16.16llX is still allocated:\n",
+			addr);
+		_print_entry(device, &prev);
+		return;
+	}
+
+	if (addr >= next.gpuaddr || addr < (next.gpuaddr + next.size)) {
+		KGSL_LOG_DUMP(device,
+			"WARNING: Address 0x%16.16llX is still allocated:\n",
+			addr);
+		_print_entry(device, &next);
+		return;
+	}
+
+	KGSL_LOG_DUMP(device, "---- nearby memory ----\n");
+
+	if (prev.gpuaddr != 0)
+		_print_entry(device, &prev);
+
+	KGSL_LOG_DUMP(device, " <- fault @ 0x%16.16llX\n", addr);
+
+	if (next.gpuaddr != (uint64_t) -1)
+		_print_entry(device, &next);
+}
+
+static int _check_if_freed(struct kgsl_iommu_context *ctx,
 	uint64_t addr, pid_t pid)
 {
 	uint64_t gpuaddr = addr;
 	uint64_t size = 0;
 	uint64_t flags = 0;
 
-	char name[32];
-	memset(name, 0, sizeof(name));
-
 	if (kgsl_memfree_find_entry(pid, &gpuaddr, &size, &flags)) {
+		char name[32] = { 0 };
 		kgsl_get_memory_usage(name, sizeof(name) - 1, flags);
 		KGSL_LOG_DUMP(ctx->kgsldev, "---- premature free ----\n");
 		KGSL_LOG_DUMP(ctx->kgsldev,
 			"[%8.8llX-%8.8llX] (%s) was already freed by pid %d\n",
 			gpuaddr, gpuaddr + size, name, pid);
+		return 1;
 	}
+	return 0;
 }
 
 static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
@@ -264,7 +311,6 @@ static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
 	struct kgsl_iommu_context *ctx;
 	phys_addr_t ptbase;
 	unsigned int pid, fsr;
-	struct _mem_entry prev, next;
 	unsigned int fsynr0, fsynr1;
 	int write;
 	struct kgsl_device *device;
@@ -351,24 +397,12 @@ static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
 			ctx->ctx_id, &ptbase, fsr, fsynr0, fsynr1,
 			write ? "write" : "read");
 
-		_check_if_freed(ctx, addr, pid);
-
-		KGSL_LOG_DUMP(ctx->kgsldev, "---- nearby memory ----\n");
-
-		_find_mem_entries(mmu, addr, ptbase, &prev, &next);
-
-		if (prev.gpuaddr)
-			_print_entry(ctx->kgsldev, &prev);
-		else
-			KGSL_LOG_DUMP(ctx->kgsldev, "*EMPTY*\n");
-
-		KGSL_LOG_DUMP(ctx->kgsldev, " <- fault @ %8.8lX\n", addr);
-
-		if (next.gpuaddr != (uint64_t) -1)
-			_print_entry(ctx->kgsldev, &next);
-		else
-			KGSL_LOG_DUMP(ctx->kgsldev, "*EMPTY*\n");
-
+		/*
+		 * If the memory has already been freed, don't bother showing
+		 * the nearby memory
+		 */
+		if (!_check_if_freed(ctx, addr, pid))
+			_show_nearby_memory(device, addr, ptbase);
 	}
 
 	trace_kgsl_mmu_pagefault(ctx->kgsldev, addr,
