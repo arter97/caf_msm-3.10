@@ -1498,6 +1498,22 @@ static int reset_clk_rst(struct clk *c, enum clk_reset_action action)
 	return __branch_clk_reset(RST_REG(rst), action);
 }
 
+static void __iomem *reset_clk_list_registers(struct clk *clk, int n,
+				struct clk_register_data **regs, u32 *size)
+{
+	struct reset_clk *rst = to_reset_clk(clk);
+	static struct clk_register_data data[] = {
+		{"BCR", 0x0},
+	};
+
+	if (n)
+		return ERR_PTR(-EINVAL);
+
+	*regs = data;
+	*size = ARRAY_SIZE(data);
+	return RST_REG(rst);
+}
+
 static DEFINE_SPINLOCK(mux_reg_lock);
 
 static int mux_reg_enable(struct mux_clk *clk)
@@ -1561,6 +1577,21 @@ static bool mux_reg_is_enabled(struct mux_clk *clk)
 {
 	u32 regval = readl_relaxed(MUX_REG(clk));
 	return !!(regval & clk->en_mask);
+}
+
+static void __iomem *mux_clk_list_registers(struct mux_clk *clk, int n,
+				struct clk_register_data **regs, u32 *size)
+{
+	static struct clk_register_data data[] = {
+		{"DEBUG_CLK_CTL", 0x0},
+	};
+
+	if (n)
+		return ERR_PTR(-EINVAL);
+
+	*regs = data;
+	*size = ARRAY_SIZE(data);
+	return *clk->base + clk->offset;
 }
 
 static int div_reg_set_div(struct div_clk *clk, int div)
@@ -1725,6 +1756,7 @@ struct clk_ops clk_ops_empty;
 
 struct clk_ops clk_ops_rst = {
 	.reset = reset_clk_rst,
+	.list_registers = reset_clk_list_registers,
 };
 
 struct clk_ops clk_ops_rcg = {
@@ -1867,6 +1899,7 @@ struct clk_mux_ops mux_reg_ops = {
 	.set_mux_sel = mux_reg_set_mux_sel,
 	.get_mux_sel = mux_reg_get_mux_sel,
 	.is_enabled = mux_reg_is_enabled,
+	.list_registers = mux_clk_list_registers,
 };
 
 struct clk_div_ops div_reg_ops = {
