@@ -27,6 +27,7 @@
 #include <linux/msm_ion.h>
 #include <soc/qcom/smd.h>
 #include <soc/qcom/subsystem_notif.h>
+#include <soc/qcom/subsystem_restart.h>
 #include <linux/msm_iommu_domains.h>
 #include <linux/scatterlist.h>
 #include <linux/fs.h>
@@ -44,6 +45,7 @@
 #include "adsprpc_shared.h"
 #include <linux/msm_audio_ion.h>
 #include <soc/qcom/scm.h>
+#include <soc/qcom/ramdump.h>
 
 #define TZ_PIL_PROTECT_MEM_SUBSYS_ID 0x0C
 #define TZ_PIL_CLEAR_PROTECT_MEM_SUBSYS_ID 0x0D
@@ -156,6 +158,8 @@ struct fastrpc_chan_ctx {
 	struct kref kref;
 	struct notifier_block nb;
 	int ssrcount;
+	int ramdumpenabled;
+	void *remoteheap_ramdump_dev;
 };
 
 struct fastrpc_apps {
@@ -1312,8 +1316,9 @@ static int fastrpc_mmap_remove_ssr(struct fastrpc_file *fl)
 {
 	struct fastrpc_mmap *match = 0, *map;
 	struct hlist_node *n;
-	int err = 0;
+	int err = 0, ret = 0;
 	struct fastrpc_apps *me = &gfa;
+	struct ramdump_segment *ramdump_segments_rh = NULL;
 	spin_lock(&me->hlock);
 	hlist_for_each_entry_safe(map, n, &me->maps, hn) {
 			match = map;
@@ -1326,6 +1331,20 @@ static int fastrpc_mmap_remove_ssr(struct fastrpc_file *fl)
 		VERIFY(err, !fastrpc_munmap_on_dsp_rh(fl, match));
 		if (err)
 			goto bail;
+		if (me->channel[0].ramdumpenabled) {
+			ramdump_segments_rh = kcalloc(1,
+				sizeof(struct ramdump_segment), GFP_KERNEL);
+			if (ramdump_segments_rh) {
+				ramdump_segments_rh->address = match->phys;
+				ramdump_segments_rh->size = match->size;
+				ret = do_elf_ramdump(
+					me->channel[0].remoteheap_ramdump_dev,
+					ramdump_segments_rh, 1);
+				if (ret < 0)
+					pr_err("ADSPRPC: unable to dump heap");
+				kfree(ramdump_segments_rh);
+			}
+		}
 		fastrpc_mmap_free(match);
 	}
 bail:
@@ -1683,6 +1702,7 @@ static int fastrpc_restart_notifier_cb(struct notifier_block *nb,
 {
 	struct fastrpc_apps *me = &gfa;
 	struct fastrpc_chan_ctx *ctx;
+	struct notif_data *notifdata = data;
 	int cid;
 
 	ctx = container_of(nb, struct fastrpc_chan_ctx, nb);
@@ -1698,6 +1718,11 @@ static int fastrpc_restart_notifier_cb(struct notifier_block *nb,
 		}
 		mutex_unlock(&me->smd_mutex);
 		fastrpc_notify_drivers(me, cid);
+	} else if (code == SUBSYS_RAMDUMP_NOTIFICATION) {
+		if (me->channel[0].remoteheap_ramdump_dev &&
+				notifdata->enable_ramdump) {
+			me->channel[0].ramdumpenabled = 1;
+		}
 	}
 
 	return NOTIFY_DONE;
@@ -1718,6 +1743,12 @@ static int adsp_mem_driver_probe(struct platform_device *pdev)
 	if (of_device_is_compatible(dev->of_node,
 					"qcom,msm-adsprpc-mem-region")) {
 		me->adsp_mem_device = dev;
+		me->channel[0].remoteheap_ramdump_dev =
+				create_ramdump_device("adsp_rh", dev);
+		if (IS_ERR_OR_NULL(me->channel[0].remoteheap_ramdump_dev)) {
+			pr_err("ADSPRPC: Unable to create adsp-remoteheap ramdump device.\n");
+			me->channel[0].remoteheap_ramdump_dev = NULL;
+		}
 		return 0;
 	}
 	return -EINVAL;
@@ -1772,6 +1803,8 @@ static int __init fastrpc_device_init(void)
 		if (err)
 			goto device_create_bail;
 		me->channel[i].ssrcount = 0;
+		me->channel[i].ramdumpenabled = 0;
+		me->channel[i].remoteheap_ramdump_dev = 0;
 		me->channel[i].nb.notifier_call = fastrpc_restart_notifier_cb,
 		(void)subsys_notif_register_notifier(gcinfo[i].subsys,
 							&me->channel[i].nb);
