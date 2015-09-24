@@ -33,6 +33,10 @@
 
 /* 4 emac core irq and 1 wol irq */
 #define EMAC_NUM_CORE_IRQ     4
+#define EMAC_CORE0_IRQ        0
+#define EMAC_CORE1_IRQ        1
+#define EMAC_CORE2_IRQ        2
+#define EMAC_CORE3_IRQ        3
 #define EMAC_WOL_IRQ          4
 #define EMAC_IRQ_CNT          5
 /* mdio/mdc gpios */
