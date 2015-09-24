@@ -1704,6 +1704,7 @@
 				<87 512 0 0>,
 				<87 512 60000 960000>;
 		qcom,max-nominal-sysclk-rate = <100000000>;
+		qcom,bus-clk-rate = <320000000 200000000 100000000>;
 	};
 
 	android_usb@fe8050c8 {
