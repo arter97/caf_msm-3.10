@@ -2202,6 +2202,7 @@ int msm_isp_close_node(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 {
 	long rc = 0;
 	struct vfe_device *vfe_dev = v4l2_get_subdevdata(sd);
+	unsigned long flags;
 	ISP_DBG("%s E open_cnt %u\n", __func__, vfe_dev->vfe_open_cnt);
 	mutex_lock(&vfe_dev->realtime_mutex);
 	mutex_lock(&vfe_dev->core_mutex);
@@ -2228,8 +2229,10 @@ int msm_isp_close_node(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 	vfe_dev->hw_info->vfe_ops.core_ops.
 		update_camif_state(vfe_dev, DISABLE_CAMIF_IMMEDIATELY);
 
+	spin_lock_irqsave(&vfe_dev->tasklet_lock, flags);
 	vfe_dev->buf_mgr->ops->buf_mgr_deinit(vfe_dev->buf_mgr);
 	vfe_dev->hw_info->vfe_ops.core_ops.release_hw(vfe_dev);
+	spin_unlock_irqrestore(&vfe_dev->tasklet_lock, flags);
 	if (vfe_dev->vt_enable) {
 		msm_isp_end_avtimer();
 		vfe_dev->vt_enable = 0;
