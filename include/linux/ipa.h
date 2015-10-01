@@ -20,6 +20,14 @@
 #include <linux/if_ether.h>
 
 #define IPA_APPS_MAX_BW_IN_MBPS 200
+/**
+ * enum ipa_transport_type
+ * transport type: either GSI or SPS
+ */
+enum ipa_transport_type {
+	IPA_TRANSPORT_TYPE_SPS,
+	IPA_TRANSPORT_TYPE_GSI
+};
 
 /**
  * enum ipa_nat_en_type - NAT setting type in IPA end-point
@@ -172,9 +180,10 @@ struct ipa_ep_cfg_hdr {
  *	byte alignment). Valid for Output Pipes only (IPA Producer).
  * @hdr_total_len_or_pad_offset: Offset to length field containing either
  *	total length or pad length, per hdr_total_len_or_pad config
- * @hdr_payload_len_inc_padding: 0-IPA_ENDP_INIT_HDR_n’s HDR_OFST_PKT_SIZE does
+ * @hdr_payload_len_inc_padding: 0-IPA_ENDP_INIT_HDR_n's
+ *	HDR_OFST_PKT_SIZE does
  *	not includes padding bytes size, payload_len = packet length,
- *	1-IPA_ENDP_INIT_HDR_n’s HDR_OFST_PKT_SIZE includes
+ *	1-IPA_ENDP_INIT_HDR_n's HDR_OFST_PKT_SIZE includes
  *	padding bytes size, payload_len = packet length + padding
  * @hdr_total_len_or_pad: field is used as PAD length ot as Total length
  *	(header + packet + padding)
@@ -265,7 +274,7 @@ struct ipa_ep_cfg_holb {
 /**
  * struct ipa_ep_cfg_deaggr - deaggregation configuration in IPA end-point
  * @deaggr_hdr_len: Deaggregation Header length in bytes. Valid only for Input
- *	Pipes, which are configured for ’Generic’ deaggregation.
+ *	Pipes, which are configured for 'Generic' deaggregation.
  * @packet_offset_valid: - 0: PACKET_OFFSET is not used, 1: PACKET_OFFSET is
  *	used.
  * @packet_offset_location: Location of packet offset field, which specifies
@@ -825,7 +834,7 @@ struct IpaHwStatsWDIRxInfoData_t {
  * @num_db : Number of times the doorbell was rung
  * @num_unexpected_db : Number of unexpected doorbells
  * @num_bam_int_handled : Number of Bam Interrupts handled by FW
- * @num_bam_int_in_non_runnning_state : Number of Bam interrupts while not in
+ * @num_bam_int_in_non_running_state : Number of Bam interrupts while not in
  * Running state
  * @num_qmb_int_handled : Number of QMB interrupts handled
 */
@@ -1089,7 +1098,24 @@ struct ipa_mhi_connect_params {
 	u8 channel_id;
 };
 
-#ifdef CONFIG_IPA
+/**
+ * struct ipa_gsi_ep_config - IPA GSI endpoint configurations
+ *
+ * @ipa_ep_num: IPA EP pipe number
+ * @ipa_gsi_chan_num: GSI channel number
+ * @ipa_if_tlv: number of IPA_IF TLV
+ * @ipa_if_aos: number of IPA_IF AOS
+ * @ee: Execution environment
+ */
+struct ipa_gsi_ep_config {
+	int ipa_ep_num;
+	int ipa_gsi_chan_num;
+	int ipa_if_tlv;
+	int ipa_if_aos;
+	int ee;
+};
+
+#if defined CONFIG_IPA || defined CONFIG_IPA3
 
 /*
  * Connect / Disconnect
@@ -1405,7 +1431,6 @@ int ipa_remove_interrupt_handler(enum ipa_irq_type interrupt);
 void ipa_bam_reg_dump(void);
 
 bool ipa_emb_ul_pipes_empty(void);
-
 int ipa_get_ep_mapping(enum ipa_client_type client);
 
 bool ipa_is_ready(void);
@@ -1422,12 +1447,19 @@ enum ipa_client_type ipa_get_client_mapping(int pipe_idx);
 enum ipa_rm_resource_name ipa_get_rm_resource_from_ep(int pipe_idx);
 
 bool ipa_get_modem_cfg_emb_pipe_flt(void);
+
+enum ipa_transport_type ipa_get_transport_type(void);
+
 struct device *ipa_get_dma_dev(void);
 struct iommu_domain *ipa_get_smmu_domain(void);
 
 int ipa_disable_apps_wan_cons_deaggr(uint32_t agg_size, uint32_t agg_count);
 
-#else /* CONFIG_IPA */
+struct ipa_gsi_ep_config *ipa_get_gsi_ep_info(int ipa_ep_idx);
+
+int ipa_stop_gsi_channel(u32 clnt_hdl);
+
+#else /* (CONFIG_IPA || CONFIG_IPA3) */
 
 /*
  * Connect / Disconnect
@@ -2142,6 +2174,11 @@ static inline bool ipa_get_modem_cfg_emb_pipe_flt(void)
 	return -EINVAL;
 }
 
+static inline enum ipa_transport_type ipa_get_transport_type(void)
+{
+	return -EFAULT;
+}
+
 static inline struct device *ipa_get_dma_dev(void)
 {
 	return NULL;
@@ -2168,6 +2205,17 @@ static inline int ipa_disable_apps_wan_cons_deaggr(void)
 {
 	return -EINVAL;
 }
-#endif /* CONFIG_IPA*/
+
+static inline struct ipa_gsi_ep_config *ipa_get_gsi_ep_info(int ipa_ep_idx)
+{
+	return NULL;
+}
+
+static inline int ipa_stop_gsi_channel(u32 clnt_hdl)
+{
+	return -EPERM;
+}
+
+#endif /* (CONFIG_IPA || CONFIG_IPA3) */
 
 #endif /* _IPA_H_ */
