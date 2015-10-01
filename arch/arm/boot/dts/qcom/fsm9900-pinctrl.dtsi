@@ -1,0 +1,624 @@
+/* Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+&soc {
+	tlmm_pinmux: pinctrl@fd510000 {
+		compatible = "qcom,msm-tlmm-8974";
+		reg = <0xfd510000 0x4000>;
+
+		/* General purpose pins */
+		gp: gp {
+			#qcom,pin-cells = <1>;
+			qcom,num-pins = <142>;
+			msm_gpio: msm_gpio {
+				compatible = "qcom,msm-tlmm-gp";
+				gpio-controller;
+				#gpio-cells = <2>;
+				interrupt-controller;
+				#interrupt-cells = <2>;
+				num_irqs = <142>;
+			};
+		};
+
+		blsp1_i2c1_sda {
+			qcom,pins = <&gp 6>;
+			qcom,num-grp-pins = <1>;
+			label = "blsp1_i2c1_sda";
+			qcom,pin-func = <3>;
+			blsp1_i2c1_sda_default: blsp1_i2c1_sda_default {
+				drive-strength = <6>;
+				bias-pull-up;
+			};
+		};
+
+		blsp1_i2c1_scl {
+			qcom,pins = <&gp 7>;
+			qcom,num-grp-pins = <1>;
+			label = "blsp1_i2c1_scl";
+			qcom,pin-func = <3>;
+			blsp1_i2c1_scl_default: blsp1_i2c1_scl_default {
+				drive-strength = <6>;
+				bias-pull-up;
+			};
+		};
+
+		geni7_data {
+			qcom,pins = <&gp 8>;
+			qcom,num-grp-pins = <1>;
+			label = "geni7_data";
+			qcom,pin-func = <4>;
+			geni7_data_default: geni7_data_default {
+				drive-strength = <8>;
+				bias-pull-down;
+			};
+		};
+
+		geni1_data {
+			qcom,pins = <&gp 9>;
+			qcom,num-grp-pins = <1>;
+			label = "geni1_data";
+			qcom,pin-func = <4>;
+			geni1_data_default: geni1_data_default {
+				drive-strength = <8>;
+				bias-pull-down;
+			};
+		};
+
+		geni2_data {
+			qcom,pins = <&gp 10>;
+			qcom,num-grp-pins = <1>;
+			label = "geni2_data";
+			qcom,pin-func = <4>;
+			geni2_data_default: geni2_data_default {
+				drive-strength = <8>;
+				bias-pull-down;
+			};
+		};
+
+		geni7_clk {
+			qcom,pins = <&gp 11>;
+			qcom,num-grp-pins = <1>;
+			label = "geni7_clk";
+			qcom,pin-func = <4>;
+			geni7_clk_default: geni7_clk_default {
+				drive-strength = <8>;
+				bias-pull-down;
+			};
+		};
+
+		blsp1_uart4_tx {
+			qcom,pins = <&gp 16>;
+			qcom,num-grp-pins = <1>;
+			label = "blsp1_uart4_tx";
+			qcom,pin-func = <2>;
+			blsp1_uart4_tx_default: blsp1_uart4_tx_default {
+				drive-strength = <6>;
+				bias-disable;
+			};
+		};
+
+		blsp1_uart4_rx {
+			qcom,pins = <&gp 17>;
+			qcom,num-grp-pins = <1>;
+			label = "blsp1_uart4_rx";
+			qcom,pin-func = <2>;
+			blsp1_uart4_rx_default: blsp1_uart4_rx_default {
+				drive-strength = <6>;
+				bias-pull-up;
+			};
+		};
+
+		geni3_data {
+			qcom,pins = <&gp 20>;
+			qcom,num-grp-pins = <1>;
+			label = "geni3_data";
+			qcom,pin-func = <5>;
+			geni3_data_default: geni3_data_default {
+				drive-strength = <8>;
+				bias-pull-down;
+			};
+		};
+
+		geni4_data {
+			qcom,pins = <&gp 21>;
+			qcom,num-grp-pins = <1>;
+			label = "geni4_data";
+			qcom,pin-func = <5>;
+			geni4_data_default: geni4_data_default {
+				drive-strength = <8>;
+				bias-pull-down;
+			};
+		};
+
+		geni6_data {
+			qcom,pins = <&gp 22>;
+			qcom,num-grp-pins = <1>;
+			label = "geni6_data";
+			qcom,pin-func = <5>;
+			geni6_data_default: geni6_data_default {
+				drive-strength = <8>;
+				bias-pull-down;
+			};
+		};
+
+		geni6_clk {
+			qcom,pins = <&gp 23>;
+			qcom,num-grp-pins = <1>;
+			label = "geni6_clk";
+			qcom,pin-func = <5>;
+			geni6_clk_default: geni6_clk_default {
+				drive-strength = <8>;
+				bias-pull-down;
+			};
+		};
+
+		uim_data {
+			qcom,pins = <&gp 24>;
+			qcom,num-grp-pins = <1>;
+			label = "uim_data";
+			qcom,pin-func = <1>;
+			uim_data_default: uim_data_default {
+				drive-strength = <4>;
+				bias-pull-up;
+			};
+		};
+
+		uim_clk {
+			qcom,pins = <&gp 25>;
+			qcom,num-grp-pins = <1>;
+			label = "uim_clk";
+			qcom,pin-func = <1>;
+			uim_clk_default: uim_clk_default {
+				drive-strength = <4>;
+				bias-pull-up;
+			};
+		};
+
+		uim_reset {
+			qcom,pins = <&gp 26>;
+			qcom,num-grp-pins = <1>;
+			label = "uim_reset";
+			qcom,pin-func = <1>;
+			uim_reset_default: uim_reset_default {
+				drive-strength = <4>;
+				bias-pull-up;
+			};
+		};
+
+		uim_present {
+			qcom,pins = <&gp 27>;
+			qcom,num-grp-pins = <1>;
+			label = "uim_present";
+			qcom,pin-func = <1>;
+			uim_present_default: uim_present_default {
+				drive-strength = <4>;
+				bias-pull-up;
+			};
+		};
+
+		pci_e1_clkreq_n {
+			qcom,pins = <&gp 28>;
+			qcom,num-grp-pins = <1>;
+			label = "pci_e1_clkreq_n";
+			qcom,pin-func = <4>;
+			pci_e1_clkreq_n_default: pci_e1_clkreq_n_default {
+				drive-strength = <8>;
+				bias-pull-up;
+			};
+		};
+
+		pci_e1_perst {
+			qcom,pins = <&gp 29>;
+			qcom,num-grp-pins = <1>;
+			label = "pci_e1_perst";
+			qcom,pin-func = <0>; /* GPIO */
+			pci_e1_perst_default: pci_e1_perst_default {
+				drive-strength = <8>;
+				bias-pull-up;
+				output-high;
+			};
+		};
+
+		geni5_data {
+			qcom,pins = <&gp 30>;
+			qcom,num-grp-pins = <1>;
+			label = "geni5_data";
+			qcom,pin-func = <4>;
+			geni5_data_default: geni5_data_default {
+				drive-strength = <8>;
+				bias-pull-down;
+			};
+		};
+
+		geni5_clk {
+			qcom,pins = <&gp 31>;
+			qcom,num-grp-pins = <1>;
+			label = "geni5_clk";
+			qcom,pin-func = <4>;
+			geni5_clk_default: geni5_clk_default {
+				drive-strength = <8>;
+				bias-pull-down;
+			};
+		};
+
+		pci_e0_clkreq_n {
+			qcom,pins = <&gp 32>;
+			qcom,num-grp-pins = <1>;
+			label = "pci_e0_clkreq_n";
+			qcom,pin-func = <4>;
+			pci_e0_clkreq_n_default: pci_e0_clkreq_n_default {
+				drive-strength = <8>;
+				bias-pull-up;
+			};
+		};
+
+		pci_e0_perst {
+			qcom,pins = <&gp 33>;
+			qcom,num-grp-pins = <1>;
+			label = "pci_e0_perst";
+			qcom,pin-func = <0>; /* GPIO */
+			pci_e0_perst_default: pci_e0_perst_default {
+				drive-strength = <8>;
+				bias-pull-up;
+				output-high;
+			};
+		};
+
+		pci_e0_wake {
+			qcom,pins = <&gp 35>;
+			qcom,num-grp-pins = <1>;
+			label = "pci_e0_wake";
+			qcom,pin-func = <0>; /* GPIO */
+			pci_e0_wake_default: pci_e0_wake_default {
+				drive-strength = <2>;
+				bias-pull-up;
+				input-enable;
+			};
+		};
+
+		blsp2_uart3_tx {
+			qcom,pins = <&gp 36>;
+			qcom,num-grp-pins = <1>;
+			label = "blsp2_uart3_tx";
+			qcom,pin-func = <2>;
+			blsp2_uart3_tx_default: blsp2_uart3_tx_default {
+				drive-strength = <6>;
+				bias-disable;
+			};
+		};
+
+		blsp2_uart3_rx {
+			qcom,pins = <&gp 37>;
+			qcom,num-grp-pins = <1>;
+			label = "blsp2_uart3_rx";
+			qcom,pin-func = <2>;
+			blsp2_uart3_rx_default: blsp2_uart3_rx_default {
+				drive-strength = <6>;
+				bias-pull-up;
+			};
+		};
+
+		blsp2_i2c3_sda {
+			qcom,pins = <&gp 38>;
+			qcom,num-grp-pins = <1>;
+			label = "blsp2_i2c3_sda";
+			qcom,pin-func = <3>;
+			blsp2_i2c3_sda_default: blsp2_i2c3_sda_default {
+				drive-strength = <6>;
+				bias-pull-up;
+			};
+		};
+
+		blsp2_i2c3_scl {
+			qcom,pins = <&gp 39>;
+			qcom,num-grp-pins = <1>;
+			label = "blsp2_i2c3_scl";
+			qcom,pin-func = <3>;
+			blsp2_i2c3_scl_default: blsp2_i2c3_scl_default {
+				drive-strength = <6>;
+				bias-pull-up;
+			};
+		};
+
+		gps_pps_out {
+			qcom,pins = <&gp 40>;
+			qcom,num-grp-pins = <1>;
+			label = "gps_pps_out";
+			qcom,pin-func = <1>;
+			gps_pps_out_default: gps_pps_out_default {
+				drive-strength = <6>;
+				bias-disable;
+			};
+		};
+
+		gps_pps_in {
+			qcom,pins = <&gp 41>;
+			qcom,num-grp-pins = <1>;
+			label = "gps_pps_in";
+			qcom,pin-func = <1>;
+			gps_pps_in_default: gps_pps_in_default {
+				drive-strength = <2>;
+				bias-pull-down;
+			};
+		};
+
+		sdhc_detect {
+			qcom,pins = <&gp 42>;
+			qcom,num-grp-pins = <1>;
+			label = "sdhc_detect";
+			qcom,pin-func = <0>; /* GPIO */
+			sdhc_detect_active: sdhc_detect_active {
+				drive-strength = <2>;
+				bias-pull-up;
+			};
+			sdhc_detect_sleep: sdhc_detect_sleep {
+				drive-strength = <2>;
+				bias-disable;
+			};
+		};
+
+		gps_clk_in {
+			qcom,pins = <&gp 43>;
+			qcom,num-grp-pins = <1>;
+			label = "gps_clk_in";
+			qcom,pin-func = <1>;
+			gps_clk_in_default: gps_clk_in_default {
+				drive-strength = <2>;
+				bias-pull-down;
+			};
+		};
+
+		rf_ftr2_hb_nl_sel {
+			qcom,pins = <&gp 96>;
+			qcom,num-grp-pins = <1>;
+			label = "rf_ftr2_hb_nl_sel";
+			qcom,pin-func = <0>; /* GPIO */
+			rf_ftr2_hb_nl_sel_default: rf_ftr2_hb_nl_sel_default {
+				drive-strength = <2>;
+				bias-disable;
+				input-enable;
+			};
+		};
+
+		rf_ftr2_lb_nl_sel {
+			qcom,pins = <&gp 97>;
+			qcom,num-grp-pins = <1>;
+			label = "rf_ftr2_lb_nl_sel";
+			qcom,pin-func = <0>; /* GPIO */
+			rf_ftr2_lb_nl_sel_default: rf_ftr2_lb_nl_sel_default {
+				drive-strength = <2>;
+				bias-disable;
+				input-enable;
+			};
+		};
+
+		rf_ftr1_hb_nl_sel {
+			qcom,pins = <&gp 98>;
+			qcom,num-grp-pins = <1>;
+			label = "rf_ftr1_hb_nl_sel";
+			qcom,pin-func = <0>; /* GPIO */
+			rf_ftr1_hb_nl_sel_default: rf_ftr1_hb_nl_sel_default {
+				drive-strength = <2>;
+				bias-disable;
+				input-enable;
+			};
+		};
+
+		rf_ftr1_lb_nl_sel {
+			qcom,pins = <&gp 99>;
+			qcom,num-grp-pins = <1>;
+			label = "rf_ftr1_lb_nl_sel";
+			qcom,pin-func = <0>; /* GPIO */
+			rf_ftr1_lb_nl_sel_default: rf_ftr1_lb_nl_sel_default {
+				drive-strength = <2>;
+				bias-disable;
+				input-enable;
+			};
+		};
+
+		rf_ftr1_sbi_sel0 {
+			qcom,pins = <&gp 103>;
+			qcom,num-grp-pins = <1>;
+			label = "rf_ftr1_sbi_sel0";
+			qcom,pin-func = <0>; /* GPIO */
+			rf_ftr1_sbi_sel0_default: rf_ftr1_sbi_sel0_default {
+				drive-strength = <2>;
+				bias-disable;
+				input-enable;
+			};
+		};
+
+		rf_ftr1_sbi_sel1 {
+			qcom,pins = <&gp 104>;
+			qcom,num-grp-pins = <1>;
+			label = "rf_ftr1_sbi_sel1";
+			qcom,pin-func = <0>; /* GPIO */
+			rf_ftr1_sbi_sel1_default: rf_ftr1_sbi_sel1_default {
+				drive-strength = <2>;
+				bias-disable;
+				input-enable;
+			};
+		};
+
+		rf_ftr2_sbi_sel0 {
+			qcom,pins = <&gp 105>;
+			qcom,num-grp-pins = <1>;
+			label = "rf_ftr2_sbi_sel0";
+			qcom,pin-func = <0>; /* GPIO */
+			rf_ftr2_sbi_sel0_default: rf_ftr2_sbi_sel0_default {
+				drive-strength = <2>;
+				bias-disable;
+				input-enable;
+			};
+		};
+
+		rf_ftr2_sbi_sel1 {
+			qcom,pins = <&gp 106>;
+			qcom,num-grp-pins = <1>;
+			label = "rf_ftr2_sbi_sel1";
+			qcom,pin-func = <0>; /* GPIO */
+			rf_ftr2_sbi_sel1_default: rf_ftr2_sbi_sel1_default {
+				drive-strength = <2>;
+				bias-disable;
+				input-enable;
+			};
+		};
+
+		pdm_tx1_vpa_ctl {
+			qcom,pins = <&gp 116>;
+			qcom,num-grp-pins = <1>;
+			label = "pdm_tx1_vpa_ctl";
+			qcom,pin-func = <1>;
+			pdm_tx1_vpa_ctl_default: pdm_tx1_vpa_ctl_default {
+				drive-strength = <8>;
+				bias-pull-up;
+			};
+		};
+
+		pdm_tx2_vpa_ctl {
+			qcom,pins = <&gp 117>;
+			qcom,num-grp-pins = <1>;
+			label = "pdm_tx2_vpa_ctl";
+			qcom,pin-func = <1>;
+			pdm_tx2_vpa_ctl_default: pdm_tx2_vpa_ctl_default {
+				drive-strength = <8>;
+				bias-pull-up;
+			};
+		};
+
+		pdm_tx3_vpa_ctl {
+			qcom,pins = <&gp 118>;
+			qcom,num-grp-pins = <1>;
+			label = "pdm_tx3_vpa_ctl";
+			qcom,pin-func = <1>;
+			pdm_tx3_vpa_ctl_default: pdm_tx3_vpa_ctl_default {
+				drive-strength = <8>;
+				bias-pull-up;
+			};
+		};
+
+		gps_nav_tlmm_blank {
+			qcom,pins = <&gp 120>;
+			qcom,num-grp-pins = <1>;
+			label = "gps_nav_tlmm_blank";
+			qcom,pin-func = <2>;
+			gps_nav_tlmm_blank_default: gps_nav_tlmm_blank_default {
+				drive-strength = <2>;
+				bias-pull-down;
+			};
+		};
+
+		pdm_tx4_vpa_ctl {
+			qcom,pins = <&gp 121>;
+			qcom,num-grp-pins = <1>;
+			label = "pdm_tx4_vpa_ctl";
+			qcom,pin-func = <1>;
+			pdm_tx4_vpa_ctl_default: pdm_tx4_vpa_ctl_default {
+				drive-strength = <8>;
+				bias-pull-up;
+			};
+		};
+
+		sdhc_write_protect {
+			qcom,pins = <&gp 122>;
+			qcom,num-grp-pins = <1>;
+			label = "sdhc_write_protect";
+			qcom,pin-func = <0>; /* GPIO */
+			sdhc_write_protect_active: sdhc_write_protect_active {
+				drive-strength = <6>;
+				bias-pull-up;
+			};
+			sdhc_write_protect_sleep: sdhc_write_protect_sleep {
+				drive-strength = <2>;
+				bias-disable;
+			};
+		};
+
+		gmac0_mdio_clk {
+			qcom,pins = <&gp 123>;
+			qcom,num-grp-pins = <1>;
+			label = "gmac0_mdio_clk";
+			qcom,pin-func = <1>;
+			gmac0_mdio_clk_default: gmac0_mdio_clk_default {
+				drive-strength = <6>;
+				bias-pull-up;
+			};
+		};
+
+		gmac0_mdio_data {
+			qcom,pins = <&gp 124>;
+			qcom,num-grp-pins = <1>;
+			label = "gmac0_mdio_data";
+			qcom,pin-func = <1>;
+			gmac0_mdio_data_default: gmac0_mdio_data_default {
+				drive-strength = <6>;
+				bias-pull-up;
+			};
+		};
+
+		gmac1_mdio_clk {
+			qcom,pins = <&gp 125>;
+			qcom,num-grp-pins = <1>;
+			label = "gmac1_mdio_clk";
+			qcom,pin-func = <1>;
+			gmac1_mdio_clk_default: gmac1_mdio_clk_default {
+				drive-strength = <6>;
+				bias-pull-up;
+			};
+		};
+
+		gmac1_mdio_data {
+			qcom,pins = <&gp 126>;
+			qcom,num-grp-pins = <1>;
+			label = "gmac1_mdio_data";
+			qcom,pin-func = <1>;
+			gmac1_mdio_data_default: gmac1_mdio_data_default {
+				drive-strength = <6>;
+				bias-pull-up;
+			};
+		};
+
+		blsp2_i2c4_sda {
+			qcom,pins = <&gp 137>;
+			qcom,num-grp-pins = <1>;
+			label = "blsp2_i2c4_sda";
+			qcom,pin-func = <5>;
+			blsp2_i2c4_sda_default: blsp2_i2c4_sda_default {
+				drive-strength = <6>;
+				bias-pull-up;
+			};
+		};
+
+		blsp2_i2c4_scl {
+			qcom,pins = <&gp 141>;
+			qcom,num-grp-pins = <1>;
+			label = "blsp2_i2c4_scl";
+			qcom,pin-func = <5>;
+			blsp2_i2c4_scl_default: blsp2_i2c4_scl_default {
+				drive-strength = <6>;
+				bias-pull-up;
+			};
+		};
+
+		pci_e1_wake {
+			qcom,pins = <&gp 141>;
+			qcom,num-grp-pins = <1>;
+			label = "pci_e1_wake";
+			qcom,pin-func = <0>; /* GPIO */
+			pci_e1_wake_default: pci_e1_wake_default {
+				drive-strength = <2>;
+				bias-pull-up;
+				input-enable;
+			};
+		};
+	};
+};
