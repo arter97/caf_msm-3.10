@@ -243,23 +243,6 @@ int dwc3_gadget_resize_tx_fifos(struct dwc3 *dwc)
 		 * packets
 		 */
 		tmp = mult * (dep->endpoint.maxpacket + mdwidth);
-
-		if (dwc->tx_fifo_size &&
-			(usb_endpoint_xfer_bulk(dep->endpoint.desc)
-			|| usb_endpoint_xfer_isoc(dep->endpoint.desc))) {
-			/*
-			 * Allocate 3KB fifo size for bulk and isochronous TX
-			 * endpoints irrespective of speed if tx_fifo is not
-			 * reduced. Otherwise allocate 1KB for endpoints in HS
-			 * mode and for non burst endpoints in SS mode. For
-			 * interrupt ep, allocate fifo size of ep maxpacket.
-			 */
-			if (!dwc->tx_fifo_reduced)
-				tmp = 3 * (1024 + mdwidth);
-			else
-				tmp = mult * (1024 + mdwidth);
-		}
-
 resize_fifo:
 		tmp += mdwidth;
 
@@ -1979,12 +1962,11 @@ static int dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on)
 static int dwc3_gadget_vbus_draw(struct usb_gadget *g, unsigned mA)
 {
 	struct dwc3		*dwc = gadget_to_dwc(g);
-	struct dwc3_otg		*dotg = dwc->dotg;
 
-	if (dotg && dotg->otg.phy)
-		return usb_phy_set_power(dotg->otg.phy, mA);
-
-	return -ENOTSUPP;
+	dwc->vbus_draw = mA;
+	dev_dbg(dwc->dev, "Notify controller from %s. mA = %d\n", __func__, mA);
+	dwc3_notify_event(dwc, DWC3_CONTROLLER_SET_CURRENT_DRAW_EVENT);
+	return 0;
 }
 
 static int dwc3_gadget_pullup(struct usb_gadget *g, int is_on)
@@ -1997,7 +1979,7 @@ static int dwc3_gadget_pullup(struct usb_gadget *g, int is_on)
 
 	dwc->softconnect = is_on;
 
-	if ((dwc->dotg && !dwc->vbus_active) ||
+	if ((dwc->is_drd && !dwc->vbus_active) ||
 		!dwc->gadget_driver) {
 
 		/*
@@ -2074,7 +2056,7 @@ static int dwc3_gadget_vbus_session(struct usb_gadget *_gadget, int is_active)
 	struct dwc3 *dwc = gadget_to_dwc(_gadget);
 	unsigned long flags;
 
-	if (!dwc->dotg)
+	if (!dwc->is_drd)
 		return -EPERM;
 
 	is_active = !!is_active;
@@ -2245,13 +2227,8 @@ static int dwc3_gadget_start(struct usb_gadget *g,
 	 * even though host mode might be active. Don't actually perform
 	 * device-specific initialization until device mode is activated.
 	 * In that case dwc3_gadget_restart() will handle it.
-	 */
-	if (!dwc->dotg) {
-		ret = __dwc3_gadget_start(dwc);
-		if (ret)
-			goto err1;
-	}
-
+	 *
+	*/
 	spin_unlock_irqrestore(&dwc->lock, flags);
 	pm_runtime_put(dwc->dev);
 	dbg_event(0xFF, "GdgStrt End",
@@ -2969,7 +2946,6 @@ void dwc3_gadget_usb3_phy_suspend(struct dwc3 *dwc, int suspend)
 static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
 {
 	u32			reg;
-	struct dwc3_otg		*dotg = dwc->dotg;
 
 	dev_vdbg(dwc->dev, "%s\n", __func__);
 
@@ -3014,8 +2990,7 @@ static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
 
 	dwc3_gadget_usb3_phy_suspend(dwc, false);
 
-	if (dotg && dotg->otg.phy)
-		usb_phy_set_power(dotg->otg.phy, 0);
+	usb_gadget_vbus_draw(&dwc->gadget, 0);
 
 	if (dwc->gadget.speed != USB_SPEED_UNKNOWN)
 		dwc3_disconnect_gadget(dwc);
@@ -3738,14 +3713,7 @@ int dwc3_gadget_init(struct dwc3 *dwc)
 		goto err5;
 	}
 
-	if (dwc->dotg) {
-		/* dwc3 otg driver is active (DRD mode + SRPSupport=1) */
-		ret = otg_set_peripheral(&dwc->dotg->otg, &dwc->gadget);
-		if (ret) {
-			dev_err(dwc->dev, "failed to set peripheral to otg\n");
-			goto err5;
-		}
-	} else {
+	if (!dwc->is_drd) {
 		pm_runtime_no_callbacks(&dwc->gadget.dev);
 		pm_runtime_set_active(&dwc->gadget.dev);
 		pm_runtime_enable(&dwc->gadget.dev);
@@ -3781,7 +3749,7 @@ err0:
 
 void dwc3_gadget_exit(struct dwc3 *dwc)
 {
-	if (dwc->dotg) {
+	if (dwc->is_drd) {
 		pm_runtime_put(&dwc->gadget.dev);
 		pm_runtime_disable(&dwc->gadget.dev);
 	}
