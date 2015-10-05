@@ -121,3 +121,12 @@
 &wcnss {
 	qcom,wcnss-vadc = <&pm8909_vadc>;
 };
+
+&soc {
+	i2c@78b6000 {
+			nq@2b {
+			qcom,clk-gpio = <&pm8909_gpios 2 0>;
+			};
+	};
+
+};
