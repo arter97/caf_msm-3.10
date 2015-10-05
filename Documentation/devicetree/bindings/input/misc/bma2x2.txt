@@ -40,6 +40,7 @@ Optional properties:
  - bosch,use-smd	: enable signification motion detection(SMD). Enable this
 				will create a new sensor which triggers an event each time
 				significant motion is detected.
+ - bosch,use-hrtimer	: Use hrtimer to report data. Hrtimer can report data more timely.
 
 Example:
 &i2c_0 { /* BLSP1 QUP2 */
