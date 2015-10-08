@@ -167,6 +167,7 @@ struct sdhci_msm_host {
 	enum dev_state mmc_dev_state;
 	struct sdhci_msm_ice_data ice;
 	u32 ice_clk_rate;
+	bool enhanced_strobe;
 };
 
 extern char *saved_command_line;
