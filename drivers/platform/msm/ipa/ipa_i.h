@@ -1063,7 +1063,7 @@ struct ipa_uc_wdi_ctx {
  *  the inactivity timer
  */
 struct ipa_sps_pm {
-	bool dec_clients;
+	atomic_t dec_clients;
 	atomic_t eot_activity;
 };
 
