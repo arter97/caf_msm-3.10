@@ -687,6 +687,15 @@ enum tsens_trip_type {
 
 #define TSENS_WRITABLE_TRIPS_MASK ((1 << TSENS_TRIP_NUM) - 1)
 
+struct tsens_thrshld_state {
+	enum thermal_device_mode	high_th_state;
+	enum thermal_device_mode	low_th_state;
+	unsigned int			high_adc_code;
+	unsigned int			low_adc_code;
+	int				high_temp;
+	int				low_temp;
+};
+
 struct tsens_tm_device_sensor {
 	struct thermal_zone_device	*tz_dev;
 	enum thermal_device_mode	mode;
@@ -699,6 +708,8 @@ struct tsens_tm_device_sensor {
 	int				calib_data_point1;
 	int				calib_data_point2;
 	uint32_t			slope_mul_tsens_factor;
+	struct tsens_thrshld_state	up_low_thresholds;
+	int				dbg_adc_code;
 };
 
 struct tsens_dbg_counter {
@@ -711,6 +722,7 @@ struct tsens_sensor_dbg_info {
 	unsigned long			temp[10];
 	uint32_t			idx;
 	unsigned long long		time_stmp[10];
+	int				adccode[10];
 };
 
 struct mask_info {
@@ -1074,6 +1086,7 @@ static void msm_tsens_get_temp(int sensor_hw_num, unsigned long *temp)
 		pr_err("tsens mapping index not found\n");
 		return;
 	}
+	tmdev->sensor[sensor_hw_num].dbg_adc_code = last_temp;
 
 	*temp = tsens_tz_code_to_degc(last_temp, sensor_sw_id);
 	trace_tsens_read(*temp, sensor_hw_num);
@@ -1094,6 +1107,8 @@ static int tsens_tz_get_temp(struct thermal_zone_device *thermal,
 	tmdev->sensor_dbg_info[tm_sensor->sensor_hw_num].temp[idx%10] = *temp;
 	tmdev->sensor_dbg_info[tm_sensor->sensor_hw_num].time_stmp[idx%10] =
 					sched_clock();
+	tmdev->sensor_dbg_info[tm_sensor->sensor_hw_num].adccode[idx%10] =
+			tmdev->sensor[tm_sensor->sensor_hw_num].dbg_adc_code;
 	idx++;
 	tmdev->sensor_dbg_info[tm_sensor->sensor_hw_num].idx = idx;
 
@@ -1251,8 +1266,12 @@ static int tsens_tz_activate_trip_type(struct thermal_zone_device *thermal,
 					(tmdev->tsens_addr) +
 					(tm_sensor->sensor_hw_num *
 					TSENS_SN_ADDR_OFFSET)));
+
 	switch (trip) {
 	case TSENS_TRIP_WARM:
+		tmdev->sensor[tm_sensor->sensor_hw_num].
+				up_low_thresholds.high_th_state = mode;
+
 		code = (reg_cntl & TSENS_UPPER_THRESHOLD_MASK)
 					>> TSENS_UPPER_THRESHOLD_SHIFT;
 		mask = TSENS_UPPER_STATUS_CLR;
@@ -1261,6 +1280,9 @@ static int tsens_tz_activate_trip_type(struct thermal_zone_device *thermal,
 			lo_code = (reg_cntl & TSENS_LOWER_THRESHOLD_MASK);
 		break;
 	case TSENS_TRIP_COOL:
+		tmdev->sensor[tm_sensor->sensor_hw_num].
+				up_low_thresholds.low_th_state = mode;
+
 		code = (reg_cntl & TSENS_LOWER_THRESHOLD_MASK);
 		mask = TSENS_LOWER_STATUS_CLR;
 
@@ -1274,14 +1296,14 @@ static int tsens_tz_activate_trip_type(struct thermal_zone_device *thermal,
 
 	if (mode == THERMAL_TRIP_ACTIVATION_DISABLED)
 		writel_relaxed(reg_cntl | mask,
-			(TSENS_S0_UPPER_LOWER_STATUS_CTRL_ADDR
-						(tmdev->tsens_addr) +
+		(TSENS_S0_UPPER_LOWER_STATUS_CTRL_ADDR(tmdev->tsens_addr) +
 			(tm_sensor->sensor_hw_num * TSENS_SN_ADDR_OFFSET)));
-	else {
+
+	else
 		writel_relaxed(reg_cntl & ~mask,
 		(TSENS_S0_UPPER_LOWER_STATUS_CTRL_ADDR(tmdev->tsens_addr) +
 		(tm_sensor->sensor_hw_num * TSENS_SN_ADDR_OFFSET)));
-	}
+
 	mb();
 	return 0;
 }
@@ -1357,12 +1379,20 @@ static int tsens_tz_set_trip_temp(struct thermal_zone_device *thermal,
 					TSENS_SN_ADDR_OFFSET));
 	switch (trip) {
 	case TSENS_TRIP_WARM:
+		tmdev->sensor[tm_sensor->sensor_hw_num].
+					up_low_thresholds.high_adc_code = code;
+		tmdev->sensor[tm_sensor->sensor_hw_num].
+					up_low_thresholds.high_temp = temp;
 		code <<= TSENS_UPPER_THRESHOLD_SHIFT;
 		reg_cntl &= ~TSENS_UPPER_THRESHOLD_MASK;
 		if (!(reg_cntl & TSENS_LOWER_STATUS_CLR))
 			lo_code = (reg_cntl & TSENS_LOWER_THRESHOLD_MASK);
 		break;
 	case TSENS_TRIP_COOL:
+		tmdev->sensor[tm_sensor->sensor_hw_num].
+					up_low_thresholds.low_adc_code = code;
+		tmdev->sensor[tm_sensor->sensor_hw_num].
+					up_low_thresholds.low_temp = temp;
 		reg_cntl &= ~TSENS_LOWER_THRESHOLD_MASK;
 		if (!(reg_cntl & TSENS_UPPER_STATUS_CLR))
 			hi_code = (reg_cntl & TSENS_UPPER_THRESHOLD_MASK)
@@ -1421,12 +1451,16 @@ static irqreturn_t tsens_irq_thread(int irq, void *data)
 				TSENS_S0_UPPER_LOWER_STATUS_CTRL_ADDR(
 					tmdev->tsens_addr + addr_offset));
 			upper_thr = true;
+			tmdev->sensor[i].up_low_thresholds.
+					high_th_state = THERMAL_DEVICE_DISABLED;
 		}
 		if (status & TSENS_SN_STATUS_LOWER_STATUS) {
 			writel_relaxed(threshold | TSENS_LOWER_STATUS_CLR,
 				TSENS_S0_UPPER_LOWER_STATUS_CTRL_ADDR(
 					tmdev->tsens_addr + addr_offset));
 			lower_thr = true;
+			tmdev->sensor[i].up_low_thresholds.
+					low_th_state = THERMAL_DEVICE_DISABLED;
 		}
 		if (upper_thr || lower_thr) {
 			unsigned long temp;
