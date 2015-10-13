@@ -479,58 +479,6 @@ static struct msm_gpiomux_config fsm_pdm_configs[] __initdata = {
 	},
 };
 
-static struct gpiomux_setting uim_config_data_clk = {
-	.func = GPIOMUX_FUNC_1,
-	.drv = GPIOMUX_DRV_4MA,
-	.pull = GPIOMUX_PULL_UP,
-};
-
-static struct gpiomux_setting uim_config_reset = {
-	.func = GPIOMUX_FUNC_1,
-	.drv = GPIOMUX_DRV_4MA,
-	.pull = GPIOMUX_PULL_DOWN,
-};
-
-static struct gpiomux_setting uim_config_present = {
-	.func = GPIOMUX_FUNC_1,
-	.pull = GPIOMUX_PULL_NONE,
-};
-
-static struct gpiomux_setting uim_config_reset_suspended = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_4MA,
-	.pull = GPIOMUX_PULL_DOWN,
-	.dir = GPIO_CFG_OUTPUT,
-};
-
-static struct msm_gpiomux_config fsm_uim_configs[] __initdata = {
-	{
-		.gpio      = 24,       /* UIM_DATA */
-		.settings = {
-			[GPIOMUX_ACTIVE] = &uim_config_data_clk,
-		},
-	},
-	{
-		.gpio      = 25,       /* UIM_CLK */
-		.settings = {
-			[GPIOMUX_ACTIVE] = &uim_config_data_clk,
-		},
-	},
-	{
-		.gpio      = 26,       /* UIM_RESET */
-		.settings = {
-			[GPIOMUX_ACTIVE] = &uim_config_reset,
-			[GPIOMUX_SUSPENDED] = &uim_config_reset_suspended,
-		},
-	},
-	{
-		.gpio      = 27,       /* UIM_PRESENT */
-		.settings = {
-			[GPIOMUX_ACTIVE] = &uim_config_present,
-		},
-	},
-};
-
 static struct gpiomux_setting pcie_config = {
 	.func = GPIOMUX_FUNC_4,
 	.drv = GPIOMUX_DRV_8MA,
@@ -919,7 +867,6 @@ void __init fsm9900_init_gpiomux(void)
 	msm_gpiomux_install(fsm_dan_spi_configs,
 			    ARRAY_SIZE(fsm_dan_spi_configs));
 #endif
-	msm_gpiomux_install(fsm_uim_configs, ARRAY_SIZE(fsm_uim_configs));
 	msm_gpiomux_install(fsm_pcie_configs, ARRAY_SIZE(fsm_pcie_configs));
 	msm_gpiomux_install(fsm_gps_configs, ARRAY_SIZE(fsm_gps_configs));
 	msm_gpiomux_install(fsm_sd_configs, ARRAY_SIZE(fsm_sd_configs));
