@@ -3977,7 +3977,8 @@ int mmc_card_can_sleep(struct mmc_host *host)
 {
 	struct mmc_card *card = host->card;
 
-	if (card && mmc_card_mmc(card) && card->ext_csd.rev >= 3)
+	if (card && mmc_card_mmc(card) && card->ext_csd.rev >= 3 &&
+		host->caps2 & MMC_CAP2_SLEEP_AWAKE)
 		return 1;
 	return 0;
 }
