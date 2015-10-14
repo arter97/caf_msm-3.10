@@ -1639,4 +1639,5 @@ void ipa_register_panic_gen_notifier(void);
 void ipa_update_repl_threshold(enum ipa_client_type ipa_client);
 void ipa_inc_acquire_wakelock(void);
 void ipa_dec_release_wakelock(void);
+void ipa_sps_irq_control_all(bool enable);
 #endif /* _IPA_I_H_ */
