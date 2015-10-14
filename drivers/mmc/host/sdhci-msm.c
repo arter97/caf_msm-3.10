@@ -3440,9 +3440,12 @@ static void sdhci_set_default_hw_caps(struct sdhci_msm_host *msm_host,
 	/*
 	 * SDCC 5 controller with major version 1, minor version 0x42 and later
 	 * will require additional steps when resetting DLL.
+	 * It also supports HS400 enhanced strobe mode.
 	 */
-	if ((major == 1) && (minor >= 0x42))
+	if ((major == 1) && (minor >= 0x42)) {
 		msm_host->use_updated_dll_reset = true;
+		msm_host->enhanced_strobe = true;
+	}
 
 	if ((major == 1) && (minor >= 0x49))
 		msm_host->rclk_delay_fix = true;
