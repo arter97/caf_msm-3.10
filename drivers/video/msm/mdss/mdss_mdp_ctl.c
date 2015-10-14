@@ -2726,17 +2726,23 @@ static void mdss_mdp_ctl_pp_split_display_enable(bool enable,
 		struct mdss_mdp_ctl *ctl)
 {
 	u32 cfg = 0, cntl = 0;
+	struct mdss_overlay_private *mdp5_data;
 
 	if (ctl->mdata->nppb == 0) {
 		pr_err("No PPB to enable PP split\n");
 		BUG();
 	}
 
+	if (ctl->mfd)
+		mdp5_data = mfd_to_mdp5_data(ctl->mfd);
+
 	mdss_mdp_ctl_split_display_enable(enable, ctl, NULL);
 
 	if (enable) {
 		cfg = ctl->slave_intf_num << 20; /* Set slave intf */
 		cfg |= BIT(16);			 /* Set horizontal split */
+		if (mdp5_data && mdp5_data->pp_split_swap)
+			cfg |= BIT(17);		/* Swap left/right streams */
 		cntl = BIT(5);			 /* enable dst split */
 	}
 
@@ -4147,13 +4153,19 @@ int mdss_mdp_display_commit(struct mdss_mdp_ctl *ctl, void *arg,
 		if (is_pingpong_split(ctl->mfd)) {
 			bool pp_split = false;
 			struct mdss_rect l_roi, r_roi, temp = {0};
-			u32 opmode = mdss_mdp_ctl_read(ctl,
+			u32 opmode, left_panel_w;
+			struct mdss_overlay_private *mdp5_data;
+
+			if (ctl->mfd)
+				mdp5_data = mfd_to_mdp5_data(ctl->mfd);
+
+			opmode = mdss_mdp_ctl_read(ctl,
 			     MDSS_MDP_REG_CTL_TOP) & ~0xF0; /* clear OUT_SEL */
 			/*
 			 * with pp split enabled, it is a requirement that both
 			 * panels share equal load, so split-point is center.
 			 */
-			u32 left_panel_w = left_lm_w_from_mfd(ctl->mfd) / 2;
+			left_panel_w = left_lm_w_from_mfd(ctl->mfd) / 2;
 
 			mdss_rect_split(&ctl->roi, &l_roi, &r_roi,
 				left_panel_w);
@@ -4164,8 +4176,13 @@ int mdss_mdp_display_commit(struct mdss_mdp_ctl *ctl, void *arg,
 			 * zeroed ROI, DSI driver identifies which panel is not
 			 * transmitting.
 			 */
-			ctl->panel_data->panel_info.roi = l_roi;
-			ctl->panel_data->next->panel_info.roi = r_roi;
+			if (mdp5_data && mdp5_data->pp_split_swap) {
+				ctl->panel_data->panel_info.roi = r_roi;
+				ctl->panel_data->next->panel_info.roi = l_roi;
+			} else {
+				ctl->panel_data->panel_info.roi = l_roi;
+				ctl->panel_data->next->panel_info.roi = r_roi;
+			}
 
 			/* based on the roi, update ctl topology */
 			if (!mdss_rect_cmp(&temp, &l_roi) &&
@@ -4174,12 +4191,24 @@ int mdss_mdp_display_commit(struct mdss_mdp_ctl *ctl, void *arg,
 				opmode |= (ctl->intf_num << 4);
 				pp_split = true;
 			} else if (mdss_rect_cmp(&temp, &l_roi)) {
-				/* right only */
-				opmode |= (ctl->slave_intf_num << 4);
+				/*
+				 * right only as default,
+				 * left only in case PP split swap is enabled
+				 */
+				if (mdp5_data && mdp5_data->pp_split_swap)
+					opmode |= (ctl->intf_num << 4);
+				else
+					opmode |= (ctl->slave_intf_num << 4);
 				pp_split = false;
 			} else {
-				/* left only */
-				opmode |= (ctl->intf_num << 4);
+				/*
+				 * left only as default,
+				 * right only in case PP split swap is enabled
+				 */
+				if (mdp5_data && mdp5_data->pp_split_swap)
+					opmode |= (ctl->slave_intf_num << 4);
+				else
+					opmode |= (ctl->intf_num << 4);
 				pp_split = false;
 			}
 

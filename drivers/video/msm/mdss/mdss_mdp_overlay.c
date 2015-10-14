@@ -5139,9 +5139,14 @@ int mdss_mdp_overlay_init(struct msm_fb_data_type *mfd)
 
 	mfd->panel_orientation = mfd->panel_info->panel_orientation;
 
-	if ((mfd->panel_info->panel_orientation & MDP_FLIP_LR) &&
-	    (mfd->split_mode == MDP_DUAL_LM_DUAL_DISPLAY))
+	if (((mfd->panel_info->panel_orientation & MDP_FLIP_LR) ||
+		mfd->panel_info->panel_port_swap) &&
+		(mfd->split_mode == MDP_DUAL_LM_DUAL_DISPLAY))
 		mdp5_data->mixer_swap = true;
+
+	if (mfd->panel_info->panel_port_swap &&
+		(mfd->split_mode == MDP_PINGPONG_SPLIT))
+		mdp5_data->pp_split_swap = true;
 
 	rc = sysfs_create_group(&dev->kobj, &mdp_overlay_sysfs_group);
 	if (rc) {

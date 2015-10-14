@@ -1967,6 +1967,10 @@ static int mdss_panel_parse_dt(struct device_node *np,
 			pinfo->panel_orientation = MDP_FLIP_UD;
 	}
 
+	if (mdss_dsi_is_hw_config_split(ctrl_pdata->shared_data))
+		pinfo->panel_port_swap = of_property_read_bool(np,
+			"qcom,mdss-dsi-panel-port-swap");
+
 	rc = of_property_read_u32(np, "qcom,mdss-brightness-max-level", &tmp);
 	pinfo->brightness_max = (!rc ? tmp : MDSS_MAX_BL_BRIGHTNESS);
 	rc = of_property_read_u32(np, "qcom,mdss-dsi-bl-min-level", &tmp);
