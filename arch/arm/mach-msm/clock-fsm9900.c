@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -2410,6 +2410,33 @@ static struct pll_clk mmpll10_clk_src = {
 	},
 };
 
+static struct branch_clk gcc_bimc_usb_clk = {
+	.base = &virt_bases[GCC_BASE],
+	.c = {
+		.dbg_name = "gcc_bimc_usb_clk",
+		.ops = &clk_ops_dummy,
+		CLK_INIT(gcc_bimc_usb_clk.c),
+	},
+};
+
+static struct branch_clk gcc_snoc_usb_clk = {
+	.base = &virt_bases[GCC_BASE],
+	.c = {
+		.dbg_name = "gcc_snoc_usb_clk",
+		.ops = &clk_ops_dummy,
+		CLK_INIT(gcc_snoc_usb_clk.c),
+	},
+};
+
+static struct branch_clk gcc_pcnoc_usb_clk = {
+	.base = &virt_bases[GCC_BASE],
+	.c = {
+		.dbg_name = "gcc_pcnoc_usb_clk",
+		.ops = &clk_ops_dummy,
+		CLK_INIT(gcc_pcnoc_usb_clk.c),
+	},
+};
+
 static DEFINE_CLK_MEASURE(l2_m_clk);
 static DEFINE_CLK_MEASURE(krait0_m_clk);
 static DEFINE_CLK_MEASURE(krait1_m_clk);
@@ -2785,6 +2812,11 @@ static struct clk_lookup fsm_clocks_9900[] = {
 	CLK_LOOKUP("core_clk",	gcc_usb_hs_system_clk.c,   "msm_ehci_host"),
 	CLK_LOOKUP("sleep_clk",	gcc_usb2a_phy_sleep_clk.c, "msm_ehci_host"),
 	CLK_LOOKUP("xo",	xo_usb_hs_host_clk.c,      "msm_ehci_host"),
+
+	/* USB PHY clocks */
+	CLK_LOOKUP("bimc_clk",	gcc_bimc_usb_clk.c,	"f9a55000.usb"),
+	CLK_LOOKUP("snoc_clk",	gcc_snoc_usb_clk.c,	"f9a55000.usb"),
+	CLK_LOOKUP("pcnoc_clk",	gcc_pcnoc_usb_clk.c,	"f9a55000.usb"),
 
 	/* EMAC clocks */
 	CLK_LOOKUP("axi_clk",	gcc_emac0_axi_clk.c,	 "feb20000.qcom,emac"),
