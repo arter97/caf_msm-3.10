@@ -53,7 +53,6 @@ void send_pkt(struct sk_buff *skb)
 		skb->dev->stats.tx_packets++;
 		skb->dev->stats.tx_bytes += skb->len;
 	} else {
-		pr_err("%s: ipc_msg_alloc failed!", __func__);
 		skb->dev->stats.tx_dropped++;
 	}
 
