@@ -2640,7 +2640,7 @@ int msm8952_init_wsa_switch_supply(struct platform_device *pdev,
 		return -ENODEV;
 	}
 
-	pdata->wsa_switch_supply.supply = regulator_get(dev,
+	pdata->wsa_switch_supply.supply = devm_regulator_get(dev,
 			switch_supply_str);
 	if (IS_ERR(pdata->wsa_switch_supply.supply)) {
 		ret = PTR_ERR(pdata->wsa_switch_supply.supply);
@@ -2663,7 +2663,6 @@ int msm8952_init_wsa_switch_supply(struct platform_device *pdev,
 	if (ret) {
 		dev_err(dev, "Setting voltage failed for regulator %s err = %d\n",
 			switch_supply_str, ret);
-		regulator_put(pdata->wsa_switch_supply.supply);
 		pdata->wsa_switch_supply.supply = NULL;
 		return ret;
 	}
@@ -2682,7 +2681,6 @@ int msm8952_init_wsa_switch_supply(struct platform_device *pdev,
 	if (ret < 0) {
 		dev_err(dev, "Setting current failed for regulator %s err = %d\n",
 			switch_supply_str, ret);
-		regulator_put(pdata->wsa_switch_supply.supply);
 		pdata->wsa_switch_supply.supply = NULL;
 		return ret;
 	}
