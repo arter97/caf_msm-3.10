@@ -610,9 +610,7 @@ static const struct wcd_mbhc_intr intr_ids = {
 };
 
 struct wcd_vbat {
-	bool is_calibrated;
 	bool is_enabled;
-	bool gsm_mode_set;
 	bool adc_config;
 	/* Variables to cache Vbat ADC output values */
 	u16 dcp1;
@@ -4964,10 +4962,10 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"RX MIX TX0 MUX", "RX_MIX6", "RX INT6 SEC MIX"},
 	{"RX MIX TX0 MUX", "RX_MIX7", "RX INT7 SEC MIX"},
 	{"RX MIX TX0 MUX", "RX_MIX8", "RX INT8 SEC MIX"},
-	{"RX MIX TX0 MUX", "RX_MIX_VBAT5", "RX INT5 VBAT SEC MIX"},
-	{"RX MIX TX0 MUX", "RX_MIX_VBAT6", "RX INT6 VBAT SEC MIX"},
-	{"RX MIX TX0 MUX", "RX_MIX_VBAT7", "RX INT7 VBAT SEC MIX"},
-	{"RX MIX TX0 MUX", "RX_MIX_VBAT8", "RX INT8 VBAT SEC MIX"},
+	{"RX MIX TX0 MUX", "RX_MIX_VBAT5", "RX INT5 VBAT"},
+	{"RX MIX TX0 MUX", "RX_MIX_VBAT6", "RX INT6 VBAT"},
+	{"RX MIX TX0 MUX", "RX_MIX_VBAT7", "RX INT7 VBAT"},
+	{"RX MIX TX0 MUX", "RX_MIX_VBAT8", "RX INT8 VBAT"},
 
 	{"RX MIX TX1 MUX", "RX_MIX0", "RX INT0 SEC MIX"},
 	{"RX MIX TX1 MUX", "RX_MIX1", "RX INT1 SEC MIX"},
@@ -4978,10 +4976,10 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"RX MIX TX1 MUX", "RX_MIX6", "RX INT6 SEC MIX"},
 	{"RX MIX TX1 MUX", "RX_MIX7", "RX INT7 SEC MIX"},
 	{"RX MIX TX1 MUX", "RX_MIX8", "RX INT8 SEC MIX"},
-	{"RX MIX TX1 MUX", "RX_MIX_VBAT5", "RX INT5 VBAT SEC MIX"},
-	{"RX MIX TX1 MUX", "RX_MIX_VBAT6", "RX INT6 VBAT SEC MIX"},
-	{"RX MIX TX1 MUX", "RX_MIX_VBAT7", "RX INT7 VBAT SEC MIX"},
-	{"RX MIX TX1 MUX", "RX_MIX_VBAT8", "RX INT8 VBAT SEC MIX"},
+	{"RX MIX TX1 MUX", "RX_MIX_VBAT5", "RX INT5 VBAT"},
+	{"RX MIX TX1 MUX", "RX_MIX_VBAT6", "RX INT6 VBAT"},
+	{"RX MIX TX1 MUX", "RX_MIX_VBAT7", "RX INT7 VBAT"},
+	{"RX MIX TX1 MUX", "RX_MIX_VBAT8", "RX INT8 VBAT"},
 
 	{"RX MIX TX2 MUX", "RX_MIX0", "RX INT0 SEC MIX"},
 	{"RX MIX TX2 MUX", "RX_MIX1", "RX INT1 SEC MIX"},
@@ -4992,10 +4990,10 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"RX MIX TX2 MUX", "RX_MIX6", "RX INT6 SEC MIX"},
 	{"RX MIX TX2 MUX", "RX_MIX7", "RX INT7 SEC MIX"},
 	{"RX MIX TX2 MUX", "RX_MIX8", "RX INT8 SEC MIX"},
-	{"RX MIX TX2 MUX", "RX_MIX_VBAT5", "RX INT5 VBAT SEC MIX"},
-	{"RX MIX TX2 MUX", "RX_MIX_VBAT6", "RX INT6 VBAT SEC MIX"},
-	{"RX MIX TX2 MUX", "RX_MIX_VBAT7", "RX INT7 VBAT SEC MIX"},
-	{"RX MIX TX2 MUX", "RX_MIX_VBAT8", "RX INT8 VBAT SEC MIX"},
+	{"RX MIX TX2 MUX", "RX_MIX_VBAT5", "RX INT5 VBAT"},
+	{"RX MIX TX2 MUX", "RX_MIX_VBAT6", "RX INT6 VBAT"},
+	{"RX MIX TX2 MUX", "RX_MIX_VBAT7", "RX INT7 VBAT"},
+	{"RX MIX TX2 MUX", "RX_MIX_VBAT8", "RX INT8 VBAT"},
 
 	{"RX MIX TX3 MUX", "RX_MIX0", "RX INT0 SEC MIX"},
 	{"RX MIX TX3 MUX", "RX_MIX1", "RX INT1 SEC MIX"},
@@ -5006,10 +5004,10 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"RX MIX TX3 MUX", "RX_MIX6", "RX INT6 SEC MIX"},
 	{"RX MIX TX3 MUX", "RX_MIX7", "RX INT7 SEC MIX"},
 	{"RX MIX TX3 MUX", "RX_MIX8", "RX INT8 SEC MIX"},
-	{"RX MIX TX3 MUX", "RX_MIX_VBAT5", "RX INT5 VBAT SEC MIX"},
-	{"RX MIX TX3 MUX", "RX_MIX_VBAT6", "RX INT6 VBAT SEC MIX"},
-	{"RX MIX TX3 MUX", "RX_MIX_VBAT7", "RX INT7 VBAT SEC MIX"},
-	{"RX MIX TX3 MUX", "RX_MIX_VBAT8", "RX INT8 VBAT SEC MIX"},
+	{"RX MIX TX3 MUX", "RX_MIX_VBAT5", "RX INT5 VBAT"},
+	{"RX MIX TX3 MUX", "RX_MIX_VBAT6", "RX INT6 VBAT"},
+	{"RX MIX TX3 MUX", "RX_MIX_VBAT7", "RX INT7 VBAT"},
+	{"RX MIX TX3 MUX", "RX_MIX_VBAT8", "RX INT8 VBAT"},
 
 	{"RX MIX TX4 MUX", "RX_MIX0", "RX INT0 SEC MIX"},
 	{"RX MIX TX4 MUX", "RX_MIX1", "RX INT1 SEC MIX"},
@@ -5020,10 +5018,10 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"RX MIX TX4 MUX", "RX_MIX6", "RX INT6 SEC MIX"},
 	{"RX MIX TX4 MUX", "RX_MIX7", "RX INT7 SEC MIX"},
 	{"RX MIX TX4 MUX", "RX_MIX8", "RX INT8 SEC MIX"},
-	{"RX MIX TX4 MUX", "RX_MIX_VBAT5", "RX INT5 VBAT SEC MIX"},
-	{"RX MIX TX4 MUX", "RX_MIX_VBAT6", "RX INT6 VBAT SEC MIX"},
-	{"RX MIX TX4 MUX", "RX_MIX_VBAT7", "RX INT7 VBAT SEC MIX"},
-	{"RX MIX TX4 MUX", "RX_MIX_VBAT8", "RX INT8 VBAT SEC MIX"},
+	{"RX MIX TX4 MUX", "RX_MIX_VBAT5", "RX INT5 VBAT"},
+	{"RX MIX TX4 MUX", "RX_MIX_VBAT6", "RX INT6 VBAT"},
+	{"RX MIX TX4 MUX", "RX_MIX_VBAT7", "RX INT7 VBAT"},
+	{"RX MIX TX4 MUX", "RX_MIX_VBAT8", "RX INT8 VBAT"},
 
 	{"RX MIX TX5 MUX", "RX_MIX0", "RX INT0 SEC MIX"},
 	{"RX MIX TX5 MUX", "RX_MIX1", "RX INT1 SEC MIX"},
@@ -5034,10 +5032,10 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"RX MIX TX5 MUX", "RX_MIX6", "RX INT6 SEC MIX"},
 	{"RX MIX TX5 MUX", "RX_MIX7", "RX INT7 SEC MIX"},
 	{"RX MIX TX5 MUX", "RX_MIX8", "RX INT8 SEC MIX"},
-	{"RX MIX TX5 MUX", "RX_MIX_VBAT5", "RX INT5 VBAT SEC MIX"},
-	{"RX MIX TX5 MUX", "RX_MIX_VBAT6", "RX INT6 VBAT SEC MIX"},
-	{"RX MIX TX5 MUX", "RX_MIX_VBAT7", "RX INT7 VBAT SEC MIX"},
-	{"RX MIX TX5 MUX", "RX_MIX_VBAT8", "RX INT8 VBAT SEC MIX"},
+	{"RX MIX TX5 MUX", "RX_MIX_VBAT5", "RX INT5 VBAT"},
+	{"RX MIX TX5 MUX", "RX_MIX_VBAT6", "RX INT6 VBAT"},
+	{"RX MIX TX5 MUX", "RX_MIX_VBAT7", "RX INT7 VBAT"},
+	{"RX MIX TX5 MUX", "RX_MIX_VBAT8", "RX INT8 VBAT"},
 
 
 	{"RX MIX TX6 MUX", "RX_MIX0", "RX INT0 SEC MIX"},
@@ -5049,10 +5047,10 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"RX MIX TX6 MUX", "RX_MIX6", "RX INT6 SEC MIX"},
 	{"RX MIX TX6 MUX", "RX_MIX7", "RX INT7 SEC MIX"},
 	{"RX MIX TX6 MUX", "RX_MIX8", "RX INT8 SEC MIX"},
-	{"RX MIX TX6 MUX", "RX_MIX_VBAT5", "RX INT5 VBAT SEC MIX"},
-	{"RX MIX TX6 MUX", "RX_MIX_VBAT6", "RX INT6 VBAT SEC MIX"},
-	{"RX MIX TX6 MUX", "RX_MIX_VBAT7", "RX INT7 VBAT SEC MIX"},
-	{"RX MIX TX6 MUX", "RX_MIX_VBAT8", "RX INT8 VBAT SEC MIX"},
+	{"RX MIX TX6 MUX", "RX_MIX_VBAT5", "RX INT5 VBAT"},
+	{"RX MIX TX6 MUX", "RX_MIX_VBAT6", "RX INT6 VBAT"},
+	{"RX MIX TX6 MUX", "RX_MIX_VBAT7", "RX INT7 VBAT"},
+	{"RX MIX TX6 MUX", "RX_MIX_VBAT8", "RX INT8 VBAT"},
 
 
 	{"RX MIX TX7 MUX", "RX_MIX0", "RX INT0 SEC MIX"},
@@ -5064,10 +5062,10 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"RX MIX TX7 MUX", "RX_MIX6", "RX INT6 SEC MIX"},
 	{"RX MIX TX7 MUX", "RX_MIX7", "RX INT7 SEC MIX"},
 	{"RX MIX TX7 MUX", "RX_MIX8", "RX INT8 SEC MIX"},
-	{"RX MIX TX7 MUX", "RX_MIX_VBAT5", "RX INT5 VBAT SEC MIX"},
-	{"RX MIX TX7 MUX", "RX_MIX_VBAT6", "RX INT6 VBAT SEC MIX"},
-	{"RX MIX TX7 MUX", "RX_MIX_VBAT7", "RX INT7 VBAT SEC MIX"},
-	{"RX MIX TX7 MUX", "RX_MIX_VBAT8", "RX INT8 VBAT SEC MIX"},
+	{"RX MIX TX7 MUX", "RX_MIX_VBAT5", "RX INT5 VBAT"},
+	{"RX MIX TX7 MUX", "RX_MIX_VBAT6", "RX INT6 VBAT"},
+	{"RX MIX TX7 MUX", "RX_MIX_VBAT7", "RX INT7 VBAT"},
+	{"RX MIX TX7 MUX", "RX_MIX_VBAT8", "RX INT8 VBAT"},
 
 	{"RX MIX TX8 MUX", "RX_MIX0", "RX INT0 SEC MIX"},
 	{"RX MIX TX8 MUX", "RX_MIX1", "RX INT1 SEC MIX"},
@@ -5078,10 +5076,10 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"RX MIX TX8 MUX", "RX_MIX6", "RX INT6 SEC MIX"},
 	{"RX MIX TX8 MUX", "RX_MIX7", "RX INT7 SEC MIX"},
 	{"RX MIX TX8 MUX", "RX_MIX8", "RX INT8 SEC MIX"},
-	{"RX MIX TX8 MUX", "RX_MIX_VBAT5", "RX INT5 VBAT SEC MIX"},
-	{"RX MIX TX8 MUX", "RX_MIX_VBAT6", "RX INT6 VBAT SEC MIX"},
-	{"RX MIX TX8 MUX", "RX_MIX_VBAT7", "RX INT7 VBAT SEC MIX"},
-	{"RX MIX TX8 MUX", "RX_MIX_VBAT8", "RX INT8 VBAT SEC MIX"},
+	{"RX MIX TX8 MUX", "RX_MIX_VBAT5", "RX INT5 VBAT"},
+	{"RX MIX TX8 MUX", "RX_MIX_VBAT6", "RX INT6 VBAT"},
+	{"RX MIX TX8 MUX", "RX_MIX_VBAT7", "RX INT7 VBAT"},
+	{"RX MIX TX8 MUX", "RX_MIX_VBAT8", "RX INT8 VBAT"},
 
 	{"ADC MUX0", "DMIC", "DMIC MUX0"},
 	{"ADC MUX0", "AMIC", "AMIC MUX0"},
@@ -5418,10 +5416,8 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"RX INT5 MIX2", NULL, "RX INT5 SEC MIX"},
 	{"RX INT5 INTERP", NULL, "RX INT5 MIX2"},
 
-	{"RX INT5 VBAT MIX", NULL, "RX INT5 INTERP"},
-	{"RX INT5 VBAT", "LO3 VBAT Enable", "RX INT5 VBAT MIX"},
-	{"RX INT5 VBAT SEC MIX", NULL, "RX INT5 VBAT"},
-	{"RX INT5 DAC", NULL, "RX INT5 VBAT SEC MIX"},
+	{"RX INT5 VBAT", "LO3 VBAT Enable", "RX INT5 INTERP"},
+	{"RX INT5 DAC", NULL, "RX INT5 VBAT"},
 
 	{"RX INT5 DAC", NULL, "RX INT5 INTERP"},
 	{"RX INT5 DAC", NULL, "RX_BIAS"},
@@ -5435,10 +5431,8 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"RX INT6 MIX2", NULL, "RX INT6 SEC MIX"},
 	{"RX INT6 INTERP", NULL, "RX INT6 MIX2"},
 
-	{"RX INT6 VBAT MIX", NULL, "RX INT6 INTERP"},
-	{"RX INT6 VBAT", "LO4 VBAT Enable", "RX INT6 VBAT MIX"},
-	{"RX INT6 VBAT SEC MIX", NULL, "RX INT6 VBAT"},
-	{"RX INT6 DAC", NULL, "RX INT6 VBAT SEC MIX"},
+	{"RX INT6 VBAT", "LO4 VBAT Enable", "RX INT6 INTERP"},
+	{"RX INT6 DAC", NULL, "RX INT6 VBAT"},
 
 	{"RX INT6 DAC", NULL, "RX INT6 INTERP"},
 	{"RX INT6 DAC", NULL, "RX_BIAS"},
@@ -5454,10 +5448,8 @@ static const struct snd_soc_dapm_route audio_map[] = {
 
 	{"RX INT7 INTERP", NULL, "RX INT7 MIX2"},
 
-	{"RX INT7 VBAT MIX", NULL, "RX INT7 INTERP"},
-	{"RX INT7 VBAT", "SPKRL VBAT Enable", "RX INT7 VBAT MIX"},
-	{"RX INT7 VBAT SEC MIX", NULL, "RX INT7 VBAT"},
-	{"RX INT7 CHAIN", NULL, "RX INT7 VBAT SEC MIX"},
+	{"RX INT7 VBAT", "SPKRL VBAT Enable", "RX INT7 INTERP"},
+	{"RX INT7 CHAIN", NULL, "RX INT7 VBAT"},
 
 	{"RX INT7 CHAIN", NULL, "RX INT7 INTERP"},
 	{"RX INT7 CHAIN", NULL, "RX_BIAS"},
@@ -5469,10 +5461,8 @@ static const struct snd_soc_dapm_route audio_map[] = {
 	{"RX INT8 SEC MIX", NULL, "RX INT8 SPLINE MIX"},
 	{"RX INT8 INTERP", NULL, "RX INT8 SEC MIX"},
 
-	{"RX INT8 VBAT MIX", NULL, "RX INT8 INTERP"},
-	{"RX INT8 VBAT", "SPKRR VBAT Enable", "RX INT8 VBAT MIX"},
-	{"RX INT8 VBAT SEC MIX", NULL, "RX INT8 VBAT"},
-	{"RX INT8 CHAIN", NULL, "RX INT8 VBAT SEC MIX"},
+	{"RX INT8 VBAT", "SPKRR VBAT Enable", "RX INT8 INTERP"},
+	{"RX INT8 CHAIN", NULL, "RX INT8 VBAT"},
 
 	{"RX INT8 CHAIN", NULL, "RX INT8 INTERP"},
 	{"RX INT8 CHAIN", NULL, "RX_BIAS"},
@@ -6611,8 +6601,6 @@ static int tasha_update_vbat_reg_config(struct snd_soc_codec *codec)
 		snd_soc_write(codec, reg, (old_val & ~mask) | (val & mask));
 	}
 
-	tasha->vbat.is_calibrated = true;
-
 done:
 	return ret;
 }
@@ -6645,10 +6633,10 @@ static int tasha_vbat_gsm_mode_func_get(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
-	struct tasha_priv *tasha = snd_soc_codec_get_drvdata(codec);
 
 	ucontrol->value.integer.value[0] =
-			(tasha->vbat.gsm_mode_set == true ? 1 : 0);
+		((snd_soc_read(codec, WCD9335_CDC_VBAT_VBAT_CFG) & 0x04) ?
+		  1 : 0);
 
 	return 0;
 }
@@ -6657,13 +6645,12 @@ static int tasha_vbat_gsm_mode_func_put(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
-	struct tasha_priv *tasha = snd_soc_codec_get_drvdata(codec);
 
-	tasha->vbat.gsm_mode_set = ucontrol->value.integer.value[0];
-	pr_debug("%s: value: %d\n", __func__, tasha->vbat.gsm_mode_set);
+	dev_dbg(codec->dev, "%s: value: %lu\n", __func__,
+		  ucontrol->value.integer.value[0]);
 
 	/* Set Vbat register configuration for GSM mode bit based on value */
-	if (tasha->vbat.gsm_mode_set)
+	if (ucontrol->value.integer.value[0])
 		snd_soc_update_bits(codec, WCD9335_CDC_VBAT_VBAT_CFG,
 						0x04, 0x04);
 	else
@@ -6696,9 +6683,10 @@ static int tasha_codec_vbat_enable_event(struct snd_soc_dapm_widget *w,
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
 		ret = tasha_update_vbat_reg_config(codec);
-		if (!ret && (!tasha->vbat.is_calibrated)) {
-			pr_debug("%s : VBAT isn't calibrated, So not enabling it\n",
-					__func__);
+		if (ret) {
+			dev_dbg(codec->dev,
+				"%s : VBAT isn't calibrated, So not enabling it\n",
+				__func__);
 			return 0;
 		}
 		snd_soc_write(codec, WCD9335_ANA_VBADC, 0x80);
@@ -8711,32 +8699,24 @@ static const struct snd_soc_dapm_widget tasha_dapm_widgets[] = {
 			rx_int5_spline_mix_switch,
 			ARRAY_SIZE(rx_int5_spline_mix_switch)),
 	SND_SOC_DAPM_MIXER("RX INT5 SEC MIX", SND_SOC_NOPM, 0, 0, NULL, 0),
-	SND_SOC_DAPM_MIXER("RX INT5 VBAT MIX", SND_SOC_NOPM, 0, 0, NULL, 0),
-	SND_SOC_DAPM_MIXER("RX INT5 VBAT SEC MIX", SND_SOC_NOPM, 0, 0, NULL, 0),
 
 	SND_SOC_DAPM_MIXER("RX INT6_1 MIX1", SND_SOC_NOPM, 0, 0, NULL, 0),
 	SND_SOC_DAPM_MIXER("RX INT6 SPLINE MIX", SND_SOC_NOPM, 0, 0,
 			rx_int6_spline_mix_switch,
 			ARRAY_SIZE(rx_int6_spline_mix_switch)),
 	SND_SOC_DAPM_MIXER("RX INT6 SEC MIX", SND_SOC_NOPM, 0, 0, NULL, 0),
-	SND_SOC_DAPM_MIXER("RX INT6 VBAT MIX", SND_SOC_NOPM, 0, 0, NULL, 0),
-	SND_SOC_DAPM_MIXER("RX INT6 VBAT SEC MIX", SND_SOC_NOPM, 0, 0, NULL, 0),
 
 	SND_SOC_DAPM_MIXER("RX INT7_1 MIX1", SND_SOC_NOPM, 0, 0, NULL, 0),
 	SND_SOC_DAPM_MIXER("RX INT7 SEC MIX", SND_SOC_NOPM, 0, 0, NULL, 0),
 	SND_SOC_DAPM_MIXER("RX INT7 SPLINE MIX", SND_SOC_NOPM, 0, 0,
 			rx_int7_spline_mix_switch,
 			ARRAY_SIZE(rx_int7_spline_mix_switch)),
-	SND_SOC_DAPM_MIXER("RX INT7 VBAT MIX", SND_SOC_NOPM, 0, 0, NULL, 0),
-	SND_SOC_DAPM_MIXER("RX INT7 VBAT SEC MIX", SND_SOC_NOPM, 0, 0, NULL, 0),
 
 	SND_SOC_DAPM_MIXER("RX INT8_1 MIX1", SND_SOC_NOPM, 0, 0, NULL, 0),
 	SND_SOC_DAPM_MIXER("RX INT8 SEC MIX", SND_SOC_NOPM, 0, 0, NULL, 0),
 	SND_SOC_DAPM_MIXER("RX INT8 SPLINE MIX", SND_SOC_NOPM, 0, 0,
 			rx_int8_spline_mix_switch,
 			ARRAY_SIZE(rx_int8_spline_mix_switch)),
-	SND_SOC_DAPM_MIXER("RX INT8 VBAT MIX", SND_SOC_NOPM, 0, 0, NULL, 0),
-	SND_SOC_DAPM_MIXER("RX INT8 VBAT SEC MIX", SND_SOC_NOPM, 0, 0, NULL, 0),
 
 	SND_SOC_DAPM_MIXER("RX INT0 MIX2", SND_SOC_NOPM, 0, 0, NULL, 0),
 	SND_SOC_DAPM_MIXER("RX INT1 MIX2", SND_SOC_NOPM, 0, 0, NULL, 0),
