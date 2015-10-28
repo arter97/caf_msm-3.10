@@ -233,6 +233,7 @@ int ipa_remove_interrupt_handler(enum ipa_irq_type interrupt)
 		IPAERR("invalid interrupt number %d\n", interrupt);
 		return -EINVAL;
 	}
+	kfree(ipa_interrupt_to_cb[interrupt].private_data);
 	ipa_interrupt_to_cb[interrupt].deferred_flag = false;
 	ipa_interrupt_to_cb[interrupt].handler = NULL;
 	ipa_interrupt_to_cb[interrupt].private_data = NULL;

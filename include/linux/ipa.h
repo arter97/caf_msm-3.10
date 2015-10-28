@@ -1468,6 +1468,8 @@ struct ipa_gsi_ep_config *ipa_get_gsi_ep_info(int ipa_ep_idx);
 
 int ipa_stop_gsi_channel(u32 clnt_hdl);
 
+int ipa_restore_suspend_handler(void);
+
 #else /* (CONFIG_IPA || CONFIG_IPA3) */
 
 /*
@@ -2240,6 +2242,11 @@ static inline struct ipa_gsi_ep_config *ipa_get_gsi_ep_info(int ipa_ep_idx)
 }
 
 static inline int ipa_stop_gsi_channel(u32 clnt_hdl)
+{
+	return -EPERM;
+}
+
+static inline int ipa_restore_suspend_handler(void)
 {
 	return -EPERM;
 }
