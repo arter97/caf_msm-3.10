@@ -115,6 +115,12 @@ struct rfic_wfm_param {
 	 void *pArray;
 };
 
+struct rfic_ldo_param {
+	int ldo;
+	int min_v;
+	int max_v;
+};
+
 #define RFIC_IOCTL_MAGIC				'f'
 #define RFIC_IOCTL_READ_REGISTER \
 	_IOC(_IOC_READ, RFIC_IOCTL_MAGIC, 0x01, \
@@ -176,4 +182,7 @@ struct rfic_wfm_param {
 #define RFIC_IOCTL_SET_WFM \
 	_IOC(_IOC_WRITE, RFIC_IOCTL_MAGIC, 0x51, \
 		sizeof(unsigned int *))
+#define RFIC_IOCTL_SET_LDO_VOLTAGE \
+	_IOC(_IOC_WRITE, RFIC_IOCTL_MAGIC, 0x52, \
+		sizeof(struct rfic_ldo_param *))
 #endif /* _FSM_RFIC_H_ */

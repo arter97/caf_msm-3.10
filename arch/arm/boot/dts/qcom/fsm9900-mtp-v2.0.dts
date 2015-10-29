@@ -31,8 +31,8 @@
 	/*LDO01 */
         qcom,pma8084@1 {
 		pma8084_l01: regulator@4000 {
-			regulator-min-microvolt = <1300000>;
-			regulator-max-microvolt = <1300000>;
+			regulator-min-microvolt = <1340000>;
+			regulator-max-microvolt = <1340000>;
 			qcom,enable-time = <500>;
 			com,pull-down-enable = <1>;
 			regulator-always-on;
