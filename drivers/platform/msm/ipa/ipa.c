@@ -3115,6 +3115,34 @@ void ipa_suspend_handler(enum ipa_irq_type interrupt,
 	}
 }
 
+/**
+* ipa_restore_suspend_handler() - restores the original suspend IRQ handler
+* as it was registered in the IPA init sequence.
+* Return codes:
+* 0: success
+* -EPERM: failed to remove current handler or failed to add original handler
+* */
+int ipa_restore_suspend_handler(void)
+{
+	int result = 0;
+
+	result  = ipa_remove_interrupt_handler(IPA_TX_SUSPEND_IRQ);
+	if (result) {
+		IPAERR("remove handler for suspend interrupt failed\n");
+		return -EPERM;
+	}
+
+	result = ipa_add_interrupt_handler(IPA_TX_SUSPEND_IRQ,
+			ipa_suspend_handler, true, NULL);
+	if (result) {
+		IPAERR("register handler for suspend interrupt failed\n");
+		result = -EPERM;
+	}
+
+	return result;
+}
+EXPORT_SYMBOL(ipa_restore_suspend_handler);
+
 static int apps_cons_release_resource(void)
 {
 	return 0;
