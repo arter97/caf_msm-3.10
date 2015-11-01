@@ -48,6 +48,10 @@ Optional Properties:
 			   1, 4 and 8.
 	- qcom,nonremovable - specifies whether the card in slot is
 			      hot pluggable or hard wired.
+	- qcom,support-sleep-awake - specifies whether the host supports partial initialization.
+				support for partial initialization is based on regulator configuration
+				as partial initialization require VccQ to remain on while Vcc can
+				be turned off.
 	- qcom,nonhotplug - specifies the card in slot is not hot pluggable.
 			    if card lost or removed manually at runtime, don't retry
 			    to redetect it until next reboot probe.
@@ -188,6 +192,7 @@ Example:
 		qcom,cpu-affinity-mask = <0x0f>;
 
 		qcom,nonremovable;
+		qcom,support-sleep-awake;
 		qcom,large-address-bus;
 		qcom,bus-speed-mode = "HS200_1p8v", "DDR_1p8v";
 		qcom,clk-rates = <400000 20000000 25000000 50000000 100000000 200000000>;

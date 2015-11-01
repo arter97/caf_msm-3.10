@@ -98,6 +98,7 @@ struct sdhci_msm_pltfm_data {
 	bool no_1p8v;
 	bool largeaddressbus;
 	bool pin_cfg_sts;
+	bool support_sleep_awake;
 	struct sdhci_msm_pin_data *pin_data;
 	struct sdhci_pinctrl_data *pctrl_data;
 	u32 *cpu_dma_latency_us;

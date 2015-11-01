@@ -1729,6 +1729,9 @@ struct sdhci_msm_pltfm_data *sdhci_msm_populate_pdata(struct device *dev,
 	if (of_get_property(np, "qcom,nonremovable", NULL))
 		pdata->nonremovable = true;
 
+	if (of_property_read_bool(np, "qcom,support-sleep-awake"))
+		pdata->support_sleep_awake = true;
+
 	if (of_get_property(np, "qcom,modified-dynamic-qos", NULL))
 		pdata->use_mod_dynamic_qos = true;
 
@@ -3759,13 +3762,15 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	msm_host->mmc->pm_caps |= MMC_PM_KEEP_POWER | MMC_PM_WAKE_SDIO_IRQ;
 	msm_host->mmc->caps2 |= MMC_CAP2_CORE_PM;
 	msm_host->mmc->caps2 |= MMC_CAP2_SANITIZE;
-	msm_host->mmc->caps2 |= MMC_CAP2_SLEEP_AWAKE;
 
 	if (msm_host->pdata->nonremovable)
 		msm_host->mmc->caps |= MMC_CAP_NONREMOVABLE;
 
 	if (msm_host->pdata->nonhotplug)
 		msm_host->mmc->caps2 |= MMC_CAP2_NONHOTPLUG;
+
+	if (msm_host->pdata->support_sleep_awake)
+		msm_host->mmc->caps2 |= MMC_CAP2_SLEEP_AWAKE;
 
 	/* Initialize ICE if present */
 	if (msm_host->ice.pdev) {
