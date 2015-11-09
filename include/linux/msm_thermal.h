@@ -357,7 +357,7 @@ static inline int msm_thermal_get_bwlm_info(struct bwlm_info_arg *bwlm_ptr)
 	return -ENOSYS;
 }
 static inline int msm_thermal_set_bwlm_config(struct bwlm_monitor_arg
-			*bwlm_config);
+			*bwlm_config)
 {
 	return -ENOSYS;
 }
