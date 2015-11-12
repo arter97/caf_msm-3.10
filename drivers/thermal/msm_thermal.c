@@ -3678,17 +3678,17 @@ static void do_prog_freq_control(struct thermal_progressive_rule *prog,
 			&prog->cur_req);
 	if (ret) {
 		pr_err(
-		"progressive req failed for clstr:%d freq:%u Temp:%ld err:%d\n"
-		, cluster_ptr->cluster_id, freq_table[idx].frequency,
-		temp, ret);
+		"progressive req failed for clstr:%d freq:%u Temp:%ld err:%d\n",
+			cluster_ptr ? cluster_ptr->cluster_id : 0,
+			freq_table[idx].frequency, temp, ret);
 		return;
 	}
 	trace_thermal_progressive_mitigate(prog->sensor_info->name,
 		cluster_ptr ? cluster_ptr->cluster_id : 0,
 		freq_table[idx].frequency);
 	pr_debug("Sensor:%s Limiting Cluster%d max frequency to %u. Temp:%ld\n",
-		prog->sensor_info->name, cluster_ptr->cluster_id,
-		freq_table[idx].frequency, temp);
+		prog->sensor_info->name, cluster_ptr ? cluster_ptr->cluster_id :
+		0, freq_table[idx].frequency, temp);
 }
 
 static void do_freq_control(long temp)
