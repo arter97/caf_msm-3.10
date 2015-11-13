@@ -111,6 +111,14 @@ uint8_t rf_eeprom = 0;
 void __iomem *grfc_base;
 void __iomem *pdm_base;
 void __iomem *wf_base;
+
+static struct regulator *vreg_ldo11;
+static struct regulator *vreg_ldo18;
+static struct regulator *vreg_ldo19;
+static struct regulator *vreg_ldo23;
+static struct regulator *vreg_ldo25;
+static struct regulator *vreg_ldo26;
+
 /*
  * Device private information per device node
  */
@@ -180,6 +188,20 @@ static int rf_regulator_init(struct platform_device *pdev, char *reg_name,
 		pr_err("%s: vreg get %s failed (%ld)\n",
 			__func__, reg_name, PTR_ERR(vreg_ldo));
 		return PTR_ERR(vreg_ldo);
+	}
+
+	if (!strcmp(reg_name, "vdd-1v3")) {
+		vreg_ldo11 = vreg_ldo;
+	} else if (!strcmp(reg_name, "vdd-switch")) {
+		vreg_ldo18 = vreg_ldo;
+	} else if (!strcmp(reg_name, "vdd-wtr")) {
+		vreg_ldo19 = vreg_ldo;
+	} else if (!strcmp(reg_name, "vdd-ftr1")) {
+		vreg_ldo23 = vreg_ldo;
+	} else if (!strcmp(reg_name, "vdd-ftr2")) {
+		vreg_ldo25 = vreg_ldo;
+	} else if (!strcmp(reg_name, "vdd-1v8")) {
+		vreg_ldo26 = vreg_ldo;
 	}
 
 	if (opt_mode) {
@@ -543,6 +565,66 @@ static long ftr_ioctl(struct file *file,
 			if (copy_from_user(wf_base + param.offset,
 					param.pArray, param.num))
 				return -EFAULT;
+		}
+		break;
+
+	case RFIC_IOCTL_SET_LDO_VOLTAGE:
+		{
+			struct rfic_ldo_param param;
+			struct regulator *vreg_ldo;
+
+			if (pdfi->ftrid != 0) {
+				pr_err("%s: Invalid id %d\n", __func__,
+					pdfi->ftrid);
+				return -EINVAL;
+			}
+
+			if (copy_from_user(&param, argp, sizeof(param)))
+				return -EFAULT;
+
+			switch (param.ldo) {
+			case LDO11:
+				vreg_ldo = vreg_ldo11;
+				break;
+
+			case LDO18:
+				vreg_ldo = vreg_ldo18;
+				break;
+
+			case LDO19:
+				vreg_ldo = vreg_ldo19;
+				break;
+
+			case LDO23:
+				vreg_ldo = vreg_ldo23;
+				break;
+
+			case LDO25:
+				vreg_ldo = vreg_ldo25;
+				break;
+
+			case LDO26:
+				vreg_ldo = vreg_ldo26;
+				break;
+
+			default:
+				pr_err("%s: Unknown LDO %d\n", __func__,
+					param.ldo);
+				return -EFAULT;
+			}
+
+			if (vreg_ldo == NULL) {
+				pr_err("%s: Invalid LDO\n", __func__);
+				return -EINVAL;
+			}
+
+			if (regulator_set_voltage(vreg_ldo,
+					param.min_v, param.max_v) != 0) {
+				pr_err("%s: Unable to set LDO voltage\n",
+						__func__);
+				return -EFAULT;
+			}
+
 		}
 		break;
 
