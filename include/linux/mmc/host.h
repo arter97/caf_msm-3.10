@@ -264,6 +264,7 @@ struct mmc_cmdq_context_info {
 	unsigned long	req_starved;
 	wait_queue_head_t	queue_empty_wq;
 	struct request_queue *q;
+	int active_small_sector_read_reqs;
 };
 
 /**
