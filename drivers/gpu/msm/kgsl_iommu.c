@@ -635,6 +635,7 @@ static void kgsl_detach_pagetable_iommu_domain(struct kgsl_mmu *mmu)
 	struct kgsl_iommu_context *ctx;
 	int i;
 
+	kgsl_iommu_enable_clk(mmu);
 	iommu_pt = mmu->defaultpagetable->priv;
 	for (i = 0; i < KGSL_IOMMU_CONTEXT_MAX; i++) {
 		ctx = &iommu->ctx[i];
@@ -650,6 +651,7 @@ static void kgsl_detach_pagetable_iommu_domain(struct kgsl_mmu *mmu)
 				iommu_pt->domain, mmu);
 		}
 	}
+	kgsl_iommu_disable_clk(mmu);
 }
 
 /*
