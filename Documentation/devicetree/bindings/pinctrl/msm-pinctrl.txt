@@ -43,10 +43,10 @@ semantics.
    fixed for a given TLMM block in all SOCs that use that TLMM block.
    However in some SOCs, the processor id can change. Override the default
    value in that case.
-   - #gpio-controller: Can be used as a gpio controller
+   - gpio-controller: Can be used as a gpio controller
    - #gpio-cells: Should be two. The first cell is the pin number and the
 			second cell is used to specify optional parameters
-   - #interrupt-controller: Can be used as an interrupt controller
+   - interrupt-controller: Can be used as an interrupt controller
    - compatible: identifies the interrupt controller.
 			- This should be "qcom,msm-tlmm-gp".
    - num_irqs: number of pins that can be used as an interrupt source.
@@ -123,10 +123,10 @@ semantics.
 			#qcom,pin-cells = <1>;
 			/* Supports Gpio controller */
 			msm_gpio: msm_gpio {
-				#gpio-controller;
+				gpio-controller;
 				#gpio-cells = <2>;
 				compatible = "qcom,msm-tlmm-gp";
-				#interrupt-controller;
+				interrupt-controller;
 				#interrupt-cells <2>;
 				num_irqs = <117>;
 				apps_id = <4>;
