@@ -1139,6 +1139,105 @@ static struct branch_clk gcc_pdm2_ahb_clk = {
 	},
 };
 
+static struct branch_clk gcc_bbif_dac0_clk = {
+	.cbcr_reg = BBIF_DAC0_CBCR,
+	.has_sibling = 1,
+	.base = &virt_bases[GCC_BASE],
+	.c = {
+		.dbg_name = "gcc_bbif_dac0_clk",
+		.ops = &clk_ops_branch,
+		CLK_INIT(gcc_bbif_dac0_clk.c),
+	},
+};
+
+static struct branch_clk gcc_bbif_dac1_clk = {
+	.cbcr_reg = BBIF_DAC1_CBCR,
+	.has_sibling = 1,
+	.base = &virt_bases[GCC_BASE],
+	.c = {
+		.dbg_name = "gcc_bbif_dac1_clk",
+		.ops = &clk_ops_branch,
+		CLK_INIT(gcc_bbif_dac1_clk.c),
+	},
+};
+
+static struct branch_clk gcc_bbif_dac2_clk = {
+	.cbcr_reg = BBIF_DAC2_CBCR,
+	.has_sibling = 1,
+	.base = &virt_bases[GCC_BASE],
+	.c = {
+		.dbg_name = "gcc_bbif_dac2_clk",
+		.ops = &clk_ops_branch,
+		CLK_INIT(gcc_bbif_dac2_clk.c),
+	},
+};
+
+static struct branch_clk gcc_bbif_dac3_clk = {
+	.cbcr_reg = BBIF_DAC3_CBCR,
+	.has_sibling = 1,
+	.base = &virt_bases[GCC_BASE],
+	.c = {
+		.dbg_name = "gcc_bbif_dac3_clk",
+		.ops = &clk_ops_branch,
+		CLK_INIT(gcc_bbif_dac3_clk.c),
+	},
+};
+
+static struct branch_clk gcc_bbif_adc0_clk = {
+	.cbcr_reg = BBIF_ADC0_CBCR,
+	.has_sibling = 1,
+	.base = &virt_bases[GCC_BASE],
+	.c = {
+		.dbg_name = "gcc_bbif_adc0_clk",
+		.ops = &clk_ops_branch,
+		CLK_INIT(gcc_bbif_adc0_clk.c),
+	},
+};
+
+static struct branch_clk gcc_bbif_adc1_clk = {
+	.cbcr_reg = BBIF_ADC1_CBCR,
+	.has_sibling = 1,
+	.base = &virt_bases[GCC_BASE],
+	.c = {
+		.dbg_name = "gcc_bbif_adc1_clk",
+		.ops = &clk_ops_branch,
+		CLK_INIT(gcc_bbif_adc1_clk.c),
+	},
+};
+
+static struct branch_clk gcc_bbif_adc2_clk = {
+	.cbcr_reg = BBIF_ADC2_CBCR,
+	.has_sibling = 1,
+	.base = &virt_bases[GCC_BASE],
+	.c = {
+		.dbg_name = "gcc_bbif_adc2_clk",
+		.ops = &clk_ops_branch,
+		CLK_INIT(gcc_bbif_adc2_clk.c),
+	},
+};
+
+static struct branch_clk gcc_bbif_adc3_clk = {
+	.cbcr_reg = BBIF_ADC3_CBCR,
+	.has_sibling = 1,
+	.base = &virt_bases[GCC_BASE],
+	.c = {
+		.dbg_name = "gcc_bbif_adc3_clk",
+		.ops = &clk_ops_branch,
+		CLK_INIT(gcc_bbif_adc3_clk.c),
+	},
+};
+
+static struct branch_clk gcc_bbif_adc4_clk = {
+	.cbcr_reg = BBIF_ADC4_CBCR,
+	.has_sibling = 1,
+	.base = &virt_bases[GCC_BASE],
+	.c = {
+		.dbg_name = "gcc_bbif_adc4_clk",
+		.ops = &clk_ops_branch,
+		CLK_INIT(gcc_bbif_adc4_clk.c),
+	},
+};
+
 static struct local_vote_clk gcc_prng_ahb_clk = {
 	.cbcr_reg = PRNG_AHB_CBCR,
 	.vote_reg = APCS_CLOCK_BRANCH_ENA_VOTE,
@@ -1511,6 +1610,15 @@ static struct mux_clk gcc_debug_mux = {
 		{ &gcc_usb30_mock_utmi_clk.c, 0x02f2 },
 		{ &gcc_usb3_aux_clk.c, 0x02f3 },
 		{ &gcc_usb_phy_cfg_ahb_clk.c, 0x02f7 },
+		{ &gcc_bbif_adc0_clk.c, 0x00f0 },
+		{ &gcc_bbif_adc1_clk.c, 0x00f1 },
+		{ &gcc_bbif_adc2_clk.c, 0x00f2 },
+		{ &gcc_bbif_adc3_clk.c, 0x00f3 },
+		{ &gcc_bbif_adc4_clk.c, 0x00f4 },
+		{ &gcc_bbif_dac0_clk.c, 0x00f8 },
+		{ &gcc_bbif_dac1_clk.c, 0x00f9 },
+		{ &gcc_bbif_dac2_clk.c, 0x00fa },
+		{ &gcc_bbif_dac3_clk.c, 0x00fb },
 	),
 	.c = {
 		.dbg_name = "gcc_debug_mux",
@@ -1561,6 +1669,15 @@ static struct clk_lookup msm_clocks_lookup[] = {
 	CLK_LIST(gcc_usb30_sleep_clk),
 	CLK_LIST(gcc_usb3phy_phy_reset),
 	CLK_LIST(gcc_usb3_phy_reset),
+	CLK_LIST(gcc_bbif_dac0_clk),
+	CLK_LIST(gcc_bbif_dac1_clk),
+	CLK_LIST(gcc_bbif_dac2_clk),
+	CLK_LIST(gcc_bbif_dac3_clk),
+	CLK_LIST(gcc_bbif_adc0_clk),
+	CLK_LIST(gcc_bbif_adc1_clk),
+	CLK_LIST(gcc_bbif_adc2_clk),
+	CLK_LIST(gcc_bbif_adc3_clk),
+	CLK_LIST(gcc_bbif_adc4_clk),
 };
 
 static int msm_gcc_probe(struct platform_device *pdev)
