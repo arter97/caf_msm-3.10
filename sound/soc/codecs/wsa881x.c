@@ -1318,7 +1318,7 @@ static int wsa881x_swr_down(struct swr_device *pdev)
 		dev_err(&pdev->dev, "%s: wsa881x is NULL\n", __func__);
 		return -EINVAL;
 	}
-	regcache_mark_dirty(wsa881x->regmap);
+	cancel_delayed_work_sync(&wsa881x->ocp_ctl_work);
 	ret = wsa881x_gpio_ctrl(wsa881x, false);
 	if (ret)
 		dev_err(&pdev->dev, "%s: Failed to disable gpio\n", __func__);
@@ -1338,6 +1338,7 @@ static int wsa881x_swr_reset(struct swr_device *pdev)
 		return -EINVAL;
 	}
 	wsa881x->bg_cnt = 0;
+	regcache_mark_dirty(wsa881x->regmap);
 	regcache_sync(wsa881x->regmap);
 	return 0;
 }
