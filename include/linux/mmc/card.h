@@ -325,6 +325,9 @@ enum mmc_pon_type {
 	MMC_LONG_PON = 1,
 	MMC_SHRT_PON,
 };
+
+#define MMC_QUIRK_CMDQ_DELAY_BEFORE_DCMD 6 /* microseconds */
+
 /*
  * MMC device
  */
@@ -376,8 +379,8 @@ struct mmc_card {
 #define MMC_QUIRK_QCA6574_SETTINGS (1 << 15)	/* QCA6574 card settings*/
 #define MMC_QUIRK_QCA9377_SETTINGS (1 << 16)	/* QCA9377 card settings*/
 
-/* Make sure CMDQ is empty before queuing cache flush */
-#define MMC_QUIRK_CMDQ_EMPTY_BEFORE_FLUSH (1 << 15)
+/* Make sure CMDQ is empty before queuing DCMD */
+#define MMC_QUIRK_CMDQ_EMPTY_BEFORE_DCMD (1 << 15)
 
 	unsigned int		erase_size;	/* erase size in sectors */
  	unsigned int		erase_shift;	/* if erase unit is power 2 */
