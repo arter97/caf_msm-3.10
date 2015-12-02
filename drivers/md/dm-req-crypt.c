@@ -140,7 +140,7 @@ static void req_crypt_split_io_complete
 
 static  bool req_crypt_should_encrypt(struct req_dm_crypt_io *req)
 {
-	int ret;
+	int ret = 0;
 	bool should_encrypt = false;
 	struct bio *bio = NULL;
 	u32 key_id = 0;
@@ -169,7 +169,7 @@ static  bool req_crypt_should_encrypt(struct req_dm_crypt_io *req)
 
 static  bool req_crypt_should_deccrypt(struct req_dm_crypt_io *req)
 {
-	int ret;
+	int ret = 0;
 	bool should_deccrypt = false;
 	struct bio *bio = NULL;
 	u32 key_id = 0;
@@ -1302,10 +1302,11 @@ static int req_crypt_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 	}
 
 	/*
-	 * If underlying device supports flush, mapped target should
-	 * also allow it
+	 * If underlying device supports flush/discard, mapped target
+	 * should also allow it
 	 */
 	ti->num_flush_bios = 1;
+	ti->num_discard_bios = 1;
 
 	err = 0;
 
