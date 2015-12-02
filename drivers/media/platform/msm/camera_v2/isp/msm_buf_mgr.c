@@ -963,8 +963,8 @@ static int msm_isp_flush_buf(struct msm_isp_buf_mgr *buf_mgr,
 					__func__);
 			} else if (buf_info->state ==
 				MSM_ISP_BUFFER_STATE_DEQUEUED) {
-			    msm_isp_put_buf_unsafe(buf_mgr,
-				    bufq_handle, buf_info->buf_idx);
+				msm_isp_put_buf_unsafe(buf_mgr,
+					bufq_handle, buf_info->buf_idx);
 			}
 		}
 	}
