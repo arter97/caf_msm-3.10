@@ -1,23 +1,22 @@
 /*
-	All files except if stated otherwise in the begining of the file
-	are under the ISC license:
-	----------------------------------------------------------------------
-
-	Copyright (c) 2010-2012 Design Art Networks Ltd.
-
-	Permission to use, copy, modify, and/or distribute this software for any
-	purpose with or without fee is hereby granted, provided that the above
-	copyright notice and this permission notice appear in all copies.
-
-	THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-	WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-	MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
-	ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-	WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
-	ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
-	OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-*/
-
+ *	All files except if stated otherwise in the beginning of the file
+ *	are under the ISC license:
+ *	----------------------------------------------------------------------
+ *	Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ *	Copyright (c) 2010-2012 Design Art Networks Ltd.
+ *
+ *	Permission to use, copy, modify, and/or distribute this software for any
+ *	purpose with or without fee is hereby granted, provided that the above
+ *	copyright notice and this permission notice appear in all copies.
+ *
+ *	THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ *	WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ *	MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ *	ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ *	WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ *	ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ *	OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
 
 /* -----------------------------------------------------------
  * Include section
@@ -30,7 +29,6 @@
 #include "ipc_api.h"
 
 #include "danipc_lowlevel.h"
-
 
 /* -----------------------------------------------------------
  * MACRO (define) section
@@ -45,7 +43,6 @@
 #define TCSR_IPC_FIFO_RD_IN_HIGH_ADDR(cpuid)				\
 	(ipc_regs[cpuid] + TCSR_IPC_IF_FIFO_RD_ACCESS_0_OFFSET)
 
-
 #define IPC_FIFO_ACCESS(cpuid, odd, even)		({		\
 	const typeof(cpuid) __cpuid = cpuid;				\
 	ipc_regs[__cpuid] + ((__cpuid & 1) ? (odd) : (even)); })
@@ -53,21 +50,20 @@
 #define IPC_FIFO_RD_OUT_HIGH_ADDR(cpuid)				\
 	IPC_FIFO_ACCESS(cpuid, DAN_IPC_IF_FIFO_RD_5, DAN_IPC_IF_FIFO_RD_1)
 
-#define IPC_FIFO_RD_OUT_LOW_ADDR(cpuid)					\
+#define IPC_FIFO_RD_OUT_LOW_ADDR(cpuid)				\
 	IPC_FIFO_ACCESS(cpuid, DAN_IPC_IF_FIFO_RD_7, DAN_IPC_IF_FIFO_RD_3)
 
-#define IPC_FIFO_WR_IN_HIGH_ADDR(cpuid)					\
+#define IPC_FIFO_WR_IN_HIGH_ADDR(cpuid)				\
 	IPC_FIFO_ACCESS(cpuid, DAN_IPC_IF_FIFO_WR_4, DAN_IPC_IF_FIFO_WR_0)
 
-#define IPC_FIFO_WR_OUT_HIGH_ADDR(cpuid)				\
+#define IPC_FIFO_WR_OUT_HIGH_ADDR(cpuid)			\
 	IPC_FIFO_ACCESS(cpuid, DAN_IPC_IF_FIFO_WR_5, DAN_IPC_IF_FIFO_WR_1)
 
-#define IPC_FIFO_WR_IN_LOW_ADDR(cpuid)					\
+#define IPC_FIFO_WR_IN_LOW_ADDR(cpuid)				\
 	IPC_FIFO_ACCESS(cpuid, DAN_IPC_IF_FIFO_WR_6, DAN_IPC_IF_FIFO_WR_2)
 
-#define IPC_FIFO_WR_OUT_LOW_ADDR(cpuid)					\
+#define IPC_FIFO_WR_OUT_LOW_ADDR(cpuid)				\
 	IPC_FIFO_ACCESS(cpuid, DAN_IPC_IF_FIFO_WR_7, DAN_IPC_IF_FIFO_WR_3)
-
 
 uint32_t		ipc_regs_phys[PLATFORM_MAX_NUM_OF_NODES];
 unsigned		ipc_regs_len[PLATFORM_MAX_NUM_OF_NODES];
@@ -100,11 +96,8 @@ char *ipc_trns_fifo_buf_alloc(uint8_t cpuid, enum ipc_trns_prio prio)
 		fifo_addr = IPC_FIFO_RD_OUT_HIGH_ADDR(cpuid);
 	buff_addr = __raw_readl_no_log((void *)fifo_addr);
 
-	return  (char *) ((buff_addr) ?
-				ipc_to_virt(cpuid, prio, buff_addr) : 0);
+	return  (char *)((buff_addr) ? ipc_to_virt(cpuid, prio, buff_addr) : 0);
 }
-
-
 
 /* ipc_trns_fifo_buf_free
  *
@@ -125,7 +118,7 @@ void ipc_trns_fifo_buf_free(char *ptr, uint8_t cpuid, enum ipc_trns_prio prio)
 			fifo_addr = IPC_FIFO_WR_OUT_HIGH_ADDR(cpuid);
 
 		__raw_writel_no_log(virt_to_ipc(cpuid, prio, (void *)ptr),
-					(void *)fifo_addr);
+				    (void *)fifo_addr);
 	}
 }
 
@@ -138,7 +131,7 @@ void ipc_trns_fifo_buf_free(char *ptr, uint8_t cpuid, enum ipc_trns_prio prio)
  *
  */
 int32_t ipc_trns_fifo_buf_send(char *ptr, uint8_t cpuid,
-				enum ipc_trns_prio prio)
+			       enum ipc_trns_prio prio)
 {
 	uint32_t		fifo_addr;
 
@@ -148,11 +141,10 @@ int32_t ipc_trns_fifo_buf_send(char *ptr, uint8_t cpuid,
 		fifo_addr = IPC_FIFO_WR_IN_HIGH_ADDR(cpuid);
 
 	__raw_writel_no_log(virt_to_ipc(cpuid, prio, (void *)ptr),
-				(void *)fifo_addr);
+			    (void *)fifo_addr);
 
 	return 0;
 }
-
 
 /* ipc_trns_fifo2eth_buf_alloc:
  *
@@ -188,7 +180,7 @@ char *ipc_trns_fifo2eth_buf_alloc(
  *
  */
 void ipc_trns_fifo2eth_buf_free(char *ptr, uint8_t cpuid,
-					enum ipc_trns_prio prio)
+				enum ipc_trns_prio prio)
 {
 	uint32_t fifo_addr;
 
@@ -212,7 +204,7 @@ void ipc_trns_fifo2eth_buf_free(char *ptr, uint8_t cpuid,
  *
  */
 int32_t ipc_trns_fifo2eth_buf_send(char *ptr, uint8_t cpuid,
-						   enum ipc_trns_prio prio)
+				   enum ipc_trns_prio prio)
 {
 	uint32_t fifo_addr;
 
@@ -234,12 +226,12 @@ int32_t ipc_trns_fifo2eth_buf_send(char *ptr, uint8_t cpuid,
  * Output:		None
  * -----------------------------------------------------------
  */
-void ipc_trns_fifo_buf_init(uint8_t cpuid)
+void ipc_trns_fifo_buf_init(uint8_t cpuid, uint8_t ifidx)
 {
-	uint32_t		fifo_addr;
-	unsigned		ix;
-	uint32_t		buf_addr = virt_to_ipc(cpuid, ipc_trns_prio_1,
-								ipc_buffers);
+	uint32_t fifo_addr;
+	unsigned ix;
+	uint32_t buf_addr = virt_to_ipc(cpuid, ipc_trns_prio_1,
+					&ipc_buffers[ifidx*IPC_BUF_SIZE]);
 
 	fifo_addr = IPC_FIFO_WR_OUT_HIGH_ADDR(cpuid);
 
@@ -254,6 +246,28 @@ void ipc_trns_fifo_buf_init(uint8_t cpuid)
 		__raw_writel_no_log(buf_addr, (void *)fifo_addr);
 }
 
+/* -----------------------------------------------------------
+ * Function:	ipc_trns_fifo_buf_init
+ * Description:	Initialize IPC buffer for current node
+ * Input:		cpuid:	node ID ()
+ * Output:		None
+ * -----------------------------------------------------------
+ */
+void ipc_trns_fifo_buf_flush(uint8_t cpuid)
+{
+	uint32_t		fifo_addr;
+	unsigned		ix;
+
+	/* Flush high-priority B-Fifo */
+	fifo_addr = IPC_FIFO_WR_OUT_HIGH_ADDR(cpuid);
+	for (ix = 0; ix < IPC_FIFO_BUF_NUM_HIGH; ix++)
+		__raw_writel_no_log((uint32_t)NULL, (void *)fifo_addr);
+
+	/* Flush low-priority B-Fifo */
+	fifo_addr = IPC_FIFO_WR_OUT_LOW_ADDR(cpuid);
+	for (ix = 0; ix < IPC_FIFO_BUF_NUM_HIGH; ix++)
+		__raw_writel_no_log((uint32_t)NULL, (void *)fifo_addr);
+}
 
 /* -----------------------------------------------------------
  * Function:	ipc_trns_fifo_buf_read
@@ -262,11 +276,10 @@ void ipc_trns_fifo_buf_init(uint8_t cpuid)
  * Output:		None
  * -----------------------------------------------------------
  */
-char *ipc_trns_fifo_buf_read(enum ipc_trns_prio prio)
+char *ipc_trns_fifo_buf_read(enum ipc_trns_prio prio, uint8_t cpuid)
 {
 	uint32_t		fifo_addr;
 	uint32_t		buff_addr = 0;
-	const uint8_t		cpuid = ipc_own_node;
 
 	if (prio == ipc_trns_prio_0)
 		fifo_addr = TCSR_IPC_FIFO_RD_IN_LOW_ADDR(cpuid);

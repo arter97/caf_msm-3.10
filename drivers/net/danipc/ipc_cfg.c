@@ -1,23 +1,22 @@
 /*
-	All files except if stated otherwise in the begining of the file
-	are under the ISC license:
-	----------------------------------------------------------------------
-
-	Copyright (c) 2010-2012 Design Art Networks Ltd.
-
-	Permission to use, copy, modify, and/or distribute this software for any
-	purpose with or without fee is hereby granted, provided that the above
-	copyright notice and this permission notice appear in all copies.
-
-	THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
-	WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
-	MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
-	ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
-	WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
-	ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
-	OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
-*/
-
+ *	All files except if stated otherwise in the beginning of the file
+ *	are under the ISC license:
+ *	----------------------------------------------------------------------
+ *	Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ *	Copyright (c) 2010-2012 Design Art Networks Ltd.
+ *
+ *	Permission to use, copy, modify, and/or distribute this software for any
+ *	purpose with or without fee is hereby granted, provided that the above
+ *	copyright notice and this permission notice appear in all copies.
+ *
+ *	THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ *	WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ *	MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ *	ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ *	WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ *	ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+ *	OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
 
 /* -----------------------------------------------------------
  * Include section
@@ -29,7 +28,6 @@
 #include "ipc_api.h"
 #include "ipc_cfg.h"
 #include "danipc_lowlevel.h"
-
 
 /* -----------------------------------------------------------
  * Type definition section
@@ -43,7 +41,6 @@ struct ipc_route {
 	uint8_t dst_node;
 	struct ipc_trns_func const *trns_funs;
 };
-
 
 /* -----------------------------------------------------------
  * Global data section
@@ -96,12 +93,10 @@ static const enum ipc_node_type node_type[PLATFORM_MAX_NUM_OF_NODES] = {
 		dan3400_e,		/* Node #15 */
 };
 
-
 /* Routing table is maintained globaly per 'board' */
 static struct ipc_trns_func const *ipc_routing[PLATFORM_MAX_NUM_OF_NODES];
 
 struct agent_entry __iomem	*agent_table;
-
 
 /* -----------------------------------------------------------
  * Global prototypes section
@@ -109,52 +104,35 @@ struct agent_entry __iomem	*agent_table;
  */
 
 /* ===========================================================================
- * ipc_get_own_node
- * ===========================================================================
- * Description:  Get Node ID for current node
- *
- * Parameters: none
- *
- * Returns: IPC node ID (0:31)
- *
- */
-uint8_t ipc_get_own_node(void)
-{
-	return LOCAL_IPC_ID;
-}
-
-
-/* ===========================================================================
  * ipc_cfg_get_util_vec
  * ===========================================================================
  * Description:	Fetch the node util function vector
  *
- * Parameters:		srcNode		- source Node Id
- *			destNode	- destination Node Id
+ * Parameters:		src_node		- source Node Id
+ *			dest_node	- destination Node Id
  *
  * Returns: Location Type
  *
  */
-static struct ipc_trns_func const *ipc_cfg_get_util_vec(uint8_t srcNode,
-							 uint8_t destNode)
+static struct ipc_trns_func const *ipc_cfg_get_util_vec(uint8_t src_node,
+							uint8_t dest_node)
 {
 	unsigned i;
 
 	for (i = 0; i < ARRAY_SIZE(ipc_routes); i++) {
-		if ((ipc_routes[i].src_node == node_type[srcNode]) &&
-			(ipc_routes[i].dst_node == node_type[destNode]))
+		if ((ipc_routes[i].src_node == node_type[src_node]) &&
+		    (ipc_routes[i].dst_node == node_type[dest_node]))
 			return ipc_routes[i].trns_funs;
 	}
 
 	return NULL;
 }
 
-
-void ipc_agent_table_clean(void)
+void ipc_agent_table_clean(uint8_t local_cpuid)
 {
 	int		len = (sizeof(struct agent_entry) * MAX_LOCAL_AGENT)
 					/ sizeof(uint32_t);
-	const unsigned	aid = __IPC_AGENT_ID(LOCAL_IPC_ID, 0);
+	const unsigned	aid = __IPC_AGENT_ID(local_cpuid, 0);
 	uint32_t	*p = (uint32_t *)&agent_table[aid];
 
 	/* Clean only my part of the global table. This is necessary so I may
@@ -201,16 +179,18 @@ struct ipc_trns_func const *get_trns_funcs(uint8_t cpuid)
  *   This is just a preliminary implementation. Need to decide how each CPU
  *   maintains the correct routing table
  */
-void ipc_route_table_init(struct ipc_trns_func const *def_trns_funcs)
+void ipc_route_table_init(uint8_t local_cpuid,
+			  struct ipc_trns_func const *def_trns_funcs)
 {
 	unsigned i;
 
 	/* For every potential destination fill the associated function
 	 * vector or set to the node default transport functions
 	 */
-	for (i = 0; i < PLATFORM_MAX_NUM_OF_NODES; i++) {
+	for (i = 0; (i < PLATFORM_MAX_NUM_OF_NODES) &&
+	     (ipc_routing[i] == NULL); i++) {
 		ipc_routing[i] = (struct ipc_trns_func *)
-				ipc_cfg_get_util_vec(ipc_own_node, i);
+				ipc_cfg_get_util_vec(local_cpuid, i);
 		if (ipc_routing[i] == NULL)
 			ipc_routing[i] = def_trns_funcs;
 	}
