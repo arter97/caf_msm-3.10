@@ -1860,11 +1860,12 @@
 	qcom,danipc@24200000 {
 		compatible = "qcom,danipc";
 		reg-names = "ipc_bufs", "agent_table", "apps_ipc_intr_en",
-			"phycpu0_ipc", "phycpu1_ipc", "phycpu2_ipc", "phycpu3_ipc",
-			"phydsp0_ipc", "phydsp1_ipc", "phydsp2_ipc", "apps_ipc",
+			"phycpu0_ipc", "phycpu1_ipc", "phycpu2_ipc",
+			"phycpu3_ipc", "phydsp0_ipc", "phydsp1_ipc",
+			"phydsp2_ipc", "apps_ipc_data",
 			"qdsp6_0_ipc", "qdsp6_1_ipc", "qdsp6_2_ipc",
-			"qdsp6_3_ipc";
-		reg = <0x24200000 0x80000>, /* ipc_bufs */
+			"qdsp6_3_ipc", "apps_ipc_pcap" ;
+		reg = <0x24200000 0x100000>, /* ipc_bufs */
 			<0x1cf60000 0x2000>, /* agent_table */
 			<0xfd4a3500 0x100>, /* apps_ipc_intr_en */
 			<0xf683a000 0x100>, /* phycpu0_ipc */
@@ -1874,13 +1875,14 @@
 			<0xf6862000 0x100>, /* phydsp0_ipc */
 			<0xf6862000 0x100>, /* phydsp1_ipc */
 			<0xf6878000 0x100>, /* phydsp2_ipc */
-			<0xfd490000 0x100>, /* apps_ipc */
+			<0xfd490000 0x100>, /* apps_ipc_data */
 			<0xfd491000 0x100>, /* qdsp6_0_ipc */
 			<0xfd492000 0x100>, /* qdsp6_1_ipc */
 			<0xfd496000 0x100>, /* qdsp6_2_ipc */
-			<0xfd494000 0x100>; /* qdsp6_3_ipc */
+			<0xfd494000 0x100>, /* qdsp6_3_ipc */
+			<0xfd487000 0x100>; /* apps_ipc_pcap */
 		qcom,qdsp6-2-shm-size = <0x4000000>;
-		interrupts = <0 202 0>;
+		interrupts = <0 202 0>, <0 203 0>;
 	};
 };
 
