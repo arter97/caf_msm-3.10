@@ -465,24 +465,28 @@ static irqreturn_t msm_gladiator_isr(int irq, void *dev_id)
 		return IRQ_HANDLED;
 	}
 	pr_alert("GLADIATOR ERROR DETECTED\n");
-	pr_alert("GLADIATOR error log register data:\n");
-	for (err_log = ERR_LOG0; err_log <= ERR_LOG8; err_log++) {
-		/* skip log register 7 as its reserved */
-		if (err_log == ERR_LOG7)
-			continue;
-		err_reg = readl_relaxed(msm_gld_data->gladiator_virt_base +
-					get_gld_offset(err_log));
-		decode_gld_errlog(err_reg, err_log);
+	if (gld_err_valid) {
+		pr_alert("GLADIATOR error log register data:\n");
+		for (err_log = ERR_LOG0; err_log <= ERR_LOG8; err_log++) {
+			/* skip log register 7 as its reserved */
+			if (err_log == ERR_LOG7)
+				continue;
+			err_reg = readl_relaxed(msm_gld_data->gladiator_virt_base +
+						get_gld_offset(err_log));
+			decode_gld_errlog(err_reg, err_log);
+		}
 	}
-	pr_alert("Observor error log register data:\n");
-	for (err_log = ERR_LOG0; err_log <= STALLEN; err_log++)	{
-		/* skip log register 2, 6 and 8 as they are reserved */
-		if ((err_log == ERR_LOG2) || (err_log == ERR_LOG6)
-					|| (err_log == ERR_LOG8))
-			continue;
-		err_reg = readl_relaxed(msm_gld_data->gladiator_virt_base +
-					get_obs_offset(err_log));
-		decode_obs_errlog(err_reg, err_log);
+	if (obsrv_err_valid) {
+		pr_alert("Observor error log register data:\n");
+		for (err_log = ERR_LOG0; err_log <= STALLEN; err_log++)	{
+			/* skip log register 2, 6 and 8 as they are reserved */
+			if ((err_log == ERR_LOG2) || (err_log == ERR_LOG6)
+						|| (err_log == ERR_LOG8))
+				continue;
+			err_reg = readl_relaxed(msm_gld_data->gladiator_virt_base +
+						get_obs_offset(err_log));
+			decode_obs_errlog(err_reg, err_log);
+		}
 	}
 	/* Clear IRQ */
 	clear_gladiator_error(msm_gld_data->gladiator_virt_base);
