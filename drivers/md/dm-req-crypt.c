@@ -73,10 +73,8 @@ struct req_crypt_result {
 	int err;
 };
 
-#define FDE_KEY_ID    0
-#define PFE_KEY_ID    1
-
 struct dm_req_dev {
+	struct list_head elist;
 	struct dm_dev *dev;
 	struct kmem_cache *_req_crypt_io_pool;
 	struct kmem_cache *_req_dm_scatterlist_pool;
@@ -98,10 +96,13 @@ struct dm_req_dev {
 	struct crypto_engine_entry *fde_eng;
 	struct crypto_engine_entry *pfe_eng;
 	struct mutex engine_list_mutex;
+	unsigned int unit;
 };
 
 struct req_dm_crypt_io {
-	struct ice_crypto_setting ice_settings;
+	struct ice_crypto_setting ice_settings; /*
+				 * first element due to alignment  requirement
+				 */
 	struct work_struct work;
 	struct request *cloned_request;
 	int error;
@@ -109,7 +110,7 @@ struct req_dm_crypt_io {
 	struct timespec start_time;
 	bool should_encrypt;
 	bool should_decrypt;
-	u32 key_id;
+	u32 dm_req_type;
 };
 
 struct req_dm_crypt_io_wrapper {
@@ -147,6 +148,8 @@ static void req_cryptd_split_req_queue
 		(struct req_dm_split_req_io *io);
 static void req_crypt_split_io_complete
 		(struct req_crypt_result *res, int err);
+static struct list_head dm_req_fde_list;
+static struct mutex dm_req_fde_mutex;
 
 static  bool req_crypt_should_encrypt(struct req_dm_crypt_io *req)
 {
@@ -172,10 +175,10 @@ static  bool req_crypt_should_encrypt(struct req_dm_crypt_io *req)
 	/* req->key_id = key_id; @todo support more than 1 pfe key */
 	if ((ret == 0) && (is_encrypted || is_inplace)) {
 		should_encrypt = true;
-		req->key_id = PFE_KEY_ID;
+		req->dm_req_type = PFE_DEVICE_TYPE;
 	} else if (pdm_req->is_fde_enabled) {
 		should_encrypt = true;
-		req->key_id = FDE_KEY_ID;
+		req->dm_req_type = FDE_DEVICE_TYPE;
 	}
 
 	return should_encrypt;
@@ -205,10 +208,10 @@ static  bool req_crypt_should_deccrypt(struct req_dm_crypt_io *req)
 	/* req->key_id = key_id; @todo support more than 1 pfe key */
 	if ((ret == 0) && (is_encrypted && !is_inplace)) {
 		should_deccrypt = true;
-		req->key_id = PFE_KEY_ID;
+		req->dm_req_type = PFE_DEVICE_TYPE;
 	} else if (pdm_req->is_fde_enabled) {
 		should_deccrypt = true;
-		req->key_id = FDE_KEY_ID;
+		req->dm_req_type = FDE_DEVICE_TYPE;
 	}
 
 	return should_deccrypt;
@@ -341,12 +344,14 @@ static void req_cryptd_crypt_read_convert(struct req_dm_crypt_io *io)
 
 	mutex_lock(&pdm_req->engine_list_mutex);
 
-	engine_list_total = (io->key_id == FDE_KEY_ID ?
-		pdm_req->num_engines_fde : (io->key_id == PFE_KEY_ID ?
+	engine_list_total =
+		(io->dm_req_type == FDE_DEVICE_TYPE ? pdm_req->num_engines_fde :
+				(io->dm_req_type == PFE_DEVICE_TYPE ?
 						pdm_req->num_engines_pfe : 0));
-
-	curr_engine_list = (io->key_id == FDE_KEY_ID ? pdm_req->fde_eng :
-		 (io->key_id == PFE_KEY_ID ?  pdm_req->pfe_eng : NULL));
+	curr_engine_list =
+		(io->dm_req_type == FDE_DEVICE_TYPE ?  pdm_req->fde_eng :
+				(io->dm_req_type == PFE_DEVICE_TYPE ?
+						pdm_req->pfe_eng : NULL));
 
 	mutex_unlock(&pdm_req->engine_list_mutex);
 
@@ -555,18 +560,18 @@ static void req_cryptd_crypt_write_convert(struct req_dm_crypt_io *io)
 				req_crypt_cipher_complete, &result);
 
 	mutex_lock(&pdm_req->engine_list_mutex);
-	engine_list_total = (io->key_id == FDE_KEY_ID ?
-		pdm_req->num_engines_fde : (io->key_id == PFE_KEY_ID ?
+	engine_list_total = (io->dm_req_type == FDE_DEVICE_TYPE ?
+		pdm_req->num_engines_fde : (io->dm_req_type == PFE_DEVICE_TYPE ?
 					pdm_req->num_engines_pfe : 0));
 
 	curr_engine_list =
-		(io->key_id == FDE_KEY_ID ?  pdm_req->fde_eng :
-			(io->key_id == PFE_KEY_ID ? pdm_req->pfe_eng :
+		(io->dm_req_type == FDE_DEVICE_TYPE ?  pdm_req->fde_eng :
+			(io->dm_req_type == PFE_DEVICE_TYPE ? pdm_req->pfe_eng :
 				NULL));
 
 	engine_cursor =
-		(io->key_id == FDE_KEY_ID ? &pdm_req->fde_cursor :
-			(io->key_id == PFE_KEY_ID ?
+		(io->dm_req_type == FDE_DEVICE_TYPE ? &pdm_req->fde_cursor :
+			(io->dm_req_type == PFE_DEVICE_TYPE ?
 						&pdm_req->pfe_cursor : NULL));
 	if ((engine_list_total < 1) || (NULL == curr_engine_list)
 	   || (NULL == engine_cursor)) {
@@ -1136,6 +1141,7 @@ static void deconfigure_qcrypto(struct dm_req_dev *pdm_req)
 static void req_crypt_dtr(struct dm_target *ti)
 {
 	struct dm_req_dev *pdm_req = ti->private;
+	struct dm_req_dev *entry = NULL;
 
 	DMDEBUG("dm-req-crypt Destructor.\n");
 	ti->private = NULL;
@@ -1165,6 +1171,15 @@ static void req_crypt_dtr(struct dm_target *ti)
 		pdm_req->dev = NULL;
 	}
 
+	mutex_lock(&dm_req_fde_mutex);
+	list_for_each_entry(entry, &dm_req_fde_list, elist) {
+		if (entry == pdm_req) {
+			list_del(&pdm_req->elist);
+			break;
+		}
+	}
+	mutex_unlock(&dm_req_fde_mutex);
+
 	kzfree(pdm_req);
 }
 
@@ -1174,6 +1189,7 @@ static int configure_qcrypto(struct dm_req_dev *pdm_req)
 	struct block_device *bdev = NULL;
 	int err = DM_REQ_CRYPT_ERROR, i;
 	struct request_queue *q = NULL;
+	unsigned int device;
 
 	bdev = pdm_req->dev->bdev;
 	q = bdev_get_queue(bdev);
@@ -1212,10 +1228,28 @@ static int configure_qcrypto(struct dm_req_dev *pdm_req)
 	(dm_qcrypto_func.get_engine_list)(pdm_req->num_engines, eng_list);
 
 	for (i = 0; i < pdm_req->num_engines; i++) {
-		if (eng_list[i].ce_device == FDE_KEY_ID)
+		device = eng_list[i].ce_device;
+		if (QCRYPTO_GET_DEVICE_TYPE(device) == FDE_DEVICE_TYPE &&
+			(pdm_req->unit ==
+				QCRYPTO_GET_DEVICE_NUM(device)))
 			pdm_req->num_engines_fde++;
-		if (eng_list[i].ce_device == PFE_KEY_ID)
+		if (QCRYPTO_GET_DEVICE_TYPE(device) == PFE_DEVICE_TYPE &&
+			(pdm_req->unit ==
+				QCRYPTO_GET_DEVICE_NUM(device)))
 			pdm_req->num_engines_pfe++;
+	}
+
+	if ((pdm_req->num_engines_fde == 0) && pdm_req->is_fde_enabled) {
+		mutex_unlock(&pdm_req->engine_list_mutex);
+		DMERR("%s fde unit %d no crypto engine available\n",
+						__func__, pdm_req->unit);
+		goto exit_err;
+	}
+	if ((pdm_req->num_engines_pfe == 0) && !pdm_req->is_fde_enabled) {
+		mutex_unlock(&pdm_req->engine_list_mutex);
+		DMERR("%s pfe unit %d no crypto engine available\n",
+						__func__, pdm_req->unit);
+		goto exit_err;
 	}
 
 	pdm_req->fde_eng = kcalloc(pdm_req->num_engines_fde,
@@ -1238,9 +1272,14 @@ static int configure_qcrypto(struct dm_req_dev *pdm_req)
 	pdm_req->pfe_cursor = 0;
 
 	for (i = 0; i < pdm_req->num_engines; i++) {
-		if (eng_list[i].ce_device == FDE_KEY_ID)
+		device = eng_list[i].ce_device;
+		if (QCRYPTO_GET_DEVICE_TYPE(device) == FDE_DEVICE_TYPE &&
+			(pdm_req->unit ==
+				QCRYPTO_GET_DEVICE_NUM(device)))
 			pdm_req->fde_eng[pdm_req->fde_cursor++] = eng_list[i];
-		if (eng_list[i].ce_device == PFE_KEY_ID)
+		if (QCRYPTO_GET_DEVICE_TYPE(device) == PFE_DEVICE_TYPE &&
+			(pdm_req->unit ==
+				QCRYPTO_GET_DEVICE_NUM(device)))
 			pdm_req->pfe_eng[pdm_req->pfe_cursor++] = eng_list[i];
 	}
 
@@ -1305,6 +1344,8 @@ static int req_crypt_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 	char dummy;
 	int ret;
 	struct dm_req_dev *pdm_req = NULL;
+	struct dm_req_dev *entry = NULL;
+	unsigned int lastargc;
 
 	DMDEBUG("dm-req-crypt Constructor.\n");
 
@@ -1375,12 +1416,23 @@ static int req_crypt_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 	}
 
 	pdm_req->encryption_mode = DM_REQ_CRYPT_ENCRYPTION_MODE_CRYPTO;
+	lastargc = 6;
 	if (argc >= 7 && argv[6]) {
-		if (!strcmp(argv[6], "ice"))
+		if (!strcmp(argv[6], "ice")) {
 			pdm_req->encryption_mode =
 				DM_REQ_CRYPT_ENCRYPTION_MODE_TRANSPARENT;
+			lastargc++;
+		}
 	}
 
+	pdm_req->unit = 0; /* default */
+	if (argc >= (lastargc + 1) && argv[lastargc]) {
+		if (kstrtouint(argv[lastargc], 10, &pdm_req->unit)) {
+			DMERR("%s Invalid Unit %s. Set it to 0 as default\n",
+				__func__, argv[lastargc]);
+			pdm_req->unit = 0;
+		}
+	}
 	if (pdm_req->encryption_mode ==
 				 DM_REQ_CRYPT_ENCRYPTION_MODE_TRANSPARENT) {
 		/* configure ICE settings */
@@ -1410,6 +1462,19 @@ static int req_crypt_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 			goto ctr_exit;
 		}
 	}
+
+	mutex_lock(&dm_req_fde_mutex);
+	list_for_each_entry(entry, &dm_req_fde_list, elist) {
+		if (entry->unit == pdm_req->unit && entry->encryption_mode ==
+				pdm_req->encryption_mode) {
+			mutex_unlock(&dm_req_fde_mutex);
+			DMERR("%s Unit %d in use\n", __func__, pdm_req->unit);
+			err = -EBUSY;
+			goto ctr_exit;
+		}
+	}
+	list_add_tail(&pdm_req->elist, &dm_req_fde_list);
+	mutex_unlock(&dm_req_fde_mutex);
 
 	pdm_req->req_io_pool = mempool_create_slab_pool(MIN_IOS,
 						pdm_req->_req_crypt_io_pool);
@@ -1482,6 +1547,9 @@ static int __init req_dm_crypt_init(void)
 		DMERR("register failed %d", r);
 		return r;
 	}
+
+	INIT_LIST_HEAD(&dm_req_fde_list);
+	mutex_init(&dm_req_fde_mutex);
 
 	DMINFO("dm-req-crypt successfully initalized.\n");
 

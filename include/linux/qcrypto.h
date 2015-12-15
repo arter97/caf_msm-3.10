@@ -24,6 +24,11 @@
 #define QCRYPTO_CTX_XTS_DU_SIZE_512B	0x00000100
 #define QCRYPTO_CTX_XTS_DU_SIZE_1KB	0x00000200
 
+#define QCRYPTO_DEVICE_TYPE_MASK 0xf
+#define FDE_DEVICE_TYPE 0
+#define PFE_DEVICE_TYPE 1
+#define QCRYPTO_GET_DEVICE_TYPE(device) (device & QCRYPTO_DEVICE_TYPE_MASK)
+#define QCRYPTO_GET_DEVICE_NUM(device) ((device >> 4) & 0xf)
 
 int qcrypto_cipher_set_device(struct ablkcipher_request *req, unsigned int dev);
 int qcrypto_ahash_set_device(struct ahash_request *req, unsigned int dev);
