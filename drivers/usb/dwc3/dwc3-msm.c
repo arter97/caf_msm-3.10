@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -2408,7 +2408,6 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 		goto put_dwc3;
 	}
 
-	dwc->vbus_active = of_property_read_bool(node, "qcom,vbus-present");
 	mdwc->irq_to_affin = platform_get_irq(mdwc->dwc3, 0);
 	mdwc->dwc3_cpu_notifier.notifier_call = dwc3_cpu_notifier_cb;
 
