@@ -66,6 +66,15 @@
 #define clk_gcc_pdm2_ahb_clk			0x365664f6
 #define clk_gcc_gmac0_axi_clk			0x94350a90
 #define clk_gcc_gmac1_axi_clk			0x943dfad5
+#define clk_gcc_bbif_adc0_clk			0x7781ab91
+#define clk_gcc_bbif_adc1_clk			0x7782cd22
+#define clk_gcc_bbif_adc2_clk			0x7783d1cb
+#define clk_gcc_bbif_adc3_clk			0x7784a012
+#define clk_gcc_bbif_adc4_clk			0x778501bc
+#define clk_gcc_bbif_dac0_clk			0x8973baab
+#define clk_gcc_bbif_dac1_clk			0x8974daad
+#define clk_gcc_bbif_dac2_clk			0x8975caac
+#define clk_gcc_bbif_dac3_clk			0x8976eaae
 
 /* DEBUG */
 #define clk_gcc_debug_mux			0x8121ac15
