@@ -920,6 +920,18 @@
 		reg-names = "bbif_base", "bbif_fuse";
 		reg = <0xfd300000 0x10000>,
 			<0xfc4b80d8 0x100>;
+		clocks = <&clock_gcc clk_gcc_bbif_adc0_clk>,
+			<&clock_gcc clk_gcc_bbif_adc1_clk>,
+			<&clock_gcc clk_gcc_bbif_adc2_clk>,
+			<&clock_gcc clk_gcc_bbif_adc3_clk>,
+			<&clock_gcc clk_gcc_bbif_adc4_clk>,
+			<&clock_gcc clk_gcc_bbif_dac0_clk>,
+			<&clock_gcc clk_gcc_bbif_dac1_clk>,
+			<&clock_gcc clk_gcc_bbif_dac2_clk>,
+			<&clock_gcc clk_gcc_bbif_dac3_clk>;
+		clock-names = "bbif_adc0_clk", "bbif_adc1_clk", "bbif_adc2_clk",
+			"bbif_adc3_clk", "bbif_adc4_clk", "bbif_dac0_clk",
+			"bbif_dac1_clk","bbif_dac2_clk","bbif_dac3_clk";
 	};
 
 	qcom,rfic@fd4a4090 {

@@ -96,6 +96,12 @@ struct bbif_bw_config {
 	unsigned int bbrx_config;
 };
 
+struct bbif_dac_adc_config {
+	unsigned int bbif_type;
+	unsigned int bbif_num;
+	bool bbif_op;
+};
+
 struct gpio_alt_config {
 	unsigned char gpio;
 	unsigned char func;
@@ -176,6 +182,9 @@ struct rfic_ldo_param {
 #define BBIF_IOCTL_CAL_SET \
 	_IOC(_IOC_WRITE, RFIC_IOCTL_MAGIC, 0x46, \
 		sizeof(struct bbif_param *))
+#define BBIF_IOCTL_DAC_ADC_ENABLE \
+	_IOC(_IOC_WRITE, RFIC_IOCTL_MAGIC, 0x47, \
+		sizeof(struct bbif_dac_adc_config *))
 #define RFIC_IOCTL_SET_LDO \
 	_IOC(_IOC_WRITE, RFIC_IOCTL_MAGIC, 0x50, \
 		sizeof(unsigned int *))
