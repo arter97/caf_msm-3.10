@@ -93,9 +93,19 @@
 /* CAL_SAR_DONE=bit[4], CAL_REF_DONE=bit[3], CAL_MACHINE=bit[2:1]*/
 #define DAC_CAL_DONE		0x1f
 
+#define MAX_BBIFNAME		80
+#define BBIF_ADC		0
+#define BBIF_DAC		1
+#define BBIF_DAC_NAME		"bbif_dac%d_clk"
+#define BBIF_ADC_NAME		"bbif_adc%d_clk"
+
+
 void __iomem *bbif_base;
 void __iomem *bbif_fuse;
 void __iomem *bbif_misc_base;
+
+
+static struct device *bbif_dev;
 
 static void bbif_combodac_cfg(void)
 {
@@ -170,6 +180,43 @@ static int bbif_open(struct inode *inode, struct file *file)
 
 static int bbif_release(struct inode *inode, struct file *file)
 {
+
+	return 0;
+}
+
+static int bbif_enable(struct device *dev, unsigned int bbif_type,
+		unsigned int num, bool enable)
+{
+	struct clk *bbif_clk;
+	char bbif_name[MAX_BBIFNAME+1];
+
+	if (bbif_type == BBIF_DAC) {
+		if (num >= BBIF_MAX_DAC) {
+			pr_err("%s: DAC num %d cannot exceed Max %d\n",
+				__func__, num, BBIF_MAX_DAC);
+			return -EFAULT;
+		}
+		snprintf(bbif_name, MAX_BBIFNAME, BBIF_DAC_NAME, num);
+	} else {
+		if (num >= BBIF_MAX_ADC) {
+			pr_err("%s: ADC num %d cannot exceed Max %d\n",
+				__func__, num, BBIF_MAX_ADC);
+			return -EFAULT;
+		}
+		snprintf(bbif_name, MAX_BBIFNAME, BBIF_ADC_NAME, num);
+	}
+
+	bbif_clk = clk_get(dev, bbif_name);
+	if (IS_ERR(bbif_clk)) {
+		pr_err("%s: BBIF type %d:%d CLK is  NULL\n", __func__,
+				bbif_type, num);
+		return -EFAULT;
+	}
+
+	if (enable)
+		clk_prepare_enable(bbif_clk);
+	else
+		clk_disable_unprepare(bbif_clk);
 
 	return 0;
 }
@@ -309,6 +356,18 @@ static long bbif_ioctl(struct file *file,
 		}
 	}
 	break;
+	case BBIF_IOCTL_DAC_ADC_ENABLE: {
+		struct bbif_dac_adc_config param;
+
+		if (copy_from_user(&param, argp, sizeof(param))) {
+			pr_err("%s: copy_from_user error\n", __func__);
+			return -EFAULT;
+		}
+
+		bbif_enable(bbif_dev, param.bbif_type, param.bbif_num,
+					param.bbif_op);
+	}
+	break;
 
 	default:
 		pr_err("%s: Invalid IOCTL\n", __func__);
@@ -360,6 +419,14 @@ static int bbif_probe(struct platform_device *pdev)
 	bbif_fuse = devm_ioremap_resource(&pdev->dev, mem_res);
 	if (IS_ERR(bbif_fuse))
 		return PTR_ERR(bbif_fuse);
+
+	bbif_dev = &pdev->dev;
+
+	bbif_enable(bbif_dev, BBIF_DAC, 0, true);
+	bbif_enable(bbif_dev, BBIF_DAC, 1, true);
+	bbif_enable(bbif_dev, BBIF_ADC, 0, true);
+	bbif_enable(bbif_dev, BBIF_ADC, 1, true);
+	bbif_enable(bbif_dev, BBIF_ADC, 4, true);
 
 	ret = misc_register(bbif_misc_dev);
 
