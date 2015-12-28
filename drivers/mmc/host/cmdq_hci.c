@@ -692,7 +692,8 @@ irqreturn_t cmdq_irq(struct mmc_host *mmc, int err)
 	u32 dbr_set = 0;
 
 	status = cmdq_readl(cq_host, CQIS);
-	cmdq_writel(cq_host, status, CQIS);
+	if (!err && !(status & CQIS_RED))
+		cmdq_writel(cq_host, status, CQIS);
 
 	if (!status && !err)
 		return IRQ_NONE;
@@ -732,6 +733,7 @@ irqreturn_t cmdq_irq(struct mmc_host *mmc, int err)
 						mmc_hostname(mmc));
 				cmdq_halt(mmc, false);
 				mmc_host_clr_halt(mmc);
+				cmdq_writel(cq_host, status, CQIS);
 				return IRQ_HANDLED;
 			}
 
@@ -794,6 +796,7 @@ skip_cqterri:
 			cq_host->ops->pm_qos_update(mmc, NULL, false);
 
 		cmdq_finish_data(mmc, tag);
+		cmdq_writel(cq_host, status, CQIS);
 	}
 
 	if (status & CQIS_TCC) {
