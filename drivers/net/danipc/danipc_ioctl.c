@@ -30,61 +30,6 @@
 #include "ipc_api.h"
 #include "danipc_lowlevel.h"
 
-struct agent_data {
-	struct task_struct	*task;
-	pid_t			pid;
-	/* to unregister from agent_table we need to know which interface task
-	 * is assigned to.
-	 */
-	struct net_device	*dev;
-};
-
-struct agent_data agent_data[MAX_LOCAL_AGENT];
-
-static int
-is_process_alive(const struct agent_data *agent_data_p)
-{
-	int			rc = 0;
-	struct task_struct	*task = find_task_by_vpid(agent_data_p->pid);
-
-	if (task) {
-		/* Paranoid check: task_struct exists, now verify it belongs
-		 * to the correct process.
-		 */
-		if (agent_data_p->task == task &&
-		    agent_data_p->pid == task->pid)
-			rc = 1;
-	}
-
-	return rc;
-}
-
-static void
-ipc_gc(void)
-{
-	unsigned lid;
-
-	for (lid = 0; lid < MAX_LOCAL_AGENT; lid++) {
-		struct agent_data *agent_data_p = &agent_data[lid];
-
-		if (agent_data_p->task && !is_process_alive(agent_data_p)) {
-			if (agent_data_p->dev) {
-				struct danipc_if *intf = (struct danipc_if *)
-					netdev_priv(agent_data_p->dev);
-
-				uint8_t	lcpuid = intf->rx_fifo_idx;
-				unsigned	aid =
-					__IPC_AGENT_ID(lcpuid, lid);
-				memset(agent_table[aid].name, '\0',
-				       MAX_AGENT_NAME_LEN);
-			}
-			agent_data_p->task	= NULL;
-			agent_data_p->pid	= 0;
-			agent_data_p->dev	= NULL;
-		}
-	}
-}
-
 static int
 danipc_strncmp(const char *cs, const char *ct, size_t cs_size, size_t ct_size)
 {
@@ -92,80 +37,30 @@ danipc_strncmp(const char *cs, const char *ct, size_t cs_size, size_t ct_size)
 		(strcmp(cs, ct) == 0));
 }
 
-/* Second registration is allowed only for the same process. */
-static int
-second_registration(struct danipc_reg *danipc_reg_p, const int aid,
-		    const unsigned lid)
-{
-	return (danipc_strncmp(agent_table[aid].name, danipc_reg_p->name,
-			       MAX_AGENT_NAME_LEN, MAX_AGENT_NAME) &&
-		agent_data[lid].task == current) ? 1 : 0;
-}
-
-static int
+int
 register_agent(struct net_device *dev, struct danipc_reg *danipc_reg_p)
 {
 	struct danipc_reg	danipc_reg;
-	unsigned		r_lid;
 	unsigned		agent_id = INVALID_ID;
 	int			rc = 0;
 	struct danipc_if	*intf = (struct danipc_if *)netdev_priv(dev);
 	uint8_t		lcpuid = intf->rx_fifo_idx;
-
-	ipc_gc();
+	unsigned		agent_idx;
 
 	if (copy_from_user(&danipc_reg, danipc_reg_p, sizeof(danipc_reg)))
 		return -EFAULT;
 
-	r_lid = danipc_reg.requested_lid;
+	for (agent_idx = __IPC_AGENT_ID(lcpuid, 0);
+		agent_idx < __IPC_AGENT_ID(lcpuid, MAX_LOCAL_AGENT - 1);
+		agent_idx++) {
 
-	if (r_lid != INVALID_ID) {
-		const unsigned r_aid = __IPC_AGENT_ID(lcpuid, r_lid);
-
-		/* Requested ID is not used, so assign it */
-		if (!*agent_table[r_aid].name ||
-		    second_registration(&danipc_reg, r_aid, r_lid) ||
-		    (danipc_strncmp(danipc_reg.name,
-				agent_table[r_aid].name,
-				MAX_AGENT_NAME, MAX_AGENT_NAME_LEN) &&
-			 agent_data[r_lid].task == NULL)) {
-			if (put_user(r_lid, &danipc_reg_p->assigned_lid))
-				return -EFAULT;
-			agent_id = r_aid;
-		}
-	}
-
-	if (agent_id == INVALID_ID) {
-		unsigned	lid;
-		/* Scan for the ID already assigned */
-		for (lid = 0; lid < MAX_LOCAL_AGENT; lid++) {
-			const unsigned aid = __IPC_AGENT_ID(lcpuid, lid);
-
-			if (danipc_strncmp(danipc_reg.name,
-					   agent_table[aid].name,
-					  MAX_AGENT_NAME, MAX_AGENT_NAME_LEN) &&
-			    agent_data[lid].task == NULL) {
-				if (put_user(lid, &danipc_reg_p->assigned_lid))
-					return -EFAULT;
-				agent_id = aid;
-				break;
-			}
-		}
-	}
-
-	if (agent_id == INVALID_ID) {
-		unsigned	lid;
-		/* Scan for the 1st free ID */
-		for (lid = 0; lid < MAX_LOCAL_AGENT; lid++) {
-			const unsigned aid = __IPC_AGENT_ID(lcpuid, lid);
-
-			if (!*agent_table[aid].name ||
-			    second_registration(&danipc_reg, aid, lid)) {
-				if (put_user(lid, &danipc_reg_p->assigned_lid))
-					return -EFAULT;
-				agent_id = aid;
-				break;
-			}
+		if (danipc_strncmp(
+			danipc_reg.name,
+			agent_table[agent_idx].name,
+			MAX_AGENT_NAME, MAX_AGENT_NAME_LEN) ||
+			agent_table[agent_idx].name[0] == '\0') {
+			agent_id = agent_idx;
+			break;
 		}
 	}
 
@@ -178,12 +73,13 @@ register_agent(struct net_device *dev, struct danipc_reg *danipc_reg_p)
 		agent_table[agent_id].name[an_siz-1] = 0;
 		if (put_user(cookie, &danipc_reg_p->cookie))
 			rc = -EFAULT;
-		agent_data[ipc_lid(agent_id)].task	= current;
-		agent_data[ipc_lid(agent_id)].pid	= current->pid;
-		agent_data[ipc_lid(agent_id)].dev	= dev;
-		netdev_dbg(dev, "%s: agent_id=0x%x assigned_lid=0x%x cpuid=%d agent_table[]=\"%s\"\n",
-			   __func__, agent_id, danipc_reg.assigned_lid, lcpuid,
-			agent_table[agent_id].name);
+
+		if (put_user(agent_id, &danipc_reg_p->assigned_lid))
+			return -EFAULT;
+
+		netdev_dbg(
+		dev, "%s: agent_id=0x%x cpuid=%d agent_table[]=\"%s\"\n",
+		__func__, agent_id, lcpuid, agent_table[agent_id].name);
 	} else {
 		rc = -ENOBUFS;
 	}

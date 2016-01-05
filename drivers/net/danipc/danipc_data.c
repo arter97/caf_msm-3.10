@@ -145,52 +145,24 @@ int danipc_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
 
 static void
 read_ipc_message(char *const packet, char *buf,
-		 struct ipc_msg_hdr *const first_hdr, const unsigned len,
-		u8 cpuid, enum ipc_trns_prio prio)
+			struct ipc_msg_hdr *const first_hdr, const unsigned len,
+			u8 cpuid, enum ipc_trns_prio prio)
 {
 	unsigned		data_len = IPC_FIRST_BUF_DATA_SIZE_MAX;
-	unsigned		total_len = 0;
 	unsigned		rest_len = len;
 	uint8_t			*data_ptr = (uint8_t *)(first_hdr) +
 						sizeof(struct ipc_msg_hdr);
-	struct ipc_buf_hdr	*next_ptr = NULL;
-	uint8_t			dest_aid =
-		 (((struct ipc_first_buf *)packet)->msg_hdr).dest_aid;
 
-	if (first_hdr->next)
-		first_hdr->next = ipc_to_virt(cpuid, prio,
-						(u32)first_hdr->next);
-	next_ptr = first_hdr->next;
+	data_len = min(rest_len, data_len);
+	memcpy(buf, data_ptr, data_len);
 
-	do {
-		if (total_len != 0) {
-			data_len = IPC_NEXT_BUF_DATA_SIZE_MAX;
-			data_ptr = (uint8_t *)(next_ptr) +
-						sizeof(struct ipc_buf_hdr);
-			if (next_ptr->next)
-				next_ptr->next = ipc_to_virt(cpuid, prio,
-						(u32)next_ptr->next);
-			next_ptr = next_ptr->next;
-		}
-
-		/* Clean 2 last bits (service information) */
-		next_ptr = (struct ipc_buf_hdr *)(((uint32_t)next_ptr) &
-							(~IPC_BUF_TYPE_BITS));
-		data_len = min(rest_len, data_len);
-		rest_len -= data_len;
-		memcpy(buf + total_len, data_ptr, data_len);
-		total_len += data_len;
-	} while ((next_ptr != NULL) && (rest_len != 0));
-
-	ipc_buf_free(packet, dest_aid, prio);
+	ipc_buf_free(packet, cpuid, prio);
 }
 
 static void
-drop_ipc_message(char *const packet, enum ipc_trns_prio prio)
+drop_ipc_message(char *const packet, enum ipc_trns_prio prio, u8 cpuid)
 {
-	uint8_t dest_aid = (((struct ipc_first_buf *)packet)->msg_hdr).dest_aid;
-
-	ipc_buf_free(packet, dest_aid, prio);
+	ipc_buf_free(packet, cpuid, prio);
 }
 
 void
@@ -243,7 +215,7 @@ handle_incoming_packet(struct packet_proc_info *pproc, char *const packet)
 	} else {
 		netdev_warn(dev, "%s: skb alloc failed dropping message\n",
 			    __func__);
-		drop_ipc_message(packet, prio);
+		drop_ipc_message(packet, prio, intf->rx_fifo_idx);
 		histo->stats->rx_dropped++;
 		histo->stats->rx_missed_errors++;
 	}
@@ -273,6 +245,39 @@ static inline unsigned long get_rxsched_state(void)
 		(atomic_t *)this_cpu_ptr(&danipc_rx_sched_state));
 }
 
+/* Returns true if there are errors */
+static inline int check_errors(struct packet_proc_info *pproc, char *packet)
+{
+	struct ipc_msg_hdr *const first_hdr = (struct ipc_msg_hdr *)packet;
+
+	if (first_hdr->msg_len > IPC_FIRST_BUF_DATA_SIZE_MAX) {
+		pproc->pkt_hist.stats->rx_dropped++;
+		pproc->pkt_hist.stats->rx_errors++;
+		pproc->pkt_hist.rx_err_len++;
+
+		return 1;
+	}
+
+	/* Destination AID should for a CPU ID/FIFO index we know about */
+	if (ipc_get_node(first_hdr->dest_aid) != pproc->intf->rx_fifo_idx) {
+		pproc->pkt_hist.stats->rx_dropped++;
+		pproc->pkt_hist.stats->rx_errors++;
+		pproc->pkt_hist.rx_err_dest_aid++;
+
+		return 1;
+	}
+
+	if (first_hdr->next != NULL) {
+		pproc->pkt_hist.stats->rx_dropped++;
+		pproc->pkt_hist.stats->rx_errors++;
+		pproc->pkt_hist.rx_err_chained_buf++;
+
+		return 1;
+	}
+
+	return 0;
+}
+
 /* -----------------------------------------------------------
  * Function:    danipc_recv
  * Description: Processing IPC messages
@@ -291,8 +296,14 @@ uint32_t danipc_recv(struct packet_proc_info *pproc)
 		ipc_data = ipc_trns_fifo_buf_read(prio, intf->rx_fifo_idx);
 
 		if (ipc_data) {
-			/* IPC_msg_handler(ipc_data); */
-			handle_incoming_packet(pproc, ipc_data);
+			if (check_errors(pproc, ipc_data)) {
+				drop_ipc_message(
+					ipc_data, prio,
+					intf->rx_fifo_idx);
+			} else {
+				/* IPC_msg_handler(ipc_data); */
+				handle_incoming_packet(pproc, ipc_data);
+			}
 		} else {
 			break; /* no more messages, queue empty */
 		}
