@@ -74,6 +74,9 @@ struct danipc_pkt_histo {
 	struct net_device_stats *stats;
 	unsigned long		rx_pool_used;
 	unsigned long		tx_delayed;
+	unsigned long		rx_err_dest_aid;
+	unsigned long		rx_err_chained_buf;
+	unsigned long		rx_err_len;
 	unsigned long		rx_histo[MAX_PACKET_SIZES];
 	unsigned long		tx_histo[MAX_PACKET_SIZES];
 	unsigned long		rx_pkt_burst[IPC_FIFO_BUF_NUM_HIGH];
