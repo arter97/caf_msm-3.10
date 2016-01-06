@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -602,7 +602,7 @@ static int __init msm_audio_ion_init(void)
 {
 	return platform_driver_register(&msm_audio_ion_driver);
 }
-module_init(msm_audio_ion_init);
+late_initcall(msm_audio_ion_init);
 
 static void __exit msm_audio_ion_exit(void)
 {

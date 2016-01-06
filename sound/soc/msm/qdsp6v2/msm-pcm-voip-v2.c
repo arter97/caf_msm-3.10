@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -1696,7 +1696,7 @@ static int __init msm_soc_platform_init(void)
 
 	return platform_driver_register(&msm_pcm_driver);
 }
-module_init(msm_soc_platform_init);
+late_initcall(msm_soc_platform_init);
 
 static void __exit msm_soc_platform_exit(void)
 {
