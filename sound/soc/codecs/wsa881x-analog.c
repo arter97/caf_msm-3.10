@@ -62,6 +62,7 @@ struct wsa881x_pdata {
 	struct wsa881x_tz_priv tz_pdata;
 	int bg_cnt;
 	int clk_cnt;
+	int enable_cnt;
 	int version;
 	struct mutex bg_lock;
 	struct mutex res_lock;
@@ -885,8 +886,11 @@ static int wsa881x_startup(struct wsa881x_pdata *pdata)
 	int ret = 0;
 	struct snd_soc_codec *codec = pdata->codec;
 
-	pr_debug("%s(): wsa startup\n", __func__);
+	pr_debug("%s(): wsa startup, enable_cnt:%d\n", __func__,
+					pdata->enable_cnt);
 
+	if (pdata->enable_cnt++ > 0)
+		return 0;
 	ret = msm_gpioset_activate(CLIENT_WSA_BONGO_1, "wsa_clk");
 	if (ret) {
 		pr_err("%s: gpio set cannot be activated %s\n",
@@ -910,7 +914,10 @@ static int wsa881x_shutdown(struct wsa881x_pdata *pdata)
 	int ret = 0, reg;
 	struct snd_soc_codec *codec = pdata->codec;
 
-	pr_debug("%s(): wsa shutdown\n", __func__);
+	pr_debug("%s(): wsa shutdown, enable_cnt:%d\n", __func__,
+					pdata->enable_cnt);
+	if (--pdata->enable_cnt > 0)
+		return 0;
 	ret = wsa881x_reset(pdata, false);
 	if (ret) {
 		pr_err("%s: wsa reset failed suspend %d\n",
