@@ -870,8 +870,14 @@ static void danipc_dump_fifo_hist(struct seq_file *s,
 	seq_printf(s, fmt_lu, "Rx errors", stats->rx_errors);
 	seq_printf(s, fmt_lu, "Rx dropped", stats->rx_dropped);
 	seq_printf(s, fmt_lu, "Rx nobuf", stats->rx_missed_errors);
+	seq_printf(
+		s, fmt_lu, "Rx invalid dest aid",
+		histo->rx_err_dest_aid);
+	seq_printf(s, fmt_lu, "Rx chained_buffers", histo->rx_err_chained_buf);
+	seq_printf(s, fmt_lu, "Rx invalid length", histo->rx_err_len);
 	seq_printf(s, fmt_lu, "Rx unknown drops", stats->rx_dropped -
-		stats->rx_missed_errors);
+		(stats->rx_missed_errors + histo->rx_err_dest_aid
+		+ histo->rx_err_chained_buf + histo->rx_err_len));
 }
 
 static void danipc_dump_pkt_burst(struct seq_file *s, unsigned long *pkt_bust)

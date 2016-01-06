@@ -114,7 +114,7 @@ char *ipc_buf_alloc(uint8_t dest_aid, enum ipc_trns_prio prio)
  *		or on sending node when need to free previously allocated
  *		buffers
  *
- * Parameters:	dest_aid	- node to free the packet to.
+ * Parameters:	cpuid		- index for remote processor
  *		buf_first	- Pointer to first message buffer
  *		prio		- Transport priority level
  *
@@ -122,35 +122,23 @@ char *ipc_buf_alloc(uint8_t dest_aid, enum ipc_trns_prio prio)
  * Returns: Result code
  *
  */
-int32_t ipc_buf_free(char *buf_first, uint8_t dest_aid, enum ipc_trns_prio prio)
+int32_t ipc_buf_free(char *buf_first, uint8_t cpuid, enum ipc_trns_prio prio)
 {
 	struct ipc_buf_hdr		*cur_buf;
-	struct ipc_buf_hdr		*next_buf;
 	struct ipc_trns_func const	*trns_funcs;
 	ipc_trns_free_t			free_func;
-	uint8_t				cpuid;
 	int32_t				res = IPC_GENERIC_ERROR;
 
 	if (likely(buf_first)) {
 		cur_buf = (struct ipc_buf_hdr *)buf_first;
-		cpuid = ipc_get_node(dest_aid);
 		trns_funcs = get_trns_funcs(cpuid);
 		if (likely(trns_funcs)) {
 			free_func = trns_funcs->trns_free;
 			if (likely(free_func)) {
-				/* Now loop all allocated buffers and free them.
-				 * Last buffer is either a single (type = 0)
-				 * or the buffer marked as the last (type = 2)
-				 * all other buffers have their LSB set
-				 * (type = 1 or 3).
-				 */
-				do {
-					next_buf = ((struct ipc_msg_hdr *)
-					 IPC_NEXT_PTR_PART(cur_buf))->next;
-					free_func(IPC_NEXT_PTR_PART(cur_buf),
-						  cpuid, prio);
-					cur_buf = next_buf;
-				} while ((uint32_t)cur_buf & IPC_BUF_TYPE_MTC);
+				free_func(
+				IPC_NEXT_PTR_PART(cur_buf), cpuid,
+				prio);
+
 				res = IPC_SUCCESS;
 			}
 		}
