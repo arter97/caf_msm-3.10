@@ -1,4 +1,4 @@
-/* Copyright (c) 2014-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2014-2016, The Linux Foundation. All rights reserved.
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
  * only version 2 as published by the Free Software Foundation.
@@ -886,6 +886,12 @@ static int req_crypt_endio(struct dm_target *ti, struct request *clone,
 		goto submit_request;
 	}
 
+	/* If it is for flush or discard, free up req_io and return */
+	if (clone->cmd_flags & (REQ_FLUSH | REQ_DISCARD)) {
+		mempool_free(req_io, req_io_pool);
+		goto submit_request;
+	}
+
 	if (rq_data_dir(clone) == WRITE) {
 		rq_for_each_segment(bvec, clone, iter1) {
 			if (req_io->should_encrypt && bvec->bv_offset == 0) {
@@ -992,7 +998,9 @@ static int req_crypt_map(struct dm_target *ti, struct request *clone,
 	}
 
 	if (rq_data_dir(clone) == READ ||
-		encryption_mode == DM_REQ_CRYPT_ENCRYPTION_MODE_TRANSPARENT) {
+		encryption_mode == DM_REQ_CRYPT_ENCRYPTION_MODE_TRANSPARENT ||
+			(clone->cmd_flags & (REQ_FLUSH | REQ_DISCARD))) {
+			/* If req is REQ_FLUSH or REQ_DISCARD, just bypass */
 		error = DM_MAPIO_REMAPPED;
 		goto submit_request;
 	} else if (rq_data_dir(clone) == WRITE) {
