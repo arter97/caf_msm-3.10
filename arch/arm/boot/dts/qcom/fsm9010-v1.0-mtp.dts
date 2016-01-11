@@ -1,4 +1,4 @@
-/* Copyright (c) 2014-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2014-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -94,6 +94,63 @@
 
 		phy1: ethernet-phy@1 {
 			status = "disabled";
+		};
+	};
+
+	qcom,rfic@fd4a4090 {
+		pinctrl-names = "default";
+		pinctrl-0 = <&rf_ssbi_default &grfc_f2_default
+			&grfc_f3_default &grfc_f4_default>;
+	};
+
+	tlmm_pinmux: pinctrl@fd510000 {
+		rf_ssbi {
+			qcom,pins = <&gp 47>, <&gp 48>;
+			qcom,num-grp-pins = <2>;
+			qcom,pin-func = <2>;
+			label = "rf_ssbi1";
+			/* default state */
+			rf_ssbi_default: rf_ssbi_default {
+				drive-strength = <6>;
+				bias-pull-down;
+			};
+		};
+
+		grfc_f2 {
+			qcom,pins = <&gp 52>, <&gp 58>, <&gp 59>,
+				<&gp 64>, <&gp 65>;
+			qcom,num-grp-pins = <5>;
+			qcom,pin-func = <2>;
+			label = "grfc_f2";
+			/* default state */
+			grfc_f2_default: grfc_f2_default {
+				drive-strength = <6>;
+				bias-pull-down;
+			};
+		};
+
+		grfc_f3 {
+			qcom,pins = <&gp 54>;
+			qcom,num-grp-pins = <1>;
+			qcom,pin-func = <3>;
+			label = "grfc_f3";
+			/* default state */
+			grfc_f3_default: grfc_f3_default {
+				drive-strength = <6>;
+				bias-pull-down;
+			};
+		};
+
+		grfc_f4 {
+			qcom,pins = <&gp 70>;
+			qcom,num-grp-pins = <1>;
+			qcom,pin-func = <4>;
+			label = "grfc_f4";
+			/* default state */
+			grfc_f4_default: grfc_f4_default {
+				drive-strength = <6>;
+				bias-pull-down;
+			};
 		};
 	};
 };
