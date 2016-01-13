@@ -41,6 +41,7 @@ Optional properties:
 - qcom,gmac0-enabled: Enables GMAC0 port.
 - qcom,gmac1-enabled: Enables GMAC1 port.
 - qcom,tstamp-enabled: Enables Timestamping feature.
+- qcom,oam-enabled: Enables nss-oam feature.
 
 example:
 nss: nss@e6000000 {
@@ -59,4 +60,5 @@ nss: nss@e6000000 {
 	qcom,gmac0-enabled;
 	qcom,gmac1-enabled;
 	qcom,tstamp-enabled;
+	qcom,oam-enabled;
 };
