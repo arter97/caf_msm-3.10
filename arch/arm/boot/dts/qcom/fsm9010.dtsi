@@ -1106,6 +1106,7 @@
 		qcom,gmac0-enabled;
 		qcom,gmac1-enabled;
 		qcom,tstamp-enabled;
+		qcom,oam-enabled;
 	};
 
 	nss-gmac-common@fc800000 {
