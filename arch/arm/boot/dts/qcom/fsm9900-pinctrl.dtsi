@@ -1,4 +1,4 @@
-/* Copyright (c) 2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -51,50 +51,6 @@
 			};
 		};
 
-		geni7_data {
-			qcom,pins = <&gp 8>;
-			qcom,num-grp-pins = <1>;
-			label = "geni7_data";
-			qcom,pin-func = <4>;
-			geni7_data_default: geni7_data_default {
-				drive-strength = <8>;
-				bias-pull-down;
-			};
-		};
-
-		geni1_data {
-			qcom,pins = <&gp 9>;
-			qcom,num-grp-pins = <1>;
-			label = "geni1_data";
-			qcom,pin-func = <4>;
-			geni1_data_default: geni1_data_default {
-				drive-strength = <8>;
-				bias-pull-down;
-			};
-		};
-
-		geni2_data {
-			qcom,pins = <&gp 10>;
-			qcom,num-grp-pins = <1>;
-			label = "geni2_data";
-			qcom,pin-func = <4>;
-			geni2_data_default: geni2_data_default {
-				drive-strength = <8>;
-				bias-pull-down;
-			};
-		};
-
-		geni7_clk {
-			qcom,pins = <&gp 11>;
-			qcom,num-grp-pins = <1>;
-			label = "geni7_clk";
-			qcom,pin-func = <4>;
-			geni7_clk_default: geni7_clk_default {
-				drive-strength = <8>;
-				bias-pull-down;
-			};
-		};
-
 		blsp1_uart4_tx {
 			qcom,pins = <&gp 16>;
 			qcom,num-grp-pins = <1>;
@@ -114,50 +70,6 @@
 			blsp1_uart4_rx_default: blsp1_uart4_rx_default {
 				drive-strength = <6>;
 				bias-pull-up;
-			};
-		};
-
-		geni3_data {
-			qcom,pins = <&gp 20>;
-			qcom,num-grp-pins = <1>;
-			label = "geni3_data";
-			qcom,pin-func = <5>;
-			geni3_data_default: geni3_data_default {
-				drive-strength = <8>;
-				bias-pull-down;
-			};
-		};
-
-		geni4_data {
-			qcom,pins = <&gp 21>;
-			qcom,num-grp-pins = <1>;
-			label = "geni4_data";
-			qcom,pin-func = <5>;
-			geni4_data_default: geni4_data_default {
-				drive-strength = <8>;
-				bias-pull-down;
-			};
-		};
-
-		geni6_data {
-			qcom,pins = <&gp 22>;
-			qcom,num-grp-pins = <1>;
-			label = "geni6_data";
-			qcom,pin-func = <5>;
-			geni6_data_default: geni6_data_default {
-				drive-strength = <8>;
-				bias-pull-down;
-			};
-		};
-
-		geni6_clk {
-			qcom,pins = <&gp 23>;
-			qcom,num-grp-pins = <1>;
-			label = "geni6_clk";
-			qcom,pin-func = <5>;
-			geni6_clk_default: geni6_clk_default {
-				drive-strength = <8>;
-				bias-pull-down;
 			};
 		};
 
@@ -225,28 +137,6 @@
 				drive-strength = <8>;
 				bias-pull-up;
 				output-high;
-			};
-		};
-
-		geni5_data {
-			qcom,pins = <&gp 30>;
-			qcom,num-grp-pins = <1>;
-			label = "geni5_data";
-			qcom,pin-func = <4>;
-			geni5_data_default: geni5_data_default {
-				drive-strength = <8>;
-				bias-pull-down;
-			};
-		};
-
-		geni5_clk {
-			qcom,pins = <&gp 31>;
-			qcom,num-grp-pins = <1>;
-			label = "geni5_clk";
-			qcom,pin-func = <4>;
-			geni5_clk_default: geni5_clk_default {
-				drive-strength = <8>;
-				bias-pull-down;
 			};
 		};
 
@@ -377,135 +267,6 @@
 			};
 		};
 
-		rf_ftr2_hb_nl_sel {
-			qcom,pins = <&gp 96>;
-			qcom,num-grp-pins = <1>;
-			label = "rf_ftr2_hb_nl_sel";
-			qcom,pin-func = <0>; /* GPIO */
-			rf_ftr2_hb_nl_sel_default: rf_ftr2_hb_nl_sel_default {
-				drive-strength = <2>;
-				bias-disable;
-				input-enable;
-			};
-		};
-
-		rf_ftr2_lb_nl_sel {
-			qcom,pins = <&gp 97>;
-			qcom,num-grp-pins = <1>;
-			label = "rf_ftr2_lb_nl_sel";
-			qcom,pin-func = <0>; /* GPIO */
-			rf_ftr2_lb_nl_sel_default: rf_ftr2_lb_nl_sel_default {
-				drive-strength = <2>;
-				bias-disable;
-				input-enable;
-			};
-		};
-
-		rf_ftr1_hb_nl_sel {
-			qcom,pins = <&gp 98>;
-			qcom,num-grp-pins = <1>;
-			label = "rf_ftr1_hb_nl_sel";
-			qcom,pin-func = <0>; /* GPIO */
-			rf_ftr1_hb_nl_sel_default: rf_ftr1_hb_nl_sel_default {
-				drive-strength = <2>;
-				bias-disable;
-				input-enable;
-			};
-		};
-
-		rf_ftr1_lb_nl_sel {
-			qcom,pins = <&gp 99>;
-			qcom,num-grp-pins = <1>;
-			label = "rf_ftr1_lb_nl_sel";
-			qcom,pin-func = <0>; /* GPIO */
-			rf_ftr1_lb_nl_sel_default: rf_ftr1_lb_nl_sel_default {
-				drive-strength = <2>;
-				bias-disable;
-				input-enable;
-			};
-		};
-
-		rf_ftr1_sbi_sel0 {
-			qcom,pins = <&gp 103>;
-			qcom,num-grp-pins = <1>;
-			label = "rf_ftr1_sbi_sel0";
-			qcom,pin-func = <0>; /* GPIO */
-			rf_ftr1_sbi_sel0_default: rf_ftr1_sbi_sel0_default {
-				drive-strength = <2>;
-				bias-disable;
-				input-enable;
-			};
-		};
-
-		rf_ftr1_sbi_sel1 {
-			qcom,pins = <&gp 104>;
-			qcom,num-grp-pins = <1>;
-			label = "rf_ftr1_sbi_sel1";
-			qcom,pin-func = <0>; /* GPIO */
-			rf_ftr1_sbi_sel1_default: rf_ftr1_sbi_sel1_default {
-				drive-strength = <2>;
-				bias-disable;
-				input-enable;
-			};
-		};
-
-		rf_ftr2_sbi_sel0 {
-			qcom,pins = <&gp 105>;
-			qcom,num-grp-pins = <1>;
-			label = "rf_ftr2_sbi_sel0";
-			qcom,pin-func = <0>; /* GPIO */
-			rf_ftr2_sbi_sel0_default: rf_ftr2_sbi_sel0_default {
-				drive-strength = <2>;
-				bias-disable;
-				input-enable;
-			};
-		};
-
-		rf_ftr2_sbi_sel1 {
-			qcom,pins = <&gp 106>;
-			qcom,num-grp-pins = <1>;
-			label = "rf_ftr2_sbi_sel1";
-			qcom,pin-func = <0>; /* GPIO */
-			rf_ftr2_sbi_sel1_default: rf_ftr2_sbi_sel1_default {
-				drive-strength = <2>;
-				bias-disable;
-				input-enable;
-			};
-		};
-
-		pdm_tx1_vpa_ctl {
-			qcom,pins = <&gp 116>;
-			qcom,num-grp-pins = <1>;
-			label = "pdm_tx1_vpa_ctl";
-			qcom,pin-func = <1>;
-			pdm_tx1_vpa_ctl_default: pdm_tx1_vpa_ctl_default {
-				drive-strength = <8>;
-				bias-pull-up;
-			};
-		};
-
-		pdm_tx2_vpa_ctl {
-			qcom,pins = <&gp 117>;
-			qcom,num-grp-pins = <1>;
-			label = "pdm_tx2_vpa_ctl";
-			qcom,pin-func = <1>;
-			pdm_tx2_vpa_ctl_default: pdm_tx2_vpa_ctl_default {
-				drive-strength = <8>;
-				bias-pull-up;
-			};
-		};
-
-		pdm_tx3_vpa_ctl {
-			qcom,pins = <&gp 118>;
-			qcom,num-grp-pins = <1>;
-			label = "pdm_tx3_vpa_ctl";
-			qcom,pin-func = <1>;
-			pdm_tx3_vpa_ctl_default: pdm_tx3_vpa_ctl_default {
-				drive-strength = <8>;
-				bias-pull-up;
-			};
-		};
-
 		gps_nav_tlmm_blank {
 			qcom,pins = <&gp 120>;
 			qcom,num-grp-pins = <1>;
@@ -514,17 +275,6 @@
 			gps_nav_tlmm_blank_default: gps_nav_tlmm_blank_default {
 				drive-strength = <2>;
 				bias-pull-down;
-			};
-		};
-
-		pdm_tx4_vpa_ctl {
-			qcom,pins = <&gp 121>;
-			qcom,num-grp-pins = <1>;
-			label = "pdm_tx4_vpa_ctl";
-			qcom,pin-func = <1>;
-			pdm_tx4_vpa_ctl_default: pdm_tx4_vpa_ctl_default {
-				drive-strength = <8>;
-				bias-pull-up;
 			};
 		};
 
@@ -618,6 +368,223 @@
 				drive-strength = <2>;
 				bias-pull-up;
 				input-enable;
+			};
+		};
+
+		/*
+		 *  Pins for RF operation
+		 */
+
+		rf_detect {
+			qcom,pins =
+				<&gp 96>,  /* FTR2_HB_NL_SEL */
+				<&gp 97>,  /* FTR2_LB_NL_SEL */
+				<&gp 98>,  /* FTR1_HB_NL_SEL */
+				<&gp 99>,  /* FTR1_LB_NL_SEL */
+				<&gp 103>, /* FTR1_SBI_SEL0  */
+				<&gp 104>, /* FTR1_SBI_SEL1  */
+				<&gp 105>, /* FTR2_SBI_SEL0  */
+				<&gp 106>; /* FTR2_SBI_SEL1  */
+			qcom,num-grp-pins = <8>;
+			label = "rf_detect";
+			qcom,pin-func = <0>; /* GPIO */
+			rf_detect_active: rf_detect_active {
+				drive-strength = <2>;
+				bias-disable;
+				input-enable;
+			};
+		};
+
+		pdm_tx_vpa_ctl {
+			qcom,pins =
+				<&gp 116>, /* TX1_VPA_CTL */
+				<&gp 117>, /* TX2_VPA_CTL */
+				<&gp 118>, /* TX3_VPA_CTL */
+				<&gp 121>; /* TX4_VPA_CTL */
+			qcom,num-grp-pins = <4>;
+			label = "pdm_tx_vpa_ctl";
+			qcom,pin-func = <1>;
+			pdm_tx_vpa_ctl_active: pdm_tx_vpa_ctl_active {
+				drive-strength = <8>;
+				bias-pull-up;
+			};
+		};
+
+		geni_f4 {
+			qcom,pins =
+				<&gp 8>,  /* GENI7 DATA */
+				<&gp 9>,  /* GENI1 DATA */
+				<&gp 10>, /* GENI2 DATA */
+				<&gp 11>, /* GENI7 CLK  */
+				<&gp 30>, /* GENI5 DATA */
+				<&gp 31>; /* GENI5 CLK  */
+			qcom,num-grp-pins = <6>;
+			label = "geni_f4";
+			qcom,pin-func = <4>;
+			geni_f4_active: geni_f4_active {
+				drive-strength = <8>;
+				bias-pull-down;
+			};
+		};
+
+		geni_f5 {
+			qcom,pins =
+				<&gp 20>, /* GENI3 DATA */
+				<&gp 21>, /* GENI4 DATA */
+				<&gp 22>, /* GENI6 DATA */
+				<&gp 23>; /* GENI6 CLK  */
+			qcom,num-grp-pins = <4>;
+			label = "geni_f5";
+			qcom,pin-func = <5>;
+			geni_f5_active: geni_f5_active {
+				drive-strength = <8>;
+				bias-pull-down;
+			};
+		};
+
+		/* MDM GRFC Pins for RF boards mdm_m, mdm_k and mdm_g */
+
+		mdm_m_grfc_f0 {
+			qcom,pins =
+				<&gp 109>, /* WTR1605_RX_ON / FTR1_INTERRUPT */
+				<&gp 110>; /* WTR1605_RF_ON / FTR2_INTERRUPT */
+			qcom,num-grp-pins = <2>;
+			qcom,pin-func = <0>; /* GPIO */
+			label = "mdm_m_grfc_f0";
+			mdm_m_grfc_f0_active: mdm_m_grfc_f0_active {
+				drive-strength = <2>;
+				bias-disable;
+				input-enable;
+			};
+		};
+
+		mdm_m_grfc_f2 {
+			qcom,pins =
+				<&gp 88>,  /* TX1_HB_PA_EN / TX1_PA_EN            */
+				<&gp 89>,  /* TX1_LB_PA_EN / TX2_PA_EN            */
+				<&gp 90>,  /* TX2_HB_PA_EN / FTR1_DPD_SEL1        */
+				<&gp 91>,  /* TX2_LB_PA_EN / FTR1_DPD_SEL0        */
+				<&gp 92>,  /* TX3_HB_PA_EN / TX3_PA_EN            */
+				<&gp 93>,  /* TX3_LB_PA_EN / TX4_PA_EN            */
+				<&gp 94>,  /* TX4_HB_PA_EN / FTR2_DPD_SEL1        */
+				<&gp 95>,  /* TX4_LB_PA_EN / FTR2_DPD_SEL0        */
+				<&gp 96>,  /* TX3_TX4_HB_PA_EN / FTR2_NL_SW1_SEL  */
+				<&gp 97>,  /* TX3_TX4_LB_PA_EN / FTR2_NL_SW2_SEL  */
+				<&gp 98>,  /* TX1_TX2_HB_PA_EN / FTR1_NL_SW1_SEL  */
+				<&gp 99>,  /* TX1_TX2_LB_PA_EN / FTR1_NL_SW2_SEL  */
+				<&gp 100>, /* ANT1_HBLB_FTR_SEL / SPARE           */
+				<&gp 101>, /* FTR2_TXRX_SW_SEL                    */
+				<&gp 102>, /* FTR1_TXRX_SW_SEL                    */
+				<&gp 103>, /* HB_TDD / FTR1_RX_ON                 */
+				<&gp 104>, /* SPARE                               */
+				<&gp 105>, /* FTR2_SEL0 / FTR2_RX_ON              */
+				<&gp 106>, /* SPARE                               */
+				<&gp 111>, /* WTR2605_RX_ON / SPARE               */
+				<&gp 112>, /* TX1_VPA_EN                          */
+				<&gp 113>, /* TX2_VPA_EN                          */
+				<&gp 114>, /* TX3_VPA_EN                          */
+				<&gp 115>; /* TX4_VPA_EN                          */
+			qcom,num-grp-pins = <24>;
+			qcom,pin-func = <2>;
+			label = "mdm_m_grfc_f2";
+			mdm_m_grfc_f2_active: mdm_m_grfc_f2_active {
+				drive-strength = <6>;
+				bias-pull-down;
+			};
+		};
+
+		mdm_k_grfc_f2 {
+			qcom,pins =
+				<&gp 88>,  /* TX1_HB_PA_EN / TX1_PA_EN       */
+				<&gp 89>,  /* TX1_LB_PA_EN / TX2_PA_EN       */
+				<&gp 90>,  /* TX2_HB_PA_EN / FTR1_DPD_SEL0   */
+				<&gp 91>,  /* TX2_LB_PA_EN / FTR1_DPD_SEL1   */
+				<&gp 92>,  /* TX3_HB_PA_EN / TX3_PA_EN       */
+				<&gp 93>,  /* TX3_LB_PA_EN / TX4_PA_EN       */
+				<&gp 94>,  /* TX4_HB_PA_EN / FTR2_DPD_SEL0   */
+				<&gp 95>,  /* TX4_LB_PA_EN / FTR2_DPD_SEL1   */
+				<&gp 100>, /* ANT1_HBLB_FTR_SEL / SPARE      */
+				<&gp 101>, /* HB_HDD / SPARE                 */
+				<&gp 109>, /* WTR1605_RX_ON / FTR1_INTERRUPT */
+				<&gp 110>, /* WTR1605_RF_ON / FTR2_INTERRUPT */
+				<&gp 111>, /* WTR2605_RX_ON / SPARE          */
+				<&gp 112>, /* TX1_VPA_EN                     */
+				<&gp 113>, /* TX2_VPA_EN                     */
+				<&gp 114>, /* TX3_VPA_EN                     */
+				<&gp 115>; /* TX4_VPA_EN                     */
+			qcom,num-grp-pins = <17>;
+			qcom,pin-func = <2>;
+			label = "mdm_k_grfc_f2";
+			mdm_k_grfc_f2_active: mdm_k_grfc_f2_active {
+				drive-strength = <6>;
+				bias-pull-down;
+			};
+		};
+
+		mdm_k_gpio_f2 {
+			qcom,pins =
+				<&gp 96>,  /* TX3_TX4_HB_PA_EN / FTR1_NL_SW1_SEL  */
+				<&gp 97>,  /* TX3_TX4_LB_PA_EN / FTR1_NL_SW2_SEL  */
+				<&gp 98>,  /* TX1_TX2_HB_PA_EN / FTR2_NL_SW1_SEL  */
+				<&gp 99>,  /* TX1_TX2_LB_PA_EN / FTR2_NL_SW2_SEL  */
+				<&gp 103>, /* FTR1_SEL0 / FTR2_TXRX_SW_SEL        */
+				<&gp 104>, /* FTR1_SEL1 / FTR1_TXRX_SW_SEL        */
+				<&gp 105>, /* FTR2_SEL0 / FTR1_RX_ON              */
+				<&gp 106>; /* FTR2_SEL1 / FTR1_DPD_ON             */
+			qcom,num-grp-pins = <8>;
+			qcom,pin-func = <2>;
+			label = "mdm_k_gpio_f2";
+			mdm_k_gpio_f2_active: mdm_k_gpio_f2_active {
+				drive-strength = <6>;
+				bias-pull-down;
+			};
+		};
+
+		mdm_g_ctu_bridge {
+			qcom,pins =
+				<&gp 82>, /* CTU_GPIO_BRIDGE[48] */
+				<&gp 83>; /* CTU_GPIO_BRIDGE[47] */
+			qcom,num-grp-pins = <2>;
+			qcom,pin-func = <2>;
+			label = "mdm_g_ctu_bridge";
+			mdm_g_ctu_bridge_active: mdm_g_ctu_bridge_active {
+				drive-strength = <2>;
+				bias-pull-down;
+			};
+		};
+
+		mdm_g_grfc_f1 {
+			qcom,pins =
+				<&gp 88>,  /* TX1_HB_PA_EN / TX1_PA_EN      */
+				<&gp 90>,  /* TX2_HB_PA_EN / FTR1_DPD_SEL0  */
+				<&gp 92>,  /* TX2_LB_PA_EN / FTR1_DPD_SEL1  */
+				<&gp 94>,  /* TX3_HB_PA_EN / TX3_PA_EN      */
+				<&gp 96>,  /* TX3_LB_PA_EN / TX4_PA_EN      */
+				<&gp 98>,  /* TX4_HB_PA_EN / FTR2_DPD_SEL0  */
+				<&gp 101>; /* HB_HDD / SPARE                */
+			qcom,num-grp-pins = <7>;
+			qcom,pin-func = <1>;
+			label = "mdm_g_grfc_f1";
+			mdm_g_grfc_f1_active: mdm_g_grfc_f1_active {
+				drive-strength = <6>;
+				bias-pull-down;
+			};
+		};
+
+		mdm_g_grfc_f2 {
+			qcom,pins =
+				<&gp 103>, /* FTR1_SEL0 / FTR2_TXRX_SW_SEL */
+				<&gp 104>, /* FTR1_SEL1 / FTR1_TXRX_SW_SEL */
+				<&gp 105>, /* FTR2_SEL0 / FTR1_RX_ON       */
+				<&gp 106>, /* FTR2_SEL1 / FTR1_DPD_ON      */
+				<&gp 112>, /* TX1_VPA_EN                   */
+				<&gp 114>; /* TX1_VPA_EN                   */
+			qcom,num-grp-pins = <6>;
+			qcom,pin-func = <2>;
+			label = "mdm_g_grfc_f2";
+			mdm_g_grfc_f2_active: mdm_g_grfc_f2_active {
+				drive-strength = <6>;
+				bias-pull-down;
 			};
 		};
 	};

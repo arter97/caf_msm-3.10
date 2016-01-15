@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -1053,6 +1053,35 @@ void rfic_pvc_enable(void __iomem *pvc_addr, int rfic)
 	}
 }
 
+/**
+ * ftr_init_grfcpins() - enable grfc pins specific to RF board
+ * @dev: - rfic device for which grfc pins need to be enabled
+ * @mdm_type - type of RF board
+ */
+static int ftr_init_grfcpins(struct device *dev, const char *mdm_type)
+{
+	int ret;
+	struct pinctrl_state *state;
+	struct pinctrl *pinctrl = dev->pins->p;
+
+	state = pinctrl_lookup_state(pinctrl, mdm_type);
+	if (IS_ERR(state)) {
+		pr_err("%s: Unable to find RF pinctrl state '%s'\n",
+			__func__, mdm_type);
+		ret = -EINVAL;
+	} else {
+		ret = pinctrl_select_state(pinctrl, state);
+		if (ret)
+			pr_err("%s: Failed to set RF pinctrl state '%s'\n",
+				__func__, mdm_type);
+		else
+			pr_info("%s: Enabled RF pinctrl state '%s'\n",
+				__func__, mdm_type);
+	}
+
+	return ret;
+}
+
 static int ftr_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
@@ -1137,20 +1166,23 @@ static int ftr_probe(struct platform_device *pdev)
 		}
 
 		if ((rfbid > RF_TYPE_48) && (rfbid != 0xff)) {
-			fsm9900_mtr_init();
+			ret = ftr_init_grfcpins(&pdev->dev, "mdm_m");
 			pdm_mtr_enable();
 			pr_info("%s: MTR PDM Enabled\n", __func__);
 		} else if ((rfbid > RF_TYPE_16) && (rfbid < RF_TYPE_32)) {
-			fsm9900_rfic_init();
+			ret = ftr_init_grfcpins(&pdev->dev, "mdm_k");
 			pdm_enable();
 			pr_info("%s: PDM Enabled\n", __func__);
 		} else if ((rfbid > RF_TYPE_32) && (rfbid < RF_TYPE_48)) {
-			fsm9900_gluon_init();
+			ret = ftr_init_grfcpins(&pdev->dev, "mdm_g");
 			pr_info("%s: Gluon Enabled\n", __func__);
 		} else {
+			ret = -EINVAL;
 			pr_warn("%s:PDMs not configured %d\n",
 					__func__, rfbid);
 		}
+		if (ret)
+			return -EINVAL;
 
 		ret = device_create_file(&pdev->dev, &dev_attr_rfboard_id);
 		WARN_ON(ret);

@@ -1431,7 +1431,20 @@
 		vdd-ftr2-supply = <&pma8084_l25>;
 		vdd-1v3-supply = <&pma8084_l11>;
 		vdd-1v8-supply = <&pma8084_l26>;
-
+		pinctrl-names = "default", "mdm_m", "mdm_k", "mdm_g";
+		pinctrl-0 = < &pdm_tx_vpa_ctl_active
+			&geni_f4_active &geni_f5_active
+			&rf_detect_active >;
+		pinctrl-1 = < &pdm_tx_vpa_ctl_active
+			&geni_f4_active &geni_f5_active
+			&mdm_m_grfc_f0_active &mdm_m_grfc_f2_active >;
+		pinctrl-2 = < &pdm_tx_vpa_ctl_active
+			&geni_f4_active &geni_f5_active
+			&mdm_k_grfc_f2_active &mdm_k_gpio_f2_active >;
+		pinctrl-3 = < &pdm_tx_vpa_ctl_active
+			&geni_f4_active &geni_f5_active
+			&mdm_g_ctu_bridge_active
+			&mdm_g_grfc_f1_active &mdm_g_grfc_f2_active >;
 	};
 
 	ssbi1:  qcom,ssbi@f9b18000 {
