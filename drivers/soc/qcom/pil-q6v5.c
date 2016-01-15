@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -188,6 +188,32 @@ void pil_q6v5_halt_axi_port(struct pil_desc *pil, void __iomem *halt_base)
 	writel_relaxed(0, halt_base + AXI_HALTREQ);
 }
 EXPORT_SYMBOL(pil_q6v5_halt_axi_port);
+
+/**
+ * pil_q6v5_assert_clamps() - Assert QDSP6 I/O clamp
+ * @pil: discriptor for qdsp6
+ *
+ * Assert QDSP6 I/O clamp, memory wordline clamp, and compiler memory
+ * clamp as a software workaround to avoid high MX current during
+ * LPASS/MSS restart.
+ */
+void pil_q6v5_assert_clamps(struct pil_desc *pil)
+{
+	u32 val;
+	struct q6v5_data *drv = container_of(pil, struct q6v5_data, desc);
+
+	/*
+	 * Assert QDSP6 I/O clamp, memory wordline clamp, and compiler memory
+	 * clamp as a software workaround to avoid high MX current during
+	 * LPASS/MSS restart.
+	 */
+	val = readl_relaxed(drv->reg_base + QDSP6SS_PWR_CTL);
+	val |= (Q6SS_CLAMP_IO | QDSP6v55_CLAMP_WL |
+			QDSP6v55_CLAMP_QMC_MEM);
+	writel_relaxed(val, drv->reg_base + QDSP6SS_PWR_CTL);
+	/* To make sure asserting clamps is done before MSS restart*/
+	mb();
+}
 
 static void __pil_q6v5_shutdown(struct pil_desc *pil)
 {
@@ -526,6 +552,8 @@ struct q6v5_data *pil_q6v5_init(struct platform_device *pdev)
 
 	drv->ahb_clk_vote = of_property_read_bool(pdev->dev.of_node,
 						"qcom,ahb-clk-vote");
+	drv->mx_spike_wa = of_property_read_bool(pdev->dev.of_node,
+						"qcom,mx-spike-wa");
 
 	drv->xo = devm_clk_get(&pdev->dev, "xo");
 	if (IS_ERR(drv->xo))
