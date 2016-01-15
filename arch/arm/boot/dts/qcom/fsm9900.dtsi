@@ -659,7 +659,11 @@
 				<78 512 800000 1600000>, /* 200 MB/s */
 				<78 512 2048000 4096000>; /* Max. bandwidth */
 		qcom,bus-bw-vectors-bps = <0 400000 20000000 25000000 50000000 100000000 200000000 4294967295>;
-		status = "disable";
+		pinctrl-names = "default", "active", "sleep";
+		pinctrl-0 = <>;
+		pinctrl-1 = <>;
+		pinctrl-2 = <>;
+		status = "disabled";
 	};
 
 	sdhc_2: sdhci@f98a4900 {
@@ -684,7 +688,11 @@
 				<81 512 800000 1600000>, /* 200 MB/s */
 				<81 512 2048000 4096000>; /* Max. bandwidth */
 		qcom,bus-bw-vectors-bps = <0 400000 20000000 25000000 50000000 100000000 200000000 4294967295>;
-		status = "disable";
+		pinctrl-names = "default", "active", "sleep";
+		pinctrl-0 = <&sdhc_detect_active &sdhc_write_protect_active>;
+		pinctrl-1 = <&sdhc_detect_active &sdhc_write_protect_active>;
+		pinctrl-2 = <&sdhc_detect_sleep &sdhc_write_protect_sleep>;
+		status = "disabled";
 	};
 
 	qcom,sps@fe204000 {

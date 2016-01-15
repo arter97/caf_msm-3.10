@@ -569,38 +569,11 @@ static struct msm_gpiomux_config fsm_gps_configs[] __initdata = {
 	},
 };
 
-static struct gpiomux_setting sd_detect_config = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_2MA,
-	.pull = GPIOMUX_PULL_UP,
-};
-
 static struct gpiomux_setting rf_detect_config = {
 	.func = GPIOMUX_FUNC_GPIO,
 	.drv = GPIOMUX_DRV_2MA,
 	.pull = GPIOMUX_PULL_NONE,
 	.dir = GPIOMUX_IN,
-};
-
-static struct gpiomux_setting sd_wp_config = {
-	.func = GPIOMUX_FUNC_GPIO,
-	.drv = GPIOMUX_DRV_6MA,
-	.pull = GPIOMUX_PULL_UP,
-};
-
-static struct msm_gpiomux_config fsm_sd_configs[] __initdata = {
-	{
-		.gpio      = 42,       /* SD_CARD_DET */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &sd_detect_config,
-		},
-	},
-	{
-		.gpio      = 122,      /* BLSP SD WRITE PROTECT */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &sd_wp_config,
-		},
-	},
 };
 
 static struct msm_gpiomux_config fsm_rf_configs[] __initdata = {
@@ -830,7 +803,6 @@ void __init fsm9900_init_gpiomux(void)
 #endif
 	msm_gpiomux_install(fsm_pcie_configs, ARRAY_SIZE(fsm_pcie_configs));
 	msm_gpiomux_install(fsm_gps_configs, ARRAY_SIZE(fsm_gps_configs));
-	msm_gpiomux_install(fsm_sd_configs, ARRAY_SIZE(fsm_sd_configs));
 	msm_gpiomux_install(fsm_pdm_configs, ARRAY_SIZE(fsm_pdm_configs));
 	msm_gpiomux_install(fsm_rf_configs, ARRAY_SIZE(fsm_rf_configs));
 }
