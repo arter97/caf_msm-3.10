@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -603,45 +603,6 @@ static struct msm_gpiomux_config fsm_sd_configs[] __initdata = {
 	},
 };
 
-static struct gpiomux_setting mdio_clk_config = {
-	.func = GPIOMUX_FUNC_1,
-	.drv = MDIO_DRV_8MA,
-	.pull = GPIOMUX_PULL_UP,
-};
-
-static struct gpiomux_setting mdio_data_config = {
-	.func = GPIOMUX_FUNC_1,
-	.drv = MDIO_DRV_8MA,
-	.pull = GPIOMUX_PULL_UP,
-};
-
-static struct msm_gpiomux_config fsm_mdio_configs[] __initdata = {
-	{
-		.gpio      = 123,       /* GMAC0_MDIO_CLK */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &mdio_clk_config,
-		},
-	},
-	{
-		.gpio      = 124,      /* GMAC0_MDIO_DATA */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &mdio_data_config,
-		},
-	},
-	{
-		.gpio      = 125,       /* GMAC1_MDIO_CLK */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &mdio_clk_config,
-		},
-	},
-	{
-		.gpio      = 126,      /* GMAC1_MDIO_DATA */
-		.settings = {
-			[GPIOMUX_SUSPENDED] = &mdio_data_config,
-		},
-	},
-};
-
 static struct msm_gpiomux_config fsm_rf_configs[] __initdata = {
 	{
 		.gpio      = 96,       /* FTR2_HB_NL_SEL */
@@ -870,7 +831,6 @@ void __init fsm9900_init_gpiomux(void)
 	msm_gpiomux_install(fsm_pcie_configs, ARRAY_SIZE(fsm_pcie_configs));
 	msm_gpiomux_install(fsm_gps_configs, ARRAY_SIZE(fsm_gps_configs));
 	msm_gpiomux_install(fsm_sd_configs, ARRAY_SIZE(fsm_sd_configs));
-	msm_gpiomux_install(fsm_mdio_configs, ARRAY_SIZE(fsm_mdio_configs));
 	msm_gpiomux_install(fsm_pdm_configs, ARRAY_SIZE(fsm_pdm_configs));
 	msm_gpiomux_install(fsm_rf_configs, ARRAY_SIZE(fsm_rf_configs));
 }
