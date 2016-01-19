@@ -751,7 +751,18 @@ static ssize_t store_enable(struct device *dev,
 			host->caps2 &= ~MMC_CAP2_CLK_SCALE;
 			goto err;
 		}
-	} else if (!value && mmc_can_scale_clk(host)) {
+	} else if (!value && mmc_can_scale_clk(host) &&
+			!host->clk_scaling.invalid_state) {
+		if (mmc_card_cmdq(host->card)) {
+			retval = mmc_cmdq_halt_on_empty_queue(host);
+			if (retval) {
+				pr_err("%s: halt failed while doing %s err (%d)\n",
+					mmc_hostname(host), __func__,
+					retval);
+				goto err;
+			}
+			retval = -EINVAL;
+		}
 		host->caps2 &= ~MMC_CAP2_CLK_SCALE;
 		mmc_disable_clk_scaling(host);
 
@@ -760,15 +771,22 @@ static ssize_t store_enable(struct device *dev,
 				host->clk_scaling.state == MMC_LOAD_LOW) {
 			freq = mmc_get_max_frequency(host);
 			if (host->bus_ops->change_bus_speed(host, &freq))
-				goto err;
+				goto out_unhalt;
 		}
 		if (host->ops->notify_load &&
 				host->ops->notify_load(host, MMC_LOAD_HIGH))
-			goto err;
+			goto out_unhalt;
 		host->clk_scaling.state = MMC_LOAD_HIGH;
 		host->clk_scaling.initialized = false;
 	}
 	retval = count;
+out_unhalt:
+	if (!value && mmc_card_cmdq(host->card) &&
+		mmc_cmdq_halt(host, false)) {
+			pr_err("%s: %s: cmdq unhalt failed\n",
+				mmc_hostname(host), __func__);
+			retval = -EINVAL;
+		}
 err:
 	mmc_release_host(host);
 
