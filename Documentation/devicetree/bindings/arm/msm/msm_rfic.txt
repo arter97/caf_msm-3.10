@@ -37,6 +37,19 @@ Required properties:
 -compatible: should be "qcom,rfic-fsm9900" or "qcom,rfic-fsm9010"
 -reg: specifies the base address of the GRFC registers.
 
+- pinctrl-states: names of pinctrl states that are used by the driver to
+	configure TLMM pins. States required by fsm9900 are "default",
+	"mdm_m", "mdm_k" and "mdm_g". The "default" state selects the pin
+	configuration required for probing the RF board while the remaining
+	states select appropriate grfc pins specific to the detected RF board.
+	Rfic driver for fsm9010 uses only a single state "default" that sets
+	all the required grfc pins.
+
+- pinctrl-#: a list of pinctrl phandles for the different pinctrl states. Refer
+	to "Documentation/devicetree/bindings/pinctrl/pinctrl-bindings.txt" for the
+	pinctrl handles definitions. Each pinctrl-# corresponds to the respective
+	state name that appears under pinctrl-state list.
+
 Optional properties:
 vdd-switch-supply: regulator used to control RF switches.
 vdd-wtr-supply: regulator used to control WTR.
@@ -44,22 +57,6 @@ vdd-ftr1-supply: regulator used to control FTR1.
 vdd-ftr2-supply: regulator used to control FTR2.
 vdd-1v8-supply: regulator used to control 1.8V to all RFICs.
 vdd-1v3-supply: regulator used to control 1.3V to all RFICs
-
-- pinctrl-states: the names of the pinctrl states that used by the driver to
-	configure the TLMM pins.
-	rf_ssbi - Sets TLMM properties to SSBI lines.
-	grfc_f2 - Sets TLMM properties to GRFC lines using alt-func 2.
-	grfc_f3 - Sets TLMM properties to GRFC lines using alt-func 3.
-	grfc_f4 - Sets TLMM properties to GRFC lines using alt-func 4.
-	grfc_f5 - Sets TLMM properties to GRFC lines using alt-func 5.
-	grfc_f6 - Sets TLMM properties to GRFC lines using alt-func 6.
-	grfc_f7 - Sets TLMM properties to GRFC lines using alt-func 7.
-	pdm_f2 - Sets TLMM properties to PDM lines.
-
-- pinctrl-#: a list of pinctrl phandles for the different pinctrl states. Refer
-	to "Documentation/devicetree/bindings/pinctrl/pinctrl-bindings.txt" for the
-	pinctrl handles definitions. Each pinctrl-# corresponds to the respective
-	state name that appears under pinctrl-state list.
 
 - clocks: clock identifers used by clock driver while looking up pdm clocks.
 - clock-names: name of the clock used by rfic driver.
@@ -81,6 +78,11 @@ Example 1:
 		vdd-ftr2-supply = <&pma8084_l25>;
 		vdd-1v8-supply = <&pma8084_l26>;
 		vdd-1v3-supply = <&pma8084_l11>;
+		pinctrl-names = "default", "mdm_m", "mdm_k", "mdm_g";
+		pinctrl-0 = <&rf_detect_active>;
+		pinctrl-1 = <&mdm_m_grfc_f1_active>;
+		pinctrl-2 = <&mdm_k_grfc_f2_active &mdm_k_grfc_f3_active>;
+		pinctrl-3 = <&mdm_g_grfc_f2_active>;
 	};
 
 	qcom,pdm@f9b10000 {
@@ -99,7 +101,7 @@ Example 2:
 			<&clock_gcc clk_gcc_pdm2_ahb_clk>;
 		clock-names = "pdm2_clk", "ahb_clk";
 		pinctrl-names = "default";
-		pinctrl-0 = <&rf_ssbi_default>
+		pinctrl-0 = <&rf_ssbi_default>;
 	};
 
 	qcom,pdm@f9b10000 {

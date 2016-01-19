@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -659,7 +659,11 @@
 				<78 512 800000 1600000>, /* 200 MB/s */
 				<78 512 2048000 4096000>; /* Max. bandwidth */
 		qcom,bus-bw-vectors-bps = <0 400000 20000000 25000000 50000000 100000000 200000000 4294967295>;
-		status = "disable";
+		pinctrl-names = "default", "active", "sleep";
+		pinctrl-0 = <>;
+		pinctrl-1 = <>;
+		pinctrl-2 = <>;
+		status = "disabled";
 	};
 
 	sdhc_2: sdhci@f98a4900 {
@@ -684,7 +688,11 @@
 				<81 512 800000 1600000>, /* 200 MB/s */
 				<81 512 2048000 4096000>; /* Max. bandwidth */
 		qcom,bus-bw-vectors-bps = <0 400000 20000000 25000000 50000000 100000000 200000000 4294967295>;
-		status = "disable";
+		pinctrl-names = "default", "active", "sleep";
+		pinctrl-0 = <&sdhc_detect_active &sdhc_write_protect_active>;
+		pinctrl-1 = <&sdhc_detect_active &sdhc_write_protect_active>;
+		pinctrl-2 = <&sdhc_detect_sleep &sdhc_write_protect_sleep>;
+		status = "disabled";
 	};
 
 	qcom,sps@fe204000 {
@@ -1423,7 +1431,20 @@
 		vdd-ftr2-supply = <&pma8084_l25>;
 		vdd-1v3-supply = <&pma8084_l11>;
 		vdd-1v8-supply = <&pma8084_l26>;
-
+		pinctrl-names = "default", "mdm_m", "mdm_k", "mdm_g";
+		pinctrl-0 = < &pdm_tx_vpa_ctl_active
+			&geni_f4_active &geni_f5_active
+			&rf_detect_active >;
+		pinctrl-1 = < &pdm_tx_vpa_ctl_active
+			&geni_f4_active &geni_f5_active
+			&mdm_m_grfc_f0_active &mdm_m_grfc_f2_active >;
+		pinctrl-2 = < &pdm_tx_vpa_ctl_active
+			&geni_f4_active &geni_f5_active
+			&mdm_k_grfc_f2_active &mdm_k_gpio_f2_active >;
+		pinctrl-3 = < &pdm_tx_vpa_ctl_active
+			&geni_f4_active &geni_f5_active
+			&mdm_g_ctu_bridge_active
+			&mdm_g_grfc_f1_active &mdm_g_grfc_f2_active >;
 	};
 
 	ssbi1:  qcom,ssbi@f9b18000 {
@@ -1539,13 +1560,15 @@
 			"emac_core2_irq",
 			"emac_core3_irq",
 			"emac_sgmii_irq";
-		qcom,emac-gpio-mdc = <&msmgpio 123 0>;
-		qcom,emac-gpio-mdio = <&msmgpio 124 0>;
+		qcom,emac-gpio-mdc = <&msm_gpio 123 0>;
+		qcom,emac-gpio-mdio = <&msm_gpio 124 0>;
 		qcom,emac-tstamp-en;
 		qcom,emac-ptp-frac-ns-adj = <125000000 1>;
 		phy-mode = "sgmii";
 		phy-addr = <0>;
-		status = "disable";
+		pinctrl-names = "default";
+		pinctrl-0 = <&gmac0_mdio_clk_default &gmac0_mdio_data_default>;
+		status = "disabled";
 	};
 
 	emac1: qcom,emac@feb00000 {
@@ -1571,13 +1594,15 @@
 			"emac_core2_irq",
 			"emac_core3_irq",
 			"emac_sgmii_irq";
-		qcom,emac-gpio-mdc = <&msmgpio 125 0>;
-		qcom,emac-gpio-mdio = <&msmgpio 126 0>;
+		qcom,emac-gpio-mdc = <&msm_gpio 125 0>;
+		qcom,emac-gpio-mdio = <&msm_gpio 126 0>;
 		qcom,emac-tstamp-en;
 		qcom,emac-ptp-frac-ns-adj = <125000000 1>;
 		phy-mode = "sgmii";
 		phy-addr = <1>;
-		status = "disable";
+		pinctrl-names = "default";
+		pinctrl-0 = <&gmac1_mdio_clk_default &gmac1_mdio_data_default>;
+		status = "disabled";
 	};
 
 	spmi_bus: qcom,spmi@fc4c0000 {
