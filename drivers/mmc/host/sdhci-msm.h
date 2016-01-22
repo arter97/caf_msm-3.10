@@ -169,6 +169,7 @@ struct sdhci_msm_host {
 	struct sdhci_msm_ice_data ice;
 	u32 ice_clk_rate;
 	bool enhanced_strobe;
+	bool tuning_in_progress;
 };
 
 extern char *saved_command_line;
