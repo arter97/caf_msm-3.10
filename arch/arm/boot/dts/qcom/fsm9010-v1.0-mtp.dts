@@ -62,7 +62,6 @@
 	};
 
 	usb3: ssusb@f9200000 {
-		qcom,vbus-present;
 		qcom,skip-charger-detection;
 		status = "ok";
 		usb_dwc3: dwc3@f9200000 {
