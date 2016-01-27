@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -2487,7 +2487,7 @@ static int dsi_event_thread(void *data)
 		if (todo & DSI_EV_PLL_UNLOCKED)
 			mdss_dsi_pll_relock(ctrl);
 
-		if (todo & DSI_EV_MDP_FIFO_UNDERFLOW) {
+		if (todo & DSI_EV_DLNx_FIFO_UNDERFLOW) {
 			mutex_lock(&ctrl->mutex);
 			if (ctrl->recovery) {
 				pr_debug("%s: Handling underflow event\n",
@@ -2650,7 +2650,7 @@ void mdss_dsi_fifo_status(struct mdss_dsi_ctrl_pdata *ctrl)
 	status = MIPI_INP(base + 0x000c);/* DSI_FIFO_STATUS */
 
 	/* fifo underflow, overflow and empty*/
-	if (status & 0xcccc4489) {
+	if (status & 0xcccc4409) {
 		MIPI_OUTP(base + 0x000c, status);
 
 		/*
@@ -2667,8 +2667,8 @@ void mdss_dsi_fifo_status(struct mdss_dsi_ctrl_pdata *ctrl)
 			/* Ignore FIFO EMPTY when overflow happens */
 			status = status & 0xeeeeffff;
 		}
-		if (status & 0x0080)  /* CMD_DMA_FIFO_UNDERFLOW */
-			dsi_send_events(ctrl, DSI_EV_MDP_FIFO_UNDERFLOW, 0);
+		if (status & 0x88880000)  /* DLNx_HS_FIFO_UNDERFLOW */
+			dsi_send_events(ctrl, DSI_EV_DLNx_FIFO_UNDERFLOW, 0);
 		if (status & 0x11110000) /* DLN_FIFO_EMPTY */
 			dsi_send_events(ctrl, DSI_EV_DSI_FIFO_EMPTY, 0);
 	}
