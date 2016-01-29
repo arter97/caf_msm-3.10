@@ -1,4 +1,4 @@
-/* Copyright (c) 2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -88,19 +88,10 @@
 #define PDM_2_1_CTL	0x5000
 #define PDM_2_2_CTL	0x6000
 #define PDM_OE		1
-#define MSM_MAX_GPIO    32
+#define MSM_MAX_GPIO    91
 
 #define RF_MAX_WF_SIZE  0xA00000
 #define RF_MAX_I2C_SIZE  8192
-
-#define GPIO_DIR_SHIFT	9
-#define GPIO_DRV_SHIFT	6
-#define GPIO_FUNC_SHIFT	2
-#define GPIO_OFFSET	0x1000
-#define GPIO_MAX_FIELD	0x10
-#define GPIO_MAX_DIR    1
-#define GPIO_MAX_DRV    8
-#define GPIO_MAX_PULL   3
 
 uint16_t slave_address = 0x52;
 uint8_t rfbid = 0x33;
@@ -327,7 +318,7 @@ static long ftr_ioctl(struct file *file,
 		struct gpio_alt_config *alt_config;
 		int gp_size, i;
 		void *pGP;
-		int value;
+		int value, dvalue;
 
 		if (pdfi->ftrid != 0)
 			return -EINVAL;
@@ -356,25 +347,69 @@ static long ftr_ioctl(struct file *file,
 
 		alt_config = (struct gpio_alt_config *)pGP;
 
-		if ((alt_config->dir > GPIO_MAX_DIR) ||
-			(alt_config->drv > GPIO_MAX_DRV) ||
-			(alt_config->func > GPIO_MAX_FIELD) ||
-			(alt_config->pull > GPIO_MAX_PULL)) {
-			pr_err("%s: Field vaules incorrect!\n", __func__);
-			kfree(pGP);
-			return -EFAULT;
-		}
-
 		for (i = 0; i < param.num; i++) {
+			value = __raw_readl(gpio_base + GPIO_OFFSET +
+				(alt_config->gpio * GPIO_MAX_FIELD));
+
+			if (alt_config->dir == GPIOMUX_PARAM_NOP) {
+				dvalue = (value & GPIO_DIR_BITS) >>
+							GPIO_DIR_SHIFT;
+				alt_config->dir = (char)(dvalue);
+			}
+
+			if (alt_config->drv == GPIOMUX_PARAM_NOP) {
+				dvalue = (value & GPIO_DRV_BITS) >>
+							GPIO_DRV_SHIFT;
+				alt_config->drv = (char)(dvalue);
+			}
+
+			if (alt_config->func == GPIOMUX_PARAM_NOP)
+				alt_config->func = (char)(value &
+					GPIO_FUNC_BITS) >> GPIO_FUNC_SHIFT;
+
+			if (alt_config->pull == GPIOMUX_PARAM_NOP)
+				alt_config->pull = (char)(value &
+							GPIO_PULL_BITS);
+
+			if ((alt_config->dir > GPIO_MAX_DIR) ||
+				(alt_config->drv > GPIO_MAX_DRV) ||
+				(alt_config->func > GPIO_MAX_FIELD) ||
+				(alt_config->pull > GPIO_MAX_PULL)) {
+					pr_err("%s: Invalid parameters!\n",
+							__func__);
+			}
+
 			value = (alt_config->dir << GPIO_DIR_SHIFT) |
 				(alt_config->drv << GPIO_DRV_SHIFT) |
 				(alt_config->func << GPIO_FUNC_SHIFT) |
 				(alt_config->pull);
+
 			__raw_writel(value, (gpio_base + GPIO_OFFSET +
 					(alt_config->gpio * GPIO_MAX_FIELD)));
 			alt_config++;
 		}
 		kfree(pGP);
+		break;
+	}
+	case RFIC_IOCTL_GET_GPIO: {
+		int value;
+
+		if (get_user(value, argp))
+			return -EFAULT;
+
+		if (pdfi->ftrid != 0)
+			return -EINVAL;
+
+		if ((value < 0) || (value > MSM_MAX_GPIO - 1)) {
+			pr_err_ratelimited("Invalid GPIO %d\n", value);
+			return -EINVAL;
+		}
+
+		value = __raw_readl(gpio_base + GPIO_OFFSET +
+				(value * GPIO_MAX_FIELD));
+
+		if (put_user(value, argp))
+			return -EFAULT;
 		break;
 	}
 	case RFIC_IOCTL_GET_GRFC: {
