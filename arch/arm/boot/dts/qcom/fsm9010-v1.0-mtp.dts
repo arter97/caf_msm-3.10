@@ -129,8 +129,8 @@
 		};
 
 		grfc_f3 {
-			qcom,pins = <&gp 54>;
-			qcom,num-grp-pins = <1>;
+			qcom,pins = <&gp 54>, <&gp 69>;
+			qcom,num-grp-pins = <2>;
 			qcom,pin-func = <3>;
 			label = "grfc_f3";
 			/* default state */

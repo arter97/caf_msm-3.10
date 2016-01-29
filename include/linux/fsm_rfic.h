@@ -39,6 +39,20 @@ void mpll10_2880_clk_init(void);
 #define PDM_DEVICE_NAME			"pdm"
 #define BBIF_DEVICE_NAME		"bbif"
 
+#define GPIO_DIR_SHIFT	9
+#define GPIO_DRV_SHIFT	6
+#define GPIO_FUNC_SHIFT	2
+#define GPIO_OFFSET	0x1000
+#define GPIO_MAX_FIELD	0x10
+#define GPIO_MAX_DIR    1
+#define GPIO_MAX_DRV    8
+#define GPIO_MAX_PULL   3
+#define GPIO_DIR_BITS	0x200
+#define GPIO_FUNC_BITS	0x3c
+#define GPIO_DRV_BITS	0x1c0
+#define GPIO_PULL_BITS	3
+#define GPIOMUX_PARAM_NOP 0xfe
+
 #define LDO11  1
 #define LDO18  2
 #define LDO19  3
@@ -152,6 +166,9 @@ struct rfic_ldo_param {
 #define RFIC_IOCTL_GPIO_SETTING \
 	_IOC(_IOC_WRITE, RFIC_IOCTL_MAGIC, 0x12, \
 		sizeof(struct gpiomux_config_t *))
+#define RFIC_IOCTL_GET_GPIO \
+	_IOC(_IOC_WRITE, RFIC_IOCTL_MAGIC, 0x13, \
+		sizeof(unsigned int *))
 #define RFIC_IOCTL_GET_BOARDID \
 	_IOC(_IOC_READ, RFIC_IOCTL_MAGIC, 0x20, \
 		sizeof(unsigned int *))
