@@ -1362,7 +1362,10 @@
 		qcom,bus-width = <4>;
 		qcom,large-address-bus;
 
-		qcom,cpu-dma-latency-us = <701>;
+		qcom,cpu-dma-latency-us = <2 360 430>;
+		qcom,cpu-affinity = "affine_cores";
+		qcom,cpu-affinity-mask = <0xf0>;
+
 		qcom,msm-bus,name = "sdhc2";
 		qcom,msm-bus,num-cases = <8>;
 		qcom,msm-bus,num-paths = <1>;
