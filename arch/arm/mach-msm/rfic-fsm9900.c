@@ -93,7 +93,7 @@
 #define PDM_OE		1
 #define PDM_BYTE	0x80
 #define PDM_WORD	0x8000
-#define MSM_MAX_GPIO    32
+#define MSM_MAX_GPIO    142
 
 #define RF_MAX_WF_SIZE  0xA00000
 #define RF_MAX_I2C_SIZE  8192
@@ -108,9 +108,10 @@
 uint16_t slave_address = 0x52;
 uint8_t rfbid;
 uint8_t rf_eeprom = 0;
-void __iomem *grfc_base;
-void __iomem *pdm_base;
-void __iomem *wf_base;
+static void __iomem *grfc_base;
+static void __iomem *pdm_base;
+static void __iomem *wf_base;
+static void __iomem *gpio_base;
 
 static struct regulator *vreg_ldo11;
 static struct regulator *vreg_ldo18;
@@ -442,57 +443,106 @@ static long ftr_ioctl(struct file *file,
 		}
 		break;
 
-	case RFIC_IOCTL_GPIO_SETTING:
-		{
-			struct rfic_gpio_param param;
-			struct msm_gpiomux_config rf_config[MSM_MAX_GPIO];
-			struct gpiomux_setting rf_setting[MSM_MAX_GPIO];
-			struct gpio_alt_config *alt_config;
-			int gp_size, i;
-			void *pGP;
+	case RFIC_IOCTL_GPIO_SETTING: {
+		struct rfic_gpio_param param;
+		struct gpio_alt_config *alt_config;
+		int gp_size, i;
+		void *pGP;
+		int value, dvalue;
 
-			if (pdfi->ftrid != 0)
-				return -EINVAL;
+		if (pdfi->ftrid != 0)
+			return -EINVAL;
 
-			if (copy_from_user(&param, argp, sizeof(param))) {
-				pr_err("%s: cfu fail for param\n", __func__);
-				return -EFAULT;
-			}
-
-			if ((param.num < 1) || (param.num > MSM_MAX_GPIO)) {
-				pr_err("Invalid GPIO count %d\n", param.num);
-				return -EINVAL;
-			}
-
-			gp_size = sizeof(struct gpio_alt_config) * param.num;
-
-			pGP = kmalloc(gp_size, GFP_KERNEL);
-			if (pGP == NULL)
-				return -ENOMEM;
-
-			if (copy_from_user(pGP, param.pArray, gp_size)) {
-				pr_err("%s: cfu fail for pGP\n", __func__);
-				kfree(pGP);
-				return -EFAULT;
-			}
-
-			alt_config = (struct gpio_alt_config *)pGP;
-			for (i = 0; i < param.num; i++) {
-				rf_config[i].gpio = (unsigned)alt_config->gpio;
-				rf_setting[i].func = alt_config->func;
-				rf_setting[i].drv = alt_config->drv;
-				rf_setting[i].pull = alt_config->pull;
-				rf_setting[i].dir = alt_config->dir;
-				rf_config[i].settings[GPIOMUX_ACTIVE] =
-					&rf_setting[i];
-				rf_config[i].settings[GPIOMUX_SUSPENDED] =
-					&rf_setting[i];
-				alt_config++;
-			}
-			msm_gpiomux_install(rf_config, param.num);
-			kfree(pGP);
+		if (copy_from_user(&param, argp, sizeof(param))) {
+			pr_err("%s: cfu fail for param\n", __func__);
+			return -EFAULT;
 		}
+
+		if ((param.num < 1) || (param.num > MSM_MAX_GPIO)) {
+			pr_err("Invalid GPIO count %d\n", param.num);
+			return -EINVAL;
+		}
+
+		gp_size = sizeof(struct gpio_alt_config) * param.num;
+
+		pGP = kmalloc(gp_size, GFP_KERNEL);
+		if (pGP == NULL)
+			return -ENOMEM;
+
+		if (copy_from_user(pGP, param.pArray, gp_size)) {
+			pr_err("%s: cfu fail for pGP\n", __func__);
+			kfree(pGP);
+			return -EFAULT;
+		}
+
+		alt_config = (struct gpio_alt_config *)pGP;
+
+		for (i = 0; i < param.num; i++) {
+			value = __raw_readl(gpio_base + GPIO_OFFSET +
+				(alt_config->gpio * GPIO_MAX_FIELD));
+
+			if (alt_config->dir == GPIOMUX_PARAM_NOP) {
+				dvalue = (value & GPIO_DIR_BITS) >>
+							GPIO_DIR_SHIFT;
+				alt_config->dir = (char)(dvalue);
+			}
+
+			if (alt_config->drv == GPIOMUX_PARAM_NOP) {
+				dvalue = (value & GPIO_DRV_BITS) >>
+							GPIO_DRV_SHIFT;
+				alt_config->drv = (char)(dvalue);
+			}
+
+			if (alt_config->func == GPIOMUX_PARAM_NOP)
+				alt_config->func = (char)(value &
+					GPIO_FUNC_BITS) >> GPIO_FUNC_SHIFT;
+
+			if (alt_config->pull == GPIOMUX_PARAM_NOP)
+				alt_config->pull = (char)(value &
+							GPIO_PULL_BITS);
+
+			if ((alt_config->dir > GPIO_MAX_DIR) ||
+				(alt_config->drv > GPIO_MAX_DRV) ||
+				(alt_config->func > GPIO_MAX_FIELD) ||
+				(alt_config->pull > GPIO_MAX_PULL)) {
+					pr_err("%s: Invalid parameters!\n",
+							__func__);
+			}
+
+			value = (alt_config->dir << GPIO_DIR_SHIFT) |
+				(alt_config->drv << GPIO_DRV_SHIFT) |
+				(alt_config->func << GPIO_FUNC_SHIFT) |
+				(alt_config->pull);
+
+			__raw_writel(value, (gpio_base + GPIO_OFFSET +
+					(alt_config->gpio * GPIO_MAX_FIELD)));
+			alt_config++;
+		}
+		kfree(pGP);
 		break;
+	}
+
+	case RFIC_IOCTL_GET_GPIO: {
+		int value;
+
+		if (get_user(value, argp))
+			return -EFAULT;
+
+		if (pdfi->ftrid != 0)
+			return -EINVAL;
+
+		if ((value < 0) || (value > MSM_MAX_GPIO - 1)) {
+			pr_err_ratelimited("Invalid GPIO %d\n", value);
+			return -EINVAL;
+		}
+
+		value = __raw_readl(gpio_base + GPIO_OFFSET +
+				(value * GPIO_MAX_FIELD));
+
+		if (put_user(value, argp))
+			return -EFAULT;
+		break;
+	}
 
 	case RFIC_IOCTL_GET_GRFC:
 		{
@@ -1141,6 +1191,13 @@ static int ftr_probe(struct platform_device *pdev)
 		if (IS_ERR(pdm_base)) {
 			mutex_unlock(&rficlock);
 			return PTR_ERR(pdm_base);
+		}
+
+		mem_res = platform_get_resource(pdev, IORESOURCE_MEM, 3);
+		gpio_base = devm_ioremap_resource(&pdev->dev, mem_res);
+		if (IS_ERR(gpio_base)) {
+			mutex_unlock(&rficlock);
+			return PTR_ERR(gpio_base);
 		}
 
 		pdm_clk = clk_get(&pdev->dev, "ahb_clk");
