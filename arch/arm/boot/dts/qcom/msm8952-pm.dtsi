@@ -1,4 +1,4 @@
-/* Copyright (c) 2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -67,7 +67,7 @@
 				qcom,ss-power = <346>;
 				qcom,energy-overhead = <718929>;
 				qcom,time-overhead = <1050>;
-				qcom,min-child-idx = <1>;
+				qcom,min-child-idx = <2>;
 			};
 
 			qcom,pm-cluster-level@2{
@@ -78,7 +78,7 @@
 				qcom,ss-power = <306>;
 				qcom,energy-overhead = <1042852>;
 				qcom,time-overhead = <1426>;
-				qcom,min-child-idx = <1>;
+				qcom,min-child-idx = <2>;
 				qcom,notify-rpm;
 				qcom,is-reset;
 			};
