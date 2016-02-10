@@ -64,19 +64,26 @@ int send_pkt(struct sk_buff *skb)
 		} else {
 			netdev_dbg(skb->dev, "%s: ipc_msg_alloc failed!",
 				   __func__);
-			rc = NETDEV_TX_BUSY;	/* Try again sometime */
 			histo->stats->tx_dropped++;
 			histo->stats->tx_fifo_errors++;
+
+			/* If we are busy, qdisc will retry later with the same
+			 * skb, so return without freeing skb.
+			 */
+			return NETDEV_TX_BUSY;
 		}
 	} else {
 		netdev_dbg(skb->dev, "%s: Packet for un-identified agent",
 			   __func__);
-		rc = NETDEV_TX_BUSY;	/* Try again sometime */
 		histo->stats->tx_dropped++;
 		histo->stats->tx_heartbeat_errors++;
+
+		return NETDEV_TX_BUSY;
 	}
 
+	/* This is only called if the device is NOT busy. */
 	dev_kfree_skb(skb);
+
 	return rc;
 }
 
