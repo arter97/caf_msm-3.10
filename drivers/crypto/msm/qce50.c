@@ -1,6 +1,6 @@
 /* Qualcomm Crypto Engine driver.
  *
- * Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -2809,6 +2809,7 @@ static int qce_sps_get_bam(struct qce_device *pce_dev)
 
 	bam.ee = pce_dev->ce_bam_info.bam_ee;
 	bam.ipc_loglevel = QCE_BAM_DEFAULT_IPC_LOGLVL;
+	bam.options |= SPS_BAM_CACHED_WP;
 	pr_debug("bam physical base=0x%lx\n", (uintptr_t)bam.phys_addr);
 	pr_debug("bam virtual base=0x%p\n", bam.virt_addr);
 
