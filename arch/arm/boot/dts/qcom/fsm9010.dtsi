@@ -1096,6 +1096,7 @@
 		qcom,id = <0>;
 		qcom,nss-ctrl = <1>;
 		qcom,ipv4-enabled;
+		qcom,ipv4-reasm-enabled;
 		qcom,ipv6-enabled;
 		qcom,crypto-enabled;
 		qcom,ipsec-enabled;
