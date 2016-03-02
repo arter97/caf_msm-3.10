@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -81,7 +81,7 @@ void emac_hw_enable_intr(struct emac_hw *hw)
 
 	if (adpt->tstamp_en)
 		emac_reg_w32(hw, EMAC_1588, EMAC_P1588_PTP_EXPANDED_INT_MASK,
-			     hw->ptp_intr_mask);
+			     hw->ptp_expanded_intr_mask);
 	wmb(); /* ensure that irq and ptp setting are flushed to HW */
 }
 
