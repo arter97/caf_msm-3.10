@@ -2,7 +2,7 @@
  *	All files except if stated otherwise in the beginning of the file
  *	are under the ISC license:
  *	----------------------------------------------------------------------
- *	Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ *	Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
  *	Copyright (c) 2010-2012 Design Art Networks Ltd.
  *
  *	Permission to use, copy, modify, and/or distribute this software for any
@@ -47,25 +47,28 @@ static uint8_t	ipc_req_sn;	/* Maintain node related sequence number */
  */
 static inline void ipc_appl_init(uint8_t local_cpuid,
 				 struct ipc_trns_func const *def_trns_funcs,
-				 uint8_t ifidx)
+				 uint8_t ifidx, uint8_t fifos_initialized)
 {
 	ipc_agent_table_clean(local_cpuid);
 
-	ipc_trns_fifo_buf_init(local_cpuid, ifidx);
+	if (fifos_initialized == 0)
+		ipc_trns_fifo_buf_init(local_cpuid, ifidx);
+	else
+		ipc_trns_fifo_move_m_to_b(local_cpuid);
+
 	/* Initialize IPC routing table (of CPU#) */
 	ipc_route_table_init(local_cpuid, def_trns_funcs);
 }
 
-unsigned ipc_init(uint8_t local_cpuid, uint8_t ifidx)
+unsigned ipc_init(uint8_t local_cpuid, uint8_t ifidx, uint8_t fifos_initialized)
 {
-	ipc_appl_init(local_cpuid, &ipc_fifo_utils, ifidx);
+	ipc_appl_init(local_cpuid, &ipc_fifo_utils, ifidx, fifos_initialized);
 	return 0;
 }
 
 unsigned ipc_cleanup(uint8_t local_cpuid)
 {
 	ipc_agent_table_clean(local_cpuid);
-	ipc_trns_fifo_buf_flush(local_cpuid);
 
 	return 0;
 }

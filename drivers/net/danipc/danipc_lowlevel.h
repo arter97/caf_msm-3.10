@@ -2,7 +2,7 @@
  *	All files except if stated otherwise in the beginning of the file
  *	are under the ISC license:
  *	----------------------------------------------------------------------
- *	Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ *	Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
  *	Copyright (c) 2010-2012 Design Art Networks Ltd.
  *
  *	Permission to use, copy, modify, and/or distribute this software for any
@@ -62,7 +62,11 @@ void *ipc_to_virt(const int cpuid, const unsigned prio,
 	(((cpuid&(PLATFORM_MAX_NUM_OF_NODES-1)) << 4) +	\
 				(0x0f & (lid)))
 
-unsigned ipc_init(uint8_t local_cpuid, uint8_t ifidx);
+void ipc_trns_fifo_move_m_to_b(uint8_t cpuid);
+unsigned ipc_init(
+	uint8_t local_cpuid,
+	uint8_t ifidx,
+	uint8_t fifos_initialized);
 unsigned ipc_cleanup(uint8_t local_cpuid);
 void ipc_trns_fifo_buf_init(uint8_t cpuid , uint8_t ifidx);
 void ipc_trns_fifo_buf_flush(uint8_t cpuid);
