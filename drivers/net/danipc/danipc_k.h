@@ -2,7 +2,7 @@
  *	All files except if stated otherwise in the beginning of the file
  *	are under the ISC license:
  *	----------------------------------------------------------------------
- *	Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ *	Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
  *	Copyright (c) 2010-2012 Design Art Networks Ltd.
  *
  *	Permission to use, copy, modify, and/or distribute this software for any
@@ -154,6 +154,9 @@ struct danipc_if {
 	 * interrupts from CDU to APPS IRQ.
 	 */
 	uint16_t			mux_mask;
+
+	/* Whether FIFOs were initialized in a prior device open */
+	uint8_t		fifos_initialized;
 };
 
 /* RX packet processing types */
