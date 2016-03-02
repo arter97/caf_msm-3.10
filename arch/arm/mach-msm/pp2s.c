@@ -1,4 +1,4 @@
-/* Copyright (c) 2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2014, 2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -562,9 +562,9 @@ static int pp2s_probe(
 	ret = request_irq(
 		pp2s_irq,
 		pp2s_intr_top,
-		IRQF_TRIGGER_RISING,
+		IRQF_TRIGGER_RISING | IRQF_SHARED,
 		PP2S_MODULE_NAME,
-		0);
+		pdev);
 
 	if (ret != 0) {
 		LOG_DRVR_ERR(
