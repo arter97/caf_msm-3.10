@@ -384,7 +384,6 @@ static int danipc_open(struct net_device *dev)
 
 			rc = 0;
 		} else {
-			danipc_init_irq(intf);
 			rc = request_irq(dev->irq, danipc_interrupt, 0,
 					 dev->name, pproc_lo);
 
@@ -394,6 +393,8 @@ static int danipc_open(struct net_device *dev)
 
 				(drv->proc_rx[rxptype_hi].init)(pproc_hi);
 				(drv->proc_rx[rxptype_lo].init)(pproc_lo);
+
+				danipc_init_irq(intf);
 
 				netif_start_queue(dev);
 				drv->ndev_active++;
@@ -415,16 +416,17 @@ static int danipc_close(struct net_device *dev)
 	uint8_t			rxptype_hi = pproc_hi->rxproc_type;
 	uint8_t			rxptype_lo = pproc_lo->rxproc_type;
 
+	netif_stop_queue(dev);
+
 	if (pproc_hi->rxproc_type == rx_proc_timer) {
-		netif_stop_queue(dev);
+		(drv->proc_rx[rxptype_hi].stop)(pproc_hi);
+		(drv->proc_rx[rxptype_lo].stop)(pproc_lo);
 	} else {
 		danipc_disable_irq(intf);
-		netif_stop_queue(dev);
+		(drv->proc_rx[rxptype_hi].stop)(pproc_hi);
+		(drv->proc_rx[rxptype_lo].stop)(pproc_lo);
 		free_irq(dev->irq, pproc_lo);
 	}
-
-	(drv->proc_rx[rxptype_hi].stop)(pproc_hi);
-	(drv->proc_rx[rxptype_lo].stop)(pproc_lo);
 
 	danipc_if_cleanup(intf);
 
