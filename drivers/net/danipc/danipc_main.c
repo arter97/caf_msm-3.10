@@ -885,7 +885,7 @@ static void danipc_dump_pkt_burst(struct seq_file *s, unsigned long *pkt_bust)
 	uint32_t i;
 	char buf[50];
 
-	for (i = 0; i < IPC_BUF_COUNT_MAX; i++) {
+	for (i = 0; i <= IPC_BUF_COUNT_MAX; i++) {
 		if ((i%4) == 0)
 			seq_puts(s, "\n");
 		snprintf(buf, sizeof(buf), "%-5d:%-lu", i, pkt_bust[i]);

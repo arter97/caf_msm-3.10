@@ -79,7 +79,11 @@ struct danipc_pkt_histo {
 	unsigned long		rx_err_len;
 	unsigned long		rx_histo[MAX_PACKET_SIZES];
 	unsigned long		tx_histo[MAX_PACKET_SIZES];
-	unsigned long		rx_pkt_burst[IPC_FIFO_BUF_NUM_HIGH];
+
+	/* + 1 to account for having IPC_FIFO_BUF_NUM_HIGH packets in
+	 * a burst
+	 */
+	unsigned long		rx_pkt_burst[IPC_FIFO_BUF_NUM_HIGH + 1];
 };
 
 /* TX/RX packet processign routine info */
