@@ -1985,7 +1985,7 @@ static int best_small_task_cpu(struct task_struct *p, int sync)
 	cpumask_and(&temp, &mpc_mask, cpu_possible_mask);
 	hmp_capable = !cpumask_full(&temp);
 
-	cpumask_and(&search_cpu, tsk_cpus_allowed(p), cpu_online_mask);
+	cpumask_and(&search_cpu, tsk_cpus_allowed(p), cpu_active_mask);
 	if (unlikely(!cpumask_test_cpu(i, &search_cpu))) {
 		i = cpumask_first(&search_cpu);
 		if (i >= nr_cpu_ids)
@@ -2033,7 +2033,7 @@ static int best_small_task_cpu(struct task_struct *p, int sync)
 	if (min_cstate_cpu != -1)
 		return min_cstate_cpu;
 
-	cpumask_and(&search_cpu, tsk_cpus_allowed(p), cpu_online_mask);
+	cpumask_and(&search_cpu, tsk_cpus_allowed(p), cpu_active_mask);
 	cpumask_andnot(&search_cpu, &search_cpu, &fb_search_cpu);
 	for_each_cpu(i, &search_cpu) {
 		rq = cpu_rq(i);
@@ -2189,7 +2189,7 @@ static int select_packing_target(struct task_struct *p, int best_cpu)
 	if (cpu_max_freq(best_cpu) <= cpu_mostly_idle_freq(best_cpu))
 		return best_cpu;
 
-	cpumask_and(&search_cpus, tsk_cpus_allowed(p), cpu_online_mask);
+	cpumask_and(&search_cpus, tsk_cpus_allowed(p), cpu_active_mask);
 	cpumask_and(&search_cpus, &search_cpus, &rq->freq_domain_cpumask);
 
 	/* Pick the first lowest power cpu as target */
@@ -2277,7 +2277,7 @@ static int select_best_cpu(struct task_struct *p, int target, int reason,
 	}
 
 	trq = task_rq(p);
-	cpumask_and(&search_cpus, tsk_cpus_allowed(p), cpu_online_mask);
+	cpumask_and(&search_cpus, tsk_cpus_allowed(p), cpu_active_mask);
 	for_each_cpu(i, &search_cpus) {
 		struct rq *rq = cpu_rq(i);
 
@@ -2960,7 +2960,7 @@ static int lower_power_cpu_available(struct task_struct *p, int cpu)
 	 * This function should be called only when task 'p' fits in the current
 	 * CPU which can be ensured by task_will_fit() prior to this.
 	 */
-	cpumask_and(&search_cpus, tsk_cpus_allowed(p), cpu_online_mask);
+	cpumask_and(&search_cpus, tsk_cpus_allowed(p), cpu_active_mask);
 	cpumask_and(&search_cpus, &search_cpus, &rq->freq_domain_cpumask);
 	cpumask_clear_cpu(lowest_power_cpu, &search_cpus);
 
@@ -4966,6 +4966,19 @@ static void destroy_cfs_bandwidth(struct cfs_bandwidth *cfs_b)
 	hrtimer_cancel(&cfs_b->slack_timer);
 }
 
+static void __maybe_unused update_runtime_enabled(struct rq *rq)
+{
+	struct cfs_rq *cfs_rq;
+
+	for_each_leaf_cfs_rq(rq, cfs_rq) {
+		struct cfs_bandwidth *cfs_b = &cfs_rq->tg->cfs_bandwidth;
+
+		raw_spin_lock(&cfs_b->lock);
+		cfs_rq->runtime_enabled = cfs_b->quota != RUNTIME_INF;
+		raw_spin_unlock(&cfs_b->lock);
+	}
+}
+
 static void __maybe_unused unthrottle_offline_cfs_rqs(struct rq *rq)
 {
 	struct cfs_rq *cfs_rq;
@@ -4981,6 +4994,12 @@ static void __maybe_unused unthrottle_offline_cfs_rqs(struct rq *rq)
 		 * there's some valid quota amount
 		 */
 		cfs_rq->runtime_remaining = cfs_b->quota;
+		/*
+		 * Offline rq is schedulable till cpu is completely disabled
+		 * in take_cpu_down(), so we prevent new cfs throttling here.
+		 */
+		cfs_rq->runtime_enabled = 0;
+
 		if (cfs_rq_throttled(cfs_rq))
 			unthrottle_cfs_rq(cfs_rq);
 	}
@@ -5025,6 +5044,7 @@ static inline struct cfs_bandwidth *tg_cfs_bandwidth(struct task_group *tg)
 	return NULL;
 }
 static inline void destroy_cfs_bandwidth(struct cfs_bandwidth *cfs_b) {}
+static inline void update_runtime_enabled(struct rq *rq) {}
 static inline void unthrottle_offline_cfs_rqs(struct rq *rq) {}
 
 #endif /* CONFIG_CFS_BANDWIDTH */
@@ -8499,6 +8519,8 @@ void trigger_load_balance(struct rq *rq, int cpu)
 static void rq_online_fair(struct rq *rq)
 {
 	update_sysctl();
+
+	update_runtime_enabled(rq);
 }
 
 static void rq_offline_fair(struct rq *rq)
