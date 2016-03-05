@@ -2,7 +2,7 @@
  *	All files except if stated otherwise in the beginning of the file
  *	are under the ISC license:
  *	----------------------------------------------------------------------
- *	Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ *	Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
  *	Copyright (c) 2010-2012 Design Art Networks Ltd.
  *
  *	Permission to use, copy, modify, and/or distribute this software for any
@@ -76,6 +76,43 @@ uintptr_t		ipc_regs[PLATFORM_MAX_NUM_OF_NODES];
  * Global prototypes section
  * -----------------------------------------------------------
  */
+
+/* ipc_trns_fifo_move_m_to_b
+ *
+ * Transport layer API used to move messages in M-FIFO to B-FIFO
+ *
+ */
+void ipc_trns_fifo_move_m_to_b(uint8_t cpuid)
+{
+	uint32_t	bufs[IPC_FIFO_BUF_NUM_HIGH];
+	int		num_bufs;
+	int		buf;
+	uint32_t	buff_addr;
+	uint32_t	m_fifo_addr[] = {TCSR_IPC_FIFO_RD_IN_HIGH_ADDR(cpuid),
+		TCSR_IPC_FIFO_RD_IN_LOW_ADDR(cpuid)};
+	uint32_t	b_fifo_addr[] = {IPC_FIFO_WR_OUT_HIGH_ADDR(cpuid),
+		IPC_FIFO_WR_OUT_LOW_ADDR(cpuid)};
+	int		fifo;
+
+	for (fifo = 0; fifo < sizeof(b_fifo_addr)/sizeof(uint32_t); fifo++) {
+		num_bufs = 0;
+
+		for (buf = 0; buf < IPC_FIFO_BUF_NUM_HIGH; buf++) {
+			buff_addr =
+				__raw_readl_no_log((void *)m_fifo_addr[fifo]);
+
+			if (buff_addr != 0) {
+				bufs[num_bufs] =  buff_addr;
+				num_bufs++;
+			}
+		}
+
+		for (buf = 0; buf < num_bufs; buf++)
+			__raw_writel_no_log(
+				bufs[buf],
+				(void *)b_fifo_addr[fifo]);
+	}
+}
 
 /* ipc_trns_fifo_buf_alloc
  *
@@ -244,29 +281,6 @@ void ipc_trns_fifo_buf_init(uint8_t cpuid, uint8_t ifidx)
 	for (ix = 0; ix < IPC_FIFO_BUF_NUM_LOW;
 			ix++, buf_addr += IPC_BUF_SIZE_MAX)
 		__raw_writel_no_log(buf_addr, (void *)fifo_addr);
-}
-
-/* -----------------------------------------------------------
- * Function:	ipc_trns_fifo_buf_init
- * Description:	Initialize IPC buffer for current node
- * Input:		cpuid:	node ID ()
- * Output:		None
- * -----------------------------------------------------------
- */
-void ipc_trns_fifo_buf_flush(uint8_t cpuid)
-{
-	uint32_t		fifo_addr;
-	unsigned		ix;
-
-	/* Flush high-priority B-Fifo */
-	fifo_addr = IPC_FIFO_WR_OUT_HIGH_ADDR(cpuid);
-	for (ix = 0; ix < IPC_FIFO_BUF_NUM_HIGH; ix++)
-		__raw_writel_no_log((uint32_t)NULL, (void *)fifo_addr);
-
-	/* Flush low-priority B-Fifo */
-	fifo_addr = IPC_FIFO_WR_OUT_LOW_ADDR(cpuid);
-	for (ix = 0; ix < IPC_FIFO_BUF_NUM_HIGH; ix++)
-		__raw_writel_no_log((uint32_t)NULL, (void *)fifo_addr);
 }
 
 /* -----------------------------------------------------------

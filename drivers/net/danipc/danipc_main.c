@@ -2,7 +2,7 @@
  *	All files except if stated otherwise in the beginning of the file
  *	are under the ISC license:
  *	----------------------------------------------------------------------
- *	Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ *	Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
  *	Copyright (c) 2010-2012 Design Art Networks Ltd.
  *
  *	Permission to use, copy, modify, and/or distribute this software for any
@@ -372,7 +372,10 @@ static int danipc_open(struct net_device *dev)
 
 	rc = init_own_ipc_to_virt_map(intf);
 	if (rc == 0) {
-		ipc_init(intf->rx_fifo_idx, intf->ifidx);
+		ipc_init(
+			intf->rx_fifo_idx,
+			intf->ifidx,
+			intf->fifos_initialized);
 		alloc_pool_buffers(intf);
 
 		if (pproc_hi->rxproc_type == rx_proc_timer) {
@@ -400,6 +403,8 @@ static int danipc_open(struct net_device *dev)
 				drv->ndev_active++;
 			}
 		}
+
+		intf->fifos_initialized = 1;
 	}
 
 	return rc;
@@ -607,6 +612,7 @@ static int danipc_if_init(struct platform_device *pdev, uint8_t nodeid,
 		intf->rx_fifo_idx = nodeid;
 		intf->rx_fifo_prio = danipc_driver.ndev;
 		intf->mux_mask = probe_list->mux_mask;
+		intf->fifos_initialized = 0;
 
 		mutex_init(&intf->lock);
 

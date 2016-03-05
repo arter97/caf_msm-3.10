@@ -2,7 +2,7 @@
  *	All files except if stated otherwise in the beginning of the file
  *	are under the ISC license:
  *	----------------------------------------------------------------------
- *	Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ *	Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
  *	Copyright (c) 2010-2012 Design Art Networks Ltd.
  *
  *	Permission to use, copy, modify, and/or distribute this software for any
@@ -77,8 +77,6 @@ int send_pkt(struct sk_buff *skb)
 			   __func__);
 		histo->stats->tx_dropped++;
 		histo->stats->tx_heartbeat_errors++;
-
-		return NETDEV_TX_BUSY;
 	}
 
 	/* This is only called if the device is NOT busy. */
