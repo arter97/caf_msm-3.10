@@ -80,7 +80,9 @@ enum ipa_aggr_type {
  */
 enum ipa_aggr_mode {
 	IPA_MBIM,
+	IPA_MBIM_AGGR = IPA_MBIM,
 	IPA_QCNCM,
+	IPA_QCNCM_AGGR = IPA_QCNCM,
 };
 
 /**
