@@ -1238,8 +1238,10 @@ static int ftr_probe(struct platform_device *pdev)
 			pr_warn("%s:PDMs not configured %d\n",
 					__func__, rfbid);
 		}
-		if (ret)
-			return -EINVAL;
+		if (ret) {
+			mutex_unlock(&rficlock);
+			return ret;
+		}
 
 		ret = device_create_file(&pdev->dev, &dev_attr_rfboard_id);
 		WARN_ON(ret);
