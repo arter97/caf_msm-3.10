@@ -1,4 +1,4 @@
-/* Copyright (c) 2014-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2014-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -9,8 +9,8 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
-#ifndef __MSMB_ISP__
-#define __MSMB_ISP__
+#ifndef __UAPI_MSMB_ISP__
+#define __UAPI_MSMB_ISP__
 
 #include <linux/videodev2.h>
 
@@ -853,4 +853,4 @@ struct msm_isp_set_stats_ab {
 #define VIDIOC_MSM_ISP_UNMAP_BUF \
 	_IOWR('V', BASE_VIDIOC_PRIVATE+25, struct msm_isp_unmap_buf_req)
 
-#endif /* __MSMB_ISP__ */
+#endif /* __UAPI_MSMB_ISP__ */
