@@ -44,16 +44,6 @@
 #define CNSS_DUMP_MAGIC_VER_V2	0x42445953
 #define CNSS_DUMP_NAME		"CNSS_WLAN"
 
-struct cnss_unsafe_channel_list {
-	u16 unsafe_ch_count;
-	u16 unsafe_ch_list[CNSS_MAX_CH_NUM];
-};
-
-struct cnss_dfs_nol_info {
-	void *dfs_nol_info;
-	u16 dfs_nol_info_len;
-};
-
 struct cnss_sdio_regulator {
 	struct regulator *wlan_io;
 	struct regulator *wlan_xtal;
@@ -82,8 +72,6 @@ struct cnss_ssr_info {
 static struct cnss_sdio_data {
 	struct cnss_sdio_regulator regulator;
 	struct platform_device *pdev;
-	struct cnss_dfs_nol_info dfs_info;
-	struct cnss_unsafe_channel_list unsafe_list;
 	struct cnss_sdio_info cnss_sdio_info;
 	struct cnss_ssr_info ssr_info;
 	struct pm_qos_request qos_request;
@@ -172,102 +160,6 @@ void cnss_remove_pm_qos(void)
 	pr_debug("%s: PM QoS removed\n", __func__);
 }
 EXPORT_SYMBOL(cnss_remove_pm_qos);
-
-int cnss_set_wlan_unsafe_channel(u16 *unsafe_ch_list, u16 ch_count)
-{
-	struct cnss_unsafe_channel_list *unsafe_list;
-
-	if (!cnss_pdata)
-		return -ENODEV;
-
-	if ((!unsafe_ch_list) || (!ch_count) || (ch_count > CNSS_MAX_CH_NUM))
-		return -EINVAL;
-
-	unsafe_list = &cnss_pdata->unsafe_list;
-	unsafe_list->unsafe_ch_count = ch_count;
-
-	memcpy(
-		(char *)unsafe_list->unsafe_ch_list,
-		(char *)unsafe_ch_list, ch_count * sizeof(u16));
-
-	return 0;
-}
-EXPORT_SYMBOL(cnss_set_wlan_unsafe_channel);
-
-int cnss_get_wlan_unsafe_channel(
-	u16 *unsafe_ch_list, u16 *ch_count, u16 buf_len)
-{
-	struct cnss_unsafe_channel_list *unsafe_list;
-
-	if (!cnss_pdata)
-		return -ENODEV;
-
-	if (!unsafe_ch_list || !ch_count)
-		return -EINVAL;
-
-	unsafe_list = &cnss_pdata->unsafe_list;
-
-	if (buf_len < (unsafe_list->unsafe_ch_count * sizeof(u16)))
-		return -ENOMEM;
-
-	*ch_count = unsafe_list->unsafe_ch_count;
-	memcpy(
-		(char *)unsafe_ch_list, (char *)unsafe_list->unsafe_ch_list,
-		unsafe_list->unsafe_ch_count * sizeof(u16));
-
-	return 0;
-}
-EXPORT_SYMBOL(cnss_get_wlan_unsafe_channel);
-
-int cnss_wlan_set_dfs_nol(const void *info, u16 info_len)
-{
-	void *temp;
-	struct cnss_dfs_nol_info *dfs_info;
-
-	if (!cnss_pdata)
-		return -ENODEV;
-
-	if (!info || !info_len)
-		return -EINVAL;
-
-	temp = kmalloc(info_len, GFP_KERNEL);
-	if (!temp)
-		return -ENOMEM;
-
-	memcpy(temp, info, info_len);
-	dfs_info = &cnss_pdata->dfs_info;
-	kfree(dfs_info->dfs_nol_info);
-
-	dfs_info->dfs_nol_info = temp;
-	dfs_info->dfs_nol_info_len = info_len;
-
-	return 0;
-}
-EXPORT_SYMBOL(cnss_wlan_set_dfs_nol);
-
-int cnss_wlan_get_dfs_nol(void *info, u16 info_len)
-{
-	int len;
-	struct cnss_dfs_nol_info *dfs_info;
-
-	if (!cnss_pdata)
-		return -ENODEV;
-
-	if (!info || !info_len)
-		return -EINVAL;
-
-	dfs_info = &cnss_pdata->dfs_info;
-
-	if (dfs_info->dfs_nol_info == NULL || dfs_info->dfs_nol_info_len == 0)
-		return -ENOENT;
-
-	len = min(info_len, dfs_info->dfs_nol_info_len);
-
-	memcpy(info, dfs_info->dfs_nol_info, len);
-
-	return len;
-}
-EXPORT_SYMBOL(cnss_wlan_get_dfs_nol);
 
 static int cnss_sdio_shutdown(const struct subsys_desc *subsys, bool force_stop)
 {
@@ -1023,15 +915,11 @@ err_wlan_enable_regulator:
 
 static int cnss_sdio_remove(struct platform_device *pdev)
 {
-	struct cnss_dfs_nol_info *dfs_info;
-
 	if (!cnss_pdata)
 		return -ENODEV;
 
 	cnss_sdio_wlan_exit();
 
-	dfs_info = &cnss_pdata->dfs_info;
-	kfree(dfs_info->dfs_nol_info);
 	cnss_subsys_exit();
 	cnss_ramdump_cleanup();
 	cnss_sdio_release_resource();
