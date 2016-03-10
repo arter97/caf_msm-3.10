@@ -25,6 +25,9 @@ Required properties:
 			   Required if 'phy-mode' is "sgmii".
 	"emac_wol_irq"   : EMAC Wake-On-LAN (WOL) interrupt.
 			   Required if WOL is supported.
+	"pps_irq"        : External PPS interrupt.
+			   The external IRQ to indicate the occurrence of PPS
+			   pulse for RTC nanoseconds synchronization.
 - qcom,emac-gpio-mdc  : GPIO pin number of the MDC line of MDIO bus.
 - qcom,emac-gpio-mdio : GPIO pin number of the MDIO line of MDIO bus.
 - phy-addr : Specifies phy address on MDIO bus.

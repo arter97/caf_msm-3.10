@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -239,6 +239,7 @@ struct emac_hw {
 	/* 1588 parameter */
 	enum emac_ptp_clk_mode  ptp_clk_mode;
 	enum emac_ptp_mode      ptp_mode;
+	u32                     ptp_expanded_intr_mask;
 	u32                     ptp_intr_mask;
 	spinlock_t              ptp_lock; /* sync access to ptp hw */
 	u32                     tstamp_rx_offset;
@@ -659,6 +660,12 @@ struct emac_tx_queue {
 
 #define GET_TPD_BUFFER(_tque, _i)    (&((_tque)->tpd.tpbuff[(_i)]))
 
+struct emac_ptp_irq_stats {
+	u32 ptp;
+	u32 pps_in;
+	u32 pps;
+};
+
 /* driver private data structure */
 struct emac_adapter {
 	struct net_device *netdev;
@@ -689,6 +696,10 @@ struct emac_adapter {
 	struct emac_phy phy;
 	struct emac_hw hw;
 	struct emac_hw_stats hw_stats;
+
+	/* PTP interrupt */
+	struct emac_ptp_irq_stats ptp_irq_stats;
+	int                       pps_irq;
 
 	/* tx timestamping queue */
 	struct sk_buff_head         hwtxtstamp_pending_queue;
