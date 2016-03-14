@@ -1,4 +1,4 @@
-/* Copyright (c) 2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2015, 2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -231,18 +231,19 @@ static int emac_hw_clear_sgmii_intr_status(struct emac_adapter *adpt,
 		if (!(status & irq_bits))
 			break;
 	}
-	if (status & irq_bits) {
-		emac_err(adpt,
-			 "failed to clear SGMII irq: status 0x%x bits 0x%x\n",
-			 status, irq_bits);
-		return -EIO;
-	}
 
 	/* Finalize clearing procedure */
 	writel_relaxed(0, sgmii->base + EMAC_SGMII_PHY_IRQ_CMD);
 	writel_relaxed(0, sgmii->base + EMAC_SGMII_PHY_INTERRUPT_CLEAR);
 	/* Ensure that clearing procedure finalization is written to HW */
 	wmb();
+
+	if (status & irq_bits) {
+		emac_err(adpt,
+			 "failed to clear SGMII irq: status 0x%x bits 0x%x\n",
+			 status, irq_bits);
+		return -EIO;
+	}
 
 	return 0;
 }
