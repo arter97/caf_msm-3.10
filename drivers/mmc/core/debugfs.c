@@ -233,6 +233,15 @@ static int mmc_max_clock_set(void *data, u64 val)
 
 	mmc_rpm_hold(host, &host->class_dev);
 	mmc_claim_host(host);
+	if (mmc_card_cmdq(host->card)) {
+		err = mmc_cmdq_halt_on_empty_queue(host);
+		if (err) {
+			pr_err("%s: halt failed while doing %s err (%d)\n",
+					mmc_hostname(host), __func__,
+					err);
+			goto out_release;
+		}
+	}
 	if (host->bus_ops && host->bus_ops->change_bus_speed) {
 		old_freq = host->f_max;
 		host->f_max = freq;
@@ -242,6 +251,10 @@ static int mmc_max_clock_set(void *data, u64 val)
 		if (err)
 			host->f_max = old_freq;
 	}
+	if (mmc_card_cmdq(host->card) && mmc_cmdq_halt(host, false))
+		pr_err("%s: %s: cmdq unhalt failed\n",
+				mmc_hostname(host), __func__);
+out_release:
 	mmc_release_host(host);
 	mmc_rpm_release(host, &host->class_dev);
 out:
