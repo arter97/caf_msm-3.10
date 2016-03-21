@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009-2015, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2009-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -727,6 +727,14 @@ msm_get_hw_platform(struct device *dev,
 }
 
 static ssize_t
+msm_get_hw_platform_id(struct device *dev,
+			struct device_attribute *attr,
+			char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%u\n", socinfo_get_platform_type());
+}
+
+static ssize_t
 msm_get_platform_version(struct device *dev,
 				struct device_attribute *attr,
 				char *buf)
@@ -972,6 +980,8 @@ static struct device_attribute msm_soc_attr_build_id =
 static struct device_attribute msm_soc_attr_hw_platform =
 	__ATTR(hw_platform, S_IRUGO, msm_get_hw_platform, NULL);
 
+static struct device_attribute msm_soc_attr_hw_platform_id =
+	__ATTR(hw_platform_id, S_IRUGO, msm_get_hw_platform_id, NULL);
 
 static struct device_attribute msm_soc_attr_platform_version =
 	__ATTR(platform_version, S_IRUGO,
@@ -1108,10 +1118,10 @@ static void __init populate_soc_sysfs_files(struct device *msm_soc_device)
 	switch (socinfo_format) {
 	case SOCINFO_VERSION(0, 11):
 	case SOCINFO_VERSION(0, 10):
-		 device_create_file(msm_soc_device,
+		device_create_file(msm_soc_device,
 					&msm_soc_attr_serial_number);
 	case SOCINFO_VERSION(0, 9):
-		 device_create_file(msm_soc_device,
+		device_create_file(msm_soc_device,
 					&msm_soc_attr_foundry_id);
 	case SOCINFO_VERSION(0, 8):
 	case SOCINFO_VERSION(0, 7):
@@ -1133,6 +1143,8 @@ static void __init populate_soc_sysfs_files(struct device *msm_soc_device)
 	case SOCINFO_VERSION(0, 3):
 		device_create_file(msm_soc_device,
 					&msm_soc_attr_hw_platform);
+		device_create_file(msm_soc_device,
+					&msm_soc_attr_hw_platform_id);
 	case SOCINFO_VERSION(0, 2):
 		device_create_file(msm_soc_device,
 					&msm_soc_attr_raw_id);
