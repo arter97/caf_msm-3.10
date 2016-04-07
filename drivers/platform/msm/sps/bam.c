@@ -1697,6 +1697,19 @@ void bam_pipe_halt(void *base, u32 pipe, bool halt)
 		bam_write_reg_field(base, P_HALT, pipe, P_HALT_P_HALT, 0);
 }
 
+/* get pipe event reg offset */
+u32 bam_get_pipe_event_reg_offset(void *base, u32 pipe)
+{
+	return bam_get_register_offset(base, P_EVNT_REG, pipe);
+}
+
+/* get pipe sw offset register  offset */
+u32 bam_get_pipe_sw_offset_reg_offset(void *base, u32 pipe)
+{
+	return bam_get_register_offset(base, P_SW_OFSTS, pipe);
+}
+
+
 /* output the content of BAM-level registers */
 void print_bam_reg(void *virt_addr)
 {

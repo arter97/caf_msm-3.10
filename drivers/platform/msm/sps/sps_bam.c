@@ -1395,21 +1395,74 @@ int sps_bam_pipe_reg_event(struct sps_bam *dev,
 	return 0;
 }
 
+
+#define P_DESC_FIFO_PEER_OFST         0xffff
+#define SW_DESC_OFST                  0xffff
+
+/**
+ * set bam pipe descriptor write offset.
+ */
+static inline void sps_bam_pipe_set_desc_write_offset(struct sps_bam *dev,
+					struct sps_pipe *pipe, u32 woff)
+{
+	u32 tmp = 0;
+
+	if (pipe->state & BAM_STATE_BAM2BAM) {
+		/* P_BYTES_ CONSUMED is only used in B2B mode */
+		tmp = ioread32(dev->base + pipe->bam_pipe_event_reg_offset);
+		tmp &= ~(P_DESC_FIFO_PEER_OFST);
+	}
+	/* memory barrier to make it visible */
+	wmb();
+	iowrite32((woff & P_DESC_FIFO_PEER_OFST) | tmp,
+			dev->base + pipe->bam_pipe_event_reg_offset);
+	pipe->cached_write_desc_offset = woff & P_DESC_FIFO_PEER_OFST;
+	pipe->write_desc_offset_cached = true;
+}
+
+/**
+ * get bam pipe descriptor write offset.
+ */
+static inline u32 sps_bam_pipe_get_desc_write_offset(struct sps_bam *dev,
+					struct sps_pipe *pipe)
+{
+
+	/* If system mode, go to read cached copy. Otherwise, read from hw */
+	if (!(pipe->state & BAM_STATE_BAM2BAM) &&
+					pipe->write_desc_offset_cached)
+		return pipe->cached_write_desc_offset;
+	return ioread32(dev->base + pipe->bam_pipe_event_reg_offset)
+			& P_DESC_FIFO_PEER_OFST;
+}
+
+/**
+ * get bam pipe descriptor read offset.
+ *
+ */
+static inline u32 sps_bam_pipe_get_desc_read_offset(struct sps_bam *dev,
+					struct sps_pipe *pipe)
+{
+	return ioread32(dev->base + pipe->bam_pipe_sw_offset_reg_offset)
+			& SW_DESC_OFST;
+}
+
 /**
  * Submit a transfer of a single buffer to a BAM pipe
  *
  */
 int sps_bam_pipe_transfer_one(struct sps_bam *dev,
-				    u32 pipe_index, u32 addr, u32 size,
+				    struct sps_pipe *pipe, u32 addr, u32 size,
 				    void *user, u32 flags)
 {
-	struct sps_pipe *pipe = dev->pipes[pipe_index];
+	u32 pipe_index = pipe->pipe_index;
 	struct sps_iovec *desc;
 	struct sps_iovec iovec;
 	u32 next_write;
 	static int show_recom;
 
-	SPS_DBG(dev, "sps:BAM %pa pipe %d addr 0x%x size 0x%x flags 0x%x\n",
+	if (dev->ipc_loglevel == 0)
+		SPS_DBG(dev,
+			"sps:BAM %pa pipe %d addr 0x%x size 0x%x flags 0x%x\n",
 			BAM_ID(dev), pipe_index, addr, size, flags);
 
 	/* Is this a BAM-to-BAM or satellite connection? */
@@ -1522,17 +1575,13 @@ int sps_bam_pipe_transfer_one(struct sps_bam *dev,
 #endif /* SPS_BAM_STATISTICS */
 
 	/* Notify pipe */
-	if ((flags & SPS_IOVEC_FLAG_NO_SUBMIT) == 0) {
-		wmb(); /* Memory Barrier */
-		bam_pipe_set_desc_write_offset(&dev->base, pipe_index,
-					       next_write);
-	}
-
+	if ((flags & SPS_IOVEC_FLAG_NO_SUBMIT) == 0)
+		sps_bam_pipe_set_desc_write_offset(dev, pipe, next_write);
 	if (dev->ipc_loglevel == 0)
 		SPS_DBG(dev,
 			"sps:%s: BAM phy addr:%pa; pipe %d; write pointer to tell HW: 0x%x; write pointer read from HW: 0x%x\n",
 			__func__, BAM_ID(dev), pipe_index, next_write,
-			bam_pipe_get_desc_write_offset(&dev->base, pipe_index));
+			sps_bam_pipe_get_desc_write_offset(dev, pipe));
 
 	return 0;
 }
@@ -1542,7 +1591,7 @@ int sps_bam_pipe_transfer_one(struct sps_bam *dev,
  *
  */
 int sps_bam_pipe_transfer(struct sps_bam *dev,
-			 u32 pipe_index, struct sps_transfer *transfer)
+			 struct sps_pipe *pipe, struct sps_transfer *transfer)
 {
 	struct sps_iovec *iovec;
 	u32 count;
@@ -1550,7 +1599,7 @@ int sps_bam_pipe_transfer(struct sps_bam *dev,
 	void *user;
 	int n;
 	int result;
-	struct sps_pipe *pipe = dev->pipes[pipe_index];
+	u32 pipe_index = pipe->pipe_index;
 
 	if (transfer->iovec_count == 0) {
 		SPS_ERR(dev, "sps:iovec count zero: BAM %pa pipe %d\n",
@@ -1559,11 +1608,11 @@ int sps_bam_pipe_transfer(struct sps_bam *dev,
 	}
 
 	if (!pipe->sys.ack_xfers && pipe->polled) {
-		sps_bam_pipe_get_unused_desc_num(dev, pipe_index,
+		sps_bam_pipe_get_unused_desc_num(dev, pipe,
 					&count);
 		count = pipe->desc_size / sizeof(struct sps_iovec) - count - 1;
 	} else
-		sps_bam_get_free_count(dev, pipe_index, &count);
+		sps_bam_get_free_count(dev, pipe, &count);
 
 	if (count < transfer->iovec_count) {
 		SPS_ERR(dev,
@@ -1583,7 +1632,7 @@ int sps_bam_pipe_transfer(struct sps_bam *dev,
 			flags = iovec->flags;
 			user = transfer->user;
 		}
-		result = sps_bam_pipe_transfer_one(dev, pipe_index,
+		result = sps_bam_pipe_transfer_one(dev, pipe,
 						 iovec->addr,
 						 iovec->size, user,
 						 flags);
@@ -1614,8 +1663,8 @@ int sps_bam_pipe_inject_zlt(struct sps_bam *dev, u32 pipe_index)
 		return SPS_ERROR;
 	}
 
-	read_p = bam_pipe_get_desc_read_offset(&dev->base, pipe_index);
-	write_p = bam_pipe_get_desc_write_offset(&dev->base, pipe_index);
+	read_p = sps_bam_pipe_get_desc_read_offset(dev, pipe);
+	write_p = sps_bam_pipe_get_desc_write_offset(dev, pipe);
 
 	SPS_DBG2(dev,
 		"sps: BAM %pa pipe %d: read pointer:0x%x; write pointer:0x%x.\n",
@@ -1641,13 +1690,11 @@ int sps_bam_pipe_inject_zlt(struct sps_bam *dev, u32 pipe_index)
 	desc->size = 0;
 	desc->flags = SPS_IOVEC_FLAG_EOT;
 
-	bam_pipe_set_desc_write_offset(&dev->base, pipe_index,
-					       next_write);
-	wmb(); /* update write pointer in HW */
+	sps_bam_pipe_set_desc_write_offset(dev, pipe, next_write);
 	SPS_DBG2(dev,
 		"sps: BAM %pa pipe %d: write pointer to tell HW: 0x%x; write pointer read from HW: 0x%x\n",
 		BAM_ID(dev), pipe_index, next_write,
-		bam_pipe_get_desc_write_offset(&dev->base, pipe_index));
+		sps_bam_pipe_get_desc_write_offset(dev, pipe));
 
 	return 0;
 }
@@ -1803,7 +1850,6 @@ static void pipe_handler_eot(struct sps_bam *dev, struct sps_pipe *pipe)
 	struct sps_iovec *cache;
 	void **user;
 	u32 *update_offset;
-	u32 pipe_index = pipe->pipe_index;
 	u32 offset;
 	u32 end_offset;
 	enum sps_event event_id;
@@ -1826,14 +1872,14 @@ static void pipe_handler_eot(struct sps_bam *dev, struct sps_pipe *pipe)
 	pipe->sys.handler_eot = true;
 
 	/* Get offset of last descriptor completed by the pipe */
-	end_offset = bam_pipe_get_desc_read_offset(&dev->base, pipe_index);
+	end_offset = sps_bam_pipe_get_desc_read_offset(dev, pipe);
 
 	if (dev->ipc_loglevel == 0)
 		SPS_DBG(dev,
 			"sps:%s; pipe index:%d; read pointer:0x%x; write pointer:0x%x; sys.acked_offset:0x%x.\n",
 			__func__, pipe->pipe_index, end_offset,
-			bam_pipe_get_desc_write_offset(&dev->base, pipe_index),
-			pipe->sys.acked_offset);
+			sps_bam_pipe_get_desc_write_offset(dev, pipe),
+						pipe->sys.acked_offset);
 
 	if (producer && pipe->late_eot) {
 		struct sps_iovec *desc_end;
@@ -2196,7 +2242,7 @@ int sps_bam_pipe_get_iovec(struct sps_bam *dev, u32 pipe_index,
 	/* Is there a completed descriptor? */
 	if (pipe->sys.no_queue)
 		read_offset =
-		bam_pipe_get_desc_read_offset(&dev->base, pipe_index);
+			sps_bam_pipe_get_desc_read_offset(dev, pipe);
 	else
 		read_offset = pipe->sys.cache_offset;
 
@@ -2249,15 +2295,14 @@ int sps_bam_pipe_is_empty(struct sps_bam *dev, u32 pipe_index,
 	}
 
 	/* Get offset of last descriptor completed by the pipe */
-	end_offset = bam_pipe_get_desc_read_offset(&dev->base, pipe_index);
+	end_offset = sps_bam_pipe_get_desc_read_offset(dev, pipe);
 
 	if ((pipe->state & BAM_STATE_BAM2BAM) == 0)
 		/* System mode */
 		acked_offset = pipe->sys.acked_offset;
 	else
 		/* BAM-to-BAM */
-		acked_offset = bam_pipe_get_desc_write_offset(&dev->base,
-							  pipe_index);
+		acked_offset = sps_bam_pipe_get_desc_write_offset(dev, pipe);
 
 
 	/* Determine descriptor FIFO state */
@@ -2307,10 +2352,9 @@ int sps_bam_pipe_is_empty(struct sps_bam *dev, u32 pipe_index,
  * Get number of free slots in a BAM pipe descriptor FIFO
  *
  */
-int sps_bam_get_free_count(struct sps_bam *dev, u32 pipe_index,
+int sps_bam_get_free_count(struct sps_bam *dev, struct sps_pipe *pipe,
 				 u32 *count)
 {
-	struct sps_pipe *pipe = dev->pipes[pipe_index];
 	u32 next_write;
 	u32 free;
 
@@ -2318,7 +2362,7 @@ int sps_bam_get_free_count(struct sps_bam *dev, u32 pipe_index,
 	if ((pipe->state & (BAM_STATE_BAM2BAM | BAM_STATE_REMOTE))) {
 		SPS_ERR(dev,
 			"sps:Free count on BAM-to-BAM or remote: BAM %pa pipe %d\n",
-			BAM_ID(dev), pipe_index);
+			BAM_ID(dev), pipe->pipe_index);
 		*count = 0;
 		return SPS_ERROR;
 	}
@@ -2445,29 +2489,19 @@ int sps_bam_pipe_timer_ctrl(struct sps_bam *dev,
  * Get the number of unused descriptors in the descriptor FIFO
  * of a pipe
  */
-int sps_bam_pipe_get_unused_desc_num(struct sps_bam *dev, u32 pipe_index,
+int sps_bam_pipe_get_unused_desc_num(struct sps_bam *dev, struct sps_pipe *pipe,
 					u32 *desc_num)
 {
 	u32 sw_offset, peer_offset, fifo_size;
 	u32 desc_size = sizeof(struct sps_iovec);
-	struct sps_pipe *pipe = dev->pipes[pipe_index];
 
 	if (pipe == NULL)
 		return SPS_ERROR;
 
 	fifo_size = pipe->desc_size;
 
-	sw_offset = bam_pipe_get_desc_read_offset(&dev->base, pipe_index);
-	if ((dev->props.options & SPS_BAM_CACHED_WP) &&
-		!(pipe->state & BAM_STATE_BAM2BAM)) {
-		peer_offset = pipe->sys.desc_offset;
-		SPS_DBG(dev,
-			"sps:BAM %pa pipe %d: peer offset in cache:0x%x\n",
-			BAM_ID(dev), pipe_index, peer_offset);
-	} else {
-		peer_offset = bam_pipe_get_desc_write_offset(&dev->base,
-				pipe_index);
-	}
+	sw_offset = sps_bam_pipe_get_desc_read_offset(dev, pipe);
+	peer_offset = sps_bam_pipe_get_desc_write_offset(dev, pipe);
 
 	if (sw_offset <= peer_offset)
 		*desc_num = (peer_offset - sw_offset) / desc_size;
@@ -2484,8 +2518,10 @@ bool sps_bam_pipe_pending_desc(struct sps_bam *dev, u32 pipe_index)
 {
 	u32 sw_offset, peer_offset;
 
-	sw_offset = bam_pipe_get_desc_read_offset(&dev->base, pipe_index);
-	peer_offset = bam_pipe_get_desc_write_offset(&dev->base, pipe_index);
+	sw_offset = sps_bam_pipe_get_desc_read_offset(dev,
+						dev->pipes[pipe_index]);
+	peer_offset = sps_bam_pipe_get_desc_write_offset(dev,
+						dev->pipes[pipe_index]);
 
 	if (sw_offset == peer_offset)
 		return false;
