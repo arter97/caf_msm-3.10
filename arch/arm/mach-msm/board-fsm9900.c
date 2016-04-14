@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -159,7 +159,7 @@ static struct platform_device fsm9900_uio1_device = {
 static struct resource fsm9900_uio2_resources[] = {
 	{
 		.start = FSM9900_SCLTE_DDR_PHYS,
-		.end   = FSM9900_SCLTE_DDR_PHYS + 181 * SZ_1M - 1,
+		.end   = FSM9900_SCLTE_DDR_PHYS + 127 * SZ_1M - 1,
 		.name  = "sclte_ddr",
 		.flags = IORESOURCE_MEM,
 	},
