@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -444,4 +444,7 @@ bool bam_pipe_check_zlt(void *base, u32 pipe);
  * @return true if desc FIFO is empty. Otherwise return false.
  */
 bool bam_pipe_check_pipe_empty(void *base, u32 pipe);
+
+u32 bam_get_pipe_event_reg_offset(void *base, u32 pipe);
+u32 bam_get_pipe_sw_offset_reg_offset(void *base, u32 pipe);
 #endif				/* _BAM_H_ */

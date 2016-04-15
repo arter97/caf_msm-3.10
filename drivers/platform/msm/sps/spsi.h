@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -542,4 +542,31 @@ void bam_pipe_reset(void *base, u32 pipe);
  * This function disables a BAM pipe.
  */
 void bam_disable_pipe(void *base, u32 pipe);
+
+
+/**
+ * Get pipe event register offset for a BAM pipe
+ *
+ * This function gets the event register  offset for a BAM pipe.
+ *
+ * @base - BAM virtual base address.
+ *
+ * @pipe - pipe index
+ */
+u32 bam_get_pipe_event_reg_offset(void *base, u32 pipe);
+
+/**
+ * Get pipe SW offset register offset for a BAM pipe
+ *
+ * This function gets the pipe SW offset regisgter offset for a BAM pipe.
+ *
+ * @base - BAM virtual base address.
+ *
+ * @pipe - pipe index
+ *
+ */
+u32 bam_get_pipe_sw_offset_reg_offset(void *base, u32 pipe);
+
+
+
 #endif	/* _SPSI_H_ */
