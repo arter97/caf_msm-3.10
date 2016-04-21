@@ -852,13 +852,13 @@
 		};
 	};
 
-	qcom,danipc@22000000 {
+	qcom,danipc@1F300000 {
 		compatible = "qcom,danipc";
 		reg-names = "ipc_bufs", "agent_table", "apps_ipc_intr_en",
 			"phycpu0_ipc", "phycpu1_ipc", "phycpu2_ipc",
 			"phydsp0_ipc", "phydsp1_ipc", "apps_ipc_data",
 			"qdsp6_0_ipc", "qdsp6_1_ipc", "apps_ipc_pcap";
-		reg = <0x22000000 0x100000>, /* ipc_bufs */
+		reg = <0x1F300000 0x100000>, /* ipc_bufs */
 			<0x13e60000 0x2000>, /* agent_table */
 			<0xfd4a3500 0x100>, /* apps_ipc_intr_en */
 			<0xf683a000 0x100>, /* phycpu0_ipc */
