@@ -1,4 +1,4 @@
-/* Copyright (c) 2014-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2014-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -44,6 +44,7 @@
 #define FSM9010_QDSP6_0_DEBUG_DUMP_PHYS	0x18900000
 #define FSM9010_QDSP6_1_DEBUG_DUMP_PHYS	0x18980000
 #define FSM9010_NSS_CORE_DUMP_PHYS	0x28000000
+#define FSM9010_NSS_TCM_PHYS		0xe4000000
 
 #define FSM9010_UIO_VERSION "1.0"
 
@@ -159,6 +160,12 @@ static struct resource fsm9010_uio2_resources[] = {
 		.start = FSM9010_NSS_CORE_DUMP_PHYS,
 		.end   = FSM9010_NSS_CORE_DUMP_PHYS + SZ_16M - 1,
 		.name  = "nss_core_dump",
+		.flags = IORESOURCE_MEM,
+	},
+	{
+		.start = FSM9010_NSS_TCM_PHYS,
+		.end   = FSM9010_NSS_TCM_PHYS + SZ_64K - 1,
+		.name  = "nss_tcm",
 		.flags = IORESOURCE_MEM,
 	},
 };
