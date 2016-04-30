@@ -28,6 +28,11 @@ Optional properties:
 - qcom,ipi-ping : (boolean) send keep alive ping to other cpus if present
 - qcom,wakeup-enable : (boolean) enable non secure watchdog to freeze / unfreeze
 			automatically across suspend / resume path.
+- qcom,userspace-watchdog :
+	(boolean) Allow enabling the userspace-watchdog feature. This feature
+	requires userspace to pet the watchdog every qcom,pet-time interval
+	in addition to the existing kernel-level checks.
+	This feature is supported through device sysfs files.
 
 Example:
 
