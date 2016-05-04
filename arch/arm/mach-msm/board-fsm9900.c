@@ -41,15 +41,16 @@
 #define FSM_ID_MASK	0x000FFFFF
 #define FSM_ID_FSM9900	0x0080f
 
-#define FSM9900_QDSP6_0_DEBUG_DUMP_PHYS	0x25200000
-#define FSM9900_QDSP6_1_DEBUG_DUMP_PHYS	0x25280000
-#define FSM9900_QDSP6_2_DEBUG_DUMP_PHYS	0x25300000
-#define FSM9900_SCLTE_DEBUG_DUMP_PHYS	0x25180000
-#define FSM9900_SCLTE_DEBUG_TRACE_PHYS	0x1f100000
-#define FSM9900_SCLTE_CDU_PHYS		0x1d000000
-#define FSM9900_SCLTE_CB_TRACE_PHYS	0x3aa00000
-#define FSM9900_SCLTE_RF_CAL_PHYS	0x3a000000
-#define FSM9900_SCLTE_ETH_TRACE_PHYS	0x2fe8c000
+#define FSM9900_QDSP6_0_DEBUG_DUMP_PHYS	0x19800000
+#define FSM9900_QDSP6_1_DEBUG_DUMP_PHYS	0x19880000
+#define FSM9900_QDSP6_2_DEBUG_DUMP_PHYS	0x19900000
+#define FSM9900_QDSP6_3_DEBUG_DUMP_PHYS	0x19A80000
+#define FSM9900_SCLTE_DEBUG_DUMP_PHYS	0x19780000
+#define FSM9900_SCLTE_DEBUG_TRACE_PHYS	0x19700000
+#define FSM9900_SCLTE_CDU_PHYS		0x18600000
+#define FSM9900_SCLTE_CB_TRACE_PHYS	0x1a100000
+#define FSM9900_SCLTE_RF_CAL_PHYS	0x1a100000
+#define FSM9900_SCLTE_ETH_TRACE_PHYS	0x19c00000
 #define FSM9900_SCLTE_DDR_PHYS		0x00100000
 #define FSM9900_SCLTE_GEN_DBG_PHYS	0xf6000000
 
@@ -91,20 +92,20 @@ static struct resource fsm9900_uio0_resources[] = {
 	},
 	{
 		.start = FSM9900_QDSP6_2_DEBUG_DUMP_PHYS,
-		.end   = FSM9900_QDSP6_2_DEBUG_DUMP_PHYS + SZ_1M - 1,
+		.end   = FSM9900_QDSP6_2_DEBUG_DUMP_PHYS + SZ_1M + SZ_512K - 1,
 		.name  = "qdsp6_2_debug_dump",
+		.flags = IORESOURCE_MEM,
+	},
+	{
+		.start = FSM9900_QDSP6_3_DEBUG_DUMP_PHYS,
+		.end   = FSM9900_QDSP6_3_DEBUG_DUMP_PHYS + SZ_1M + SZ_512K - 1,
+		.name  = "qdsp6_3_debug_dump",
 		.flags = IORESOURCE_MEM,
 	},
 	{
 		.start = FSM9900_SCLTE_DEBUG_DUMP_PHYS,
 		.end   = FSM9900_SCLTE_DEBUG_DUMP_PHYS + SZ_512K - 1,
 		.name  = "sclte_debug_dump",
-		.flags = IORESOURCE_MEM,
-	},
-	{
-		.start = FSM9900_SCLTE_DEBUG_TRACE_PHYS,
-		.end   = FSM9900_SCLTE_DEBUG_TRACE_PHYS + SZ_512K - 1,
-		.name  = "sclte_debug_trace",
 		.flags = IORESOURCE_MEM,
 	},
 };
@@ -121,6 +122,12 @@ static struct platform_device fsm9900_uio0_device = {
 
 static struct resource fsm9900_uio1_resources[] = {
 	{
+		.start = FSM9900_SCLTE_DEBUG_TRACE_PHYS,
+		.end   = FSM9900_SCLTE_DEBUG_TRACE_PHYS + SZ_512K - 1,
+		.name  = "sclte_debug_trace",
+		.flags = IORESOURCE_MEM,
+	},
+	{
 		.start = FSM9900_SCLTE_CDU_PHYS,
 		.end   = FSM9900_SCLTE_CDU_PHYS + SZ_16M - 1,
 		.name  = "sclte_cdu",
@@ -128,7 +135,7 @@ static struct resource fsm9900_uio1_resources[] = {
 	},
 	{
 		.start = FSM9900_SCLTE_CB_TRACE_PHYS,
-		.end   = FSM9900_SCLTE_CB_TRACE_PHYS + SZ_2M - 1,
+		.end   = FSM9900_SCLTE_CB_TRACE_PHYS + SZ_8M + SZ_2M - 1,
 		.name  = "sclte_cb_trace",
 		.flags = IORESOURCE_MEM,
 	},

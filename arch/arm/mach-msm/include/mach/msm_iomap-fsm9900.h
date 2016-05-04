@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2016, The Linux Foundation. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -23,7 +23,7 @@
  *
  */
 
-#define FSM9900_SHARED_RAM_PHYS 0x1C100000
+#define FSM9900_SHARED_RAM_PHYS 0x17400000
 
 #define FSM9900_TLMM_PHYS	0xFD510000
 #define FSM9900_TLMM_SIZE	SZ_16K
