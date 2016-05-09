@@ -139,12 +139,14 @@ enum camerab_mode_t {
 };
 
 enum msm_actuator_data_type {
-	MSM_ACTUATOR_BYTE_DATA = 1,
+	MSM_ACTUATOR_INVALID_DATA,
+	MSM_ACTUATOR_BYTE_DATA,
 	MSM_ACTUATOR_WORD_DATA,
 };
 
 enum msm_actuator_addr_type {
-	MSM_ACTUATOR_BYTE_ADDR = 1,
+	MSM_ACTUATOR_INVALID_ADDR,
+	MSM_ACTUATOR_BYTE_ADDR,
 	MSM_ACTUATOR_WORD_ADDR,
 };
 
@@ -167,6 +169,7 @@ enum actuator_type {
 	ACTUATOR_PIEZO,
 	ACTUATOR_HVCM,
 	ACTUATOR_BIVCM,
+	ACTUATOR_MAX
 };
 
 enum msm_flash_driver_type {
@@ -346,8 +349,8 @@ struct msm_actuator_reg_params_t {
 	unsigned short reg_addr;
 	unsigned short hw_shift;
 	unsigned short data_shift;
-	unsigned short data_type;
-	unsigned short addr_type;
+	enum msm_actuator_data_type data_type;
+	enum msm_actuator_addr_type addr_type;
 	unsigned short reg_data;
 	unsigned short delay;
 };
