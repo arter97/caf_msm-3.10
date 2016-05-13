@@ -210,9 +210,9 @@
 		qcom,num-locks = <32>;
 	};
 
-	qcom,smem@1c100000 {
+	qcom,smem@17400000 {
 		compatible = "qcom,smem";
-		reg = <0x1c100000 0x700000>,
+		reg = <0x17400000 0x1000000>,
 			<0xf9011000 0x1000>;
 		reg-names = "smem", "irq-reg-base";
 
@@ -498,9 +498,9 @@
 		qcom,l2-dump-size = <0x300000>;
 	};
 
-	qcom,rmtfs_sharedmem@30000000 {
+	qcom,rmtfs_sharedmem@19e00000 {
 		compatible = "qcom,sharedmem-uio";
-		reg = <0x30000000 0x00180000>;
+		reg = <0x19e00000 0x00100000>;
 		reg-names = "rmtfs";
 		qcom,client-id = <0x00000001>;
 	};
@@ -512,16 +512,16 @@
 		qcom,client-id = <0x00000001>;
 	};
 
-	qcom,umtsdfw_sharedmem@25200000 {
+	qcom,umtsdfw_sharedmem@19800000 {
 		compatible = "qcom,sharedmem-uio";
-		reg = <0x25200000 0x00080000>;
+		reg = <0x19800000 0x00080000>;
 		reg-names = "umtsdfw";
 		qcom,client-id = <0x00000001>;
 	};
 
-	qcom,umtsdhost_sharedmem@25280000 {
+	qcom,umtsdhost_sharedmem@19880000 {
 		compatible = "qcom,sharedmem-uio";
-		reg = <0x25280000 0x00080000>;
+		reg = <0x19880000 0x00080000>;
 		reg-names = "umtsdhost";
 		qcom,client-id = <0x00000001>;
 	};
@@ -1423,7 +1423,7 @@
 	qcom,rfic@fd4a4090 {
 		compatible = "qcom,rfic-fsm9900";
 		reg = <0xfd4a4090 0x40>,
-			<0x3a000000 0xa00000>,
+			<0x1a100000 0xa00000>,
 			<0xf9b10000 0x8000>,
 			<0xfd510000 0x4000>;
 		vdd-switch-supply = <&pma8084_l18>;
@@ -1857,9 +1857,9 @@
 		status = "disabled";
 	};
 
-	qseecom: qcom,qseecom@30280000 {
+	qseecom: qcom,qseecom@1a000000 {
 		compatible = "qcom,qseecom";
-		reg = <0x30280000 0x600000>;
+		reg = <0x1a000000 0x100000>;
 		reg-names = "secapp-region";
 		qcom,disk-encrypt-pipe-pair = <2>;
 		qcom,hlos-ce-hw-instance = <1>;
@@ -1887,7 +1887,7 @@
 		reg = <0xfd4aa000 0x20>, <0xfd4a9000 0x40>, <0xfd4a3200 0x04>;
 	};
 
-	qcom,danipc@24200000 {
+	qcom,danipc@3ec00000 {
 		compatible = "qcom,danipc";
 		reg-names = "ipc_bufs", "agent_table", "apps_ipc_intr_en",
 			"phycpu0_ipc", "phycpu1_ipc", "phycpu2_ipc",
@@ -1895,8 +1895,8 @@
 			"phydsp2_ipc", "apps_ipc_data",
 			"qdsp6_0_ipc", "qdsp6_1_ipc", "qdsp6_2_ipc",
 			"qdsp6_3_ipc", "apps_ipc_pcap" ;
-		reg = <0x24200000 0x100000>, /* ipc_bufs */
-			<0x1cf60000 0x2000>, /* agent_table */
+		reg = <0x3ec00000 0x400000>, /* ipc_bufs */
+			<0x19d00000 0x80000>, /* agent_table */
 			<0xfd4a3500 0x100>, /* apps_ipc_intr_en */
 			<0xf683a000 0x100>, /* phycpu0_ipc */
 			<0xf683a000 0x100>, /* phycpu1_ipc */
@@ -1911,7 +1911,7 @@
 			<0xfd496000 0x100>, /* qdsp6_2_ipc */
 			<0xfd494000 0x100>, /* qdsp6_3_ipc */
 			<0xfd487000 0x100>; /* apps_ipc_pcap */
-		qcom,qdsp6-2-shm-size = <0x4000000>;
+		qcom,qdsp6-2-shm-size = <0x5c00000>;
 		interrupts = <0 202 0>, <0 203 0>;
 	};
 };
