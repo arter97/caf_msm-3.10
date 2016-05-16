@@ -2642,6 +2642,8 @@ int msm_isp_cfg_axi_stream(struct vfe_device *vfe_dev, void *arg)
 	struct msm_vfe_axi_shared_data *axi_data = &vfe_dev->axi_data;
 	enum msm_isp_camif_update_state camif_update;
 	int halt = 0;
+	struct msm_vfe_fetch_engine_info *fetch_engine_info =
+		&vfe_dev->fetch_engine_info;
 
 	rc = msm_isp_axi_check_stream_state(vfe_dev, stream_cfg_cmd);
 	if (rc < 0) {
@@ -2650,6 +2652,7 @@ int msm_isp_cfg_axi_stream(struct vfe_device *vfe_dev, void *arg)
 	}
 
 	if (axi_data->num_active_stream == 0) {
+		fetch_engine_info->is_busy = 0;
 		/*Configure UB*/
 		vfe_dev->hw_info->vfe_ops.axi_ops.cfg_ub(vfe_dev);
 		/* Reset hvx state */
