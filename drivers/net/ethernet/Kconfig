@@ -12,7 +12,7 @@ menuconfig ETHERNET
 if ETHERNET
 
 config MDIO
-	tristate
+	tristate "MDIO support"
 
 config SUNGEM_PHY
 	tristate
