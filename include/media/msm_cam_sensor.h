@@ -618,6 +618,11 @@ struct msm_flash_cfg_data_t {
 	} cfg;
 };
 
+struct msm_ir_led_cfg_data_t {
+	enum msm_ir_led_cfg_type_t cfg_type;
+	int32_t intensity;
+};
+
 /* sensor init structures and enums */
 enum msm_sensor_init_cfg_type_t {
 	CFG_SINIT_PROBE,
@@ -669,6 +674,9 @@ struct sensor_init_cfg_data {
 
 #define VIDIOC_MSM_FLASH_CFG \
 	_IOWR('V', BASE_VIDIOC_PRIVATE + 13, struct msm_flash_cfg_data_t)
+
+#define VIDIOC_MSM_IR_LED_CFG \
+	_IOWR('V', BASE_VIDIOC_PRIVATE + 14, struct msm_ir_led_cfg_data_t)
 
 #ifdef CONFIG_COMPAT
 struct msm_camera_i2c_reg_setting32 {
@@ -797,6 +805,11 @@ struct msm_flash_cfg_data_t32 {
 	} cfg;
 };
 
+struct msm_ir_led_cfg_data_t32 {
+	enum msm_ir_led_cfg_type_t cfg_type;
+	int32_t intensity;
+};
+
 #define VIDIOC_MSM_ACTUATOR_CFG32 \
 	_IOWR('V', BASE_VIDIOC_PRIVATE + 6, struct msm_actuator_cfg_data32)
 
@@ -820,6 +833,9 @@ struct msm_flash_cfg_data_t32 {
 
 #define VIDIOC_MSM_FLASH_CFG32 \
 	_IOWR('V', BASE_VIDIOC_PRIVATE + 13, struct msm_flash_cfg_data_t32)
+
+#define VIDIOC_MSM_IR_LED_CFG32 \
+	_IOWR('V', BASE_VIDIOC_PRIVATE + 14, struct msm_ir_led_cfg_data_t32)
 #endif
 
 #endif /* __LINUX_MSM_CAM_SENSOR_H */

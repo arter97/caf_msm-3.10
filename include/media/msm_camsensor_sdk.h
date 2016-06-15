@@ -179,12 +179,24 @@ enum msm_flash_driver_type {
 	FLASH_DRIVER_DEFAULT
 };
 
+enum msm_ir_led_driver_type {
+	IR_LED_DRIVER_GPIO,
+	IR_LED_DRIVER_DEFAULT
+};
+
 enum msm_flash_cfg_type_t {
 	CFG_FLASH_INIT,
 	CFG_FLASH_RELEASE,
 	CFG_FLASH_OFF,
 	CFG_FLASH_LOW,
 	CFG_FLASH_HIGH,
+};
+
+enum msm_ir_led_cfg_type_t {
+	CFG_IR_LED_INIT,
+	CFG_IR_LED_RELEASE,
+	CFG_IR_LED_OFF,
+	CFG_IR_LED_ON,
 };
 
 enum msm_sensor_output_format_t {
