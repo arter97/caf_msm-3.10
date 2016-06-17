@@ -36,6 +36,7 @@ extern unsigned			ipc_regs_len[];
 extern uintptr_t			ipc_regs[];
 extern uint32_t			ipc_shared_mem_sizes[];
 extern struct agent_entry __iomem	*agent_table;
+extern struct mem_map_seg __iomem *mem_map_seg_table;
 
 enum apps_int_mux_mask {
 	apps_ipc_data_mux_mask,

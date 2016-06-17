@@ -1887,15 +1887,15 @@
 		reg = <0xfd4aa000 0x20>, <0xfd4a9000 0x40>, <0xfd4a3200 0x04>;
 	};
 
-	qcom,danipc@3ec00000 {
+	qcom,danipc@0xfe803c00 {
 		compatible = "qcom,danipc";
-		reg-names = "ipc_bufs", "agent_table", "apps_ipc_intr_en",
+		reg-names = "mem_map", "agent_table", "apps_ipc_intr_en",
 			"phycpu0_ipc", "phycpu1_ipc", "phycpu2_ipc",
 			"phycpu3_ipc", "phydsp0_ipc", "phydsp1_ipc",
 			"phydsp2_ipc", "apps_ipc_data",
 			"qdsp6_0_ipc", "qdsp6_1_ipc", "qdsp6_2_ipc",
 			"qdsp6_3_ipc", "apps_ipc_pcap" ;
-		reg = <0x3ec00000 0x400000>, /* ipc_bufs */
+		reg = <0xfe803c00 0x400>, /* mem_map */
 			<0x19d00000 0x80000>, /* agent_table */
 			<0xfd4a3500 0x100>, /* apps_ipc_intr_en */
 			<0xf683a000 0x100>, /* phycpu0_ipc */
@@ -1911,7 +1911,6 @@
 			<0xfd496000 0x100>, /* qdsp6_2_ipc */
 			<0xfd494000 0x100>, /* qdsp6_3_ipc */
 			<0xfd487000 0x100>; /* apps_ipc_pcap */
-		qcom,qdsp6-2-shm-size = <0x5c00000>;
 		interrupts = <0 202 0>, <0 203 0>;
 	};
 };
