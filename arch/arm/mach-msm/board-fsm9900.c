@@ -56,6 +56,61 @@
 
 #define FSM9900_UIO_VERSION "1.0"
 
+#define FSM9900_MEM_MAP_PHYS		0xFE803C00
+#define FSM9900_MEM_MAP_SIZE		0x400
+
+#define MEM_TAG_NONE			0x00000000
+#define MEM_TAG_OEM_DEBUG		0x00000001
+#define MEM_TAG_LOADABLE_HEX0		0x00000002
+#define MEM_TAG_LOADABLE_HEX1		0x00000003
+#define MEM_TAG_LOADABLE_HEX2		0x00000004
+#define MEM_TAG_LOADABLE_HEX3		0x00000005
+#define MEM_TAG_SHARED_LTEFAPI_UL	0x00000006
+#define MEM_TAG_SHARED_LTEFAPI_DL	0x00000007
+#define MEM_TAG_SHARED_LTEIPC		0x00000008
+#define MEM_TAG_SHARED_LTEL2_DL		0x00000009
+#define MEM_TAG_SHARED_LTEL2_UL		0x0000000A
+
+#define VMID_NOACCESS			0
+#define VMID_RPM			1
+#define VMID_TZ				2
+#define VMID_AP				3
+#define VMID_HEX_0			4
+#define VMID_HEX_1			5
+#define VMID_HEX_2			6
+#define VMID_HEX_3			7
+#define VMID_CTTHRT			8
+#define VMID_SCLTE			9
+#define VMID_NAV			10
+#define VMID_EMAC0			11
+#define VMID_EMAC1			12
+#define VMID_PCIE0			13
+#define VMID_PCIE1			14
+
+#define VMID_NOACCESS_BIT		(1<<VMID_NOACCESS)
+#define VMID_RPM_BIT			(1<<VMID_RPM)
+#define VMID_TZ_BIT			(1<<VMID_TZ)
+#define VMID_AP_BIT			(1<<VMID_AP)
+#define VMID_HEX_0_BIT			(1<<VMID_HEX_0)
+#define VMID_HEX_1_BIT			(1<<VMID_HEX_1)
+#define VMID_HEX_2_BIT			(1<<VMID_HEX_2)
+#define VMID_HEX_3_BIT			(1<<VMID_HEX_3)
+#define VMID_CTTHRT_BIT			(1<<VMID_CTTHRT)
+#define VMID_SCLTE_BIT			(1<<VMID_SCLTE)
+#define VMID_NAV_BIT			(1<<VMID_NAV)
+#define VMID_EMAC0_BIT			(1<<VMID_EMAC0)
+#define VMID_EMAC1_BIT			(1<<VMID_EMAC1)
+#define VMID_PCIE0_BIT			(1<<VMID_PCIE0)
+#define VMID_PCIE1_BIT			(1<<VMID_PCIE1)
+
+struct mem_map_seg {
+	u32 phy_addr;
+	u32 sz;
+	u32 rd_vmid;
+	u32 wr_vmid;
+	u32 tag;
+} __attribute__((__packed__));
+
 static struct of_dev_auxdata fsm9900_auxdata_lookup[] __initdata = {
 	OF_DEV_AUXDATA("qcom,sdhci-msm", 0xF9824900, "msm_sdcc.1", NULL),
 	OF_DEV_AUXDATA("qcom,sdhci-msm", 0xF98A4900, "msm_sdcc.2", NULL),
@@ -194,9 +249,26 @@ static struct platform_device *fsm9900_uio_devices[] = {
 };
 
 static const char mac_addr_prop_name[] = "mac-address";
+static const char shm_ul_bufs_prop_name[] = "ul-bufs";
+static const char shm_dl_bufs_prop_name[] = "dl-bufs";
 
 void __init fsm9900_reserve(void)
 {
+}
+
+static struct mem_map_seg *find_mem_map_seg(struct mem_map_seg *tbl, u32 tag)
+{
+	if (tbl == NULL)
+		return NULL;
+
+	while (tbl->tag != MEM_TAG_NONE) {
+		if (tbl->tag == tag)
+			return tbl;
+
+		tbl++;
+	}
+
+	return NULL;
 }
 
 static bool is_fsm9900(void)
@@ -302,9 +374,9 @@ static int emac_dt_update(int cell, phys_addr_t addr, unsigned long size)
 	else
 		of_add_property(np, pmac);
 
+out:
 	of_node_put(np);
 
-out:
 	if (retval && pmac)
 		kfree(pmac);
 
@@ -316,6 +388,96 @@ int __init fsm9900_emac_dt_update(void)
 	emac_dt_update(0, FSM9900_MAC0_FUSE_PHYS, FSM9900_MAC_FUSE_SIZE);
 	emac_dt_update(1, FSM9900_MAC1_FUSE_PHYS, FSM9900_MAC_FUSE_SIZE);
 	return 0;
+}
+
+static int add_danipc_property(struct device_node *np,
+			       struct mem_map_seg *region,
+			       const char *name)
+{
+	u32 buf[2];
+	struct property *pbuf = NULL;
+
+	if (!(region->rd_vmid & VMID_AP_BIT) ||
+	    !(region->wr_vmid & VMID_AP_BIT)) {
+		pr_err("do not have permissions for %s\n", name);
+		return -EPERM;
+	}
+
+	buf[0] = region->phy_addr;
+	buf[1] = region->sz;
+
+	pbuf = kzalloc(sizeof(*pbuf) + sizeof(buf), GFP_KERNEL);
+
+	if (pbuf == NULL)
+		return -ENOMEM;
+
+	pbuf->value = pbuf + 1;
+	pbuf->length = sizeof(buf);
+	pbuf->name = (char *)name;
+	memcpy(pbuf->value, buf, sizeof(buf));
+
+	of_add_property(np, pbuf);
+
+	return 0;
+}
+
+static int __init fsm9900_ipc_buf_region_update(void)
+{
+	struct device_node *np = NULL;
+	int ret = -ENODEV;
+	void *mem_map_region = NULL;
+	struct mem_map_seg __iomem *mem_map_table;
+	struct mem_map_seg *ul_region;
+	struct mem_map_seg *dl_region;
+
+	/* Once node "qcom,danipc" is found in DT, break out of loop */
+	for_each_compatible_node(np, NULL, "qcom,danipc") {
+		break;
+	}
+
+	if (np == NULL) {
+		pr_err("failed to find dt node for qcom,danipc\n");
+		return -ENODEV;
+	}
+
+	mem_map_region = ioremap(FSM9900_MEM_MAP_PHYS, FSM9900_MEM_MAP_SIZE);
+
+	if (mem_map_region == NULL) {
+		pr_err("failed to map memory map");
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	/* Version number comes first */
+	mem_map_table = mem_map_region + sizeof(u32);
+
+	/* Find the UL and DL regions and store them in the DT */
+	ul_region = find_mem_map_seg(mem_map_table, MEM_TAG_SHARED_LTEL2_UL);
+	dl_region = find_mem_map_seg(mem_map_table, MEM_TAG_SHARED_LTEL2_DL);
+
+	if (dl_region == NULL || ul_region == NULL) {
+		pr_err("could not find regions: %p, %p", ul_region, dl_region);
+		ret = -ENODEV;
+		goto out;
+	}
+
+	ret = add_danipc_property(np, dl_region, shm_dl_bufs_prop_name);
+
+	if (ret != 0)
+		goto out;
+
+	ret = add_danipc_property(np, ul_region, shm_ul_bufs_prop_name);
+
+	if (ret != 0)
+		goto out;
+
+out:
+	of_node_put(np);
+
+	if (mem_map_region)
+		iounmap(mem_map_region);
+
+	return ret;
 }
 
 void __init fsm9900_init(void)
@@ -336,6 +498,7 @@ void __init fsm9900_init(void)
 
 	fsm9900_init_gpiomux();
 	fsm9900_emac_dt_update();
+	fsm9900_ipc_buf_region_update();
 
 	fsm9900_add_drivers();
 }
