@@ -6,7 +6,8 @@ for fast and reliable data passing between processors.
 
 Required properties:
 - compatible:	should be "qcom,danipc"
-- reg-names:	"mem_map" - Flexible memory map region
+- reg-names:	"ipc_bufs" - APPS IPC buffers region
+		"mem_map" - Flexible memory map region
 		"agent_table" - IPC global agent table region
 		"apps_ipc_intr_en" - APPS IPC interrupt enable MUX region
 		"phycpu0_ipc" - PHY CPU0 IPC region
@@ -41,7 +42,23 @@ Required properties:
 - interrupts:	IPC interrupt line
 
 Optional properties:
-None
+	-qcom,phycpu0-shm-size: size of shared memory region for PHY CPU0
+	-qcom,phycpu1-shm-size: size of shared memory region for PHY CPU1
+	-qcom,phycpu2-shm-size: size of shared memory region for PHY CPU2
+	-qcom,phycpu3-shm-size: size of shared memory region for PHY CPU3
+	-qcom,phydsp0-shm-size: size of shared memory region for PHY DSP0
+	-qcom,phydsp1-shm-size: size of shared memory region for PHY DSP1
+	-qcom,phydsp2-shm-size: size of shared memory region for PHY DSP2
+	-qcom,apps-shm-size: size of shared memory region for APPS
+	-qcom,qdsp6-0-shm-size: size of shared memory region for QDSP6 0
+	-qcom,qdsp6-1-shm-size: size of shared memory region for QDSP6 1
+	-qcom,qdsp6-2-shm-size: size of shared memory region for QDSP6 2
+	-qcom,qdsp6-3-shm-size: size of shared memory region for QDSP6 3
+
+Note:
+Either mem_map or ipc_bufs must be specified, not both.  If mem_map
+is specified, the *shm-size properties are ignored.
+
 
 Examples:
 	qcom,danipc@0xfe803c00 {
@@ -68,5 +85,27 @@ Examples:
 			<0xfd496000 0x100>, /* qdsp6_2_ipc */
 			<0xfd494000 0x100>, /* qdsp6_3_ipc */
 			<0xfd487000 0x100>; /* apps_ipc_pcap */
+		interrupts = <0 202 0>, <0 203 0>;
+	};
+
+	qcom,danipc@22000000 {
+		compatible = "qcom,danipc";
+		reg-names = "ipc_bufs", "agent_table", "apps_ipc_intr_en",
+			"phycpu0_ipc", "phycpu1_ipc", "phycpu2_ipc",
+			"phydsp0_ipc", "phydsp1_ipc", "apps_ipc_data",
+			"qdsp6_0_ipc", "qdsp6_1_ipc", "apps_ipc_pcap";
+		reg = <0x22000000 0x100000>, /* ipc_bufs */
+			<0x13e60000 0x2000>, /* agent_table */
+			<0xfd4a3500 0x100>, /* apps_ipc_intr_en */
+			<0xf683a000 0x100>, /* phycpu0_ipc */
+			<0xf683a000 0x100>, /* phycpu1_ipc */
+			<0xf683c000 0x100>, /* phycpu2_ipc */
+			<0xf683c000 0x100>, /* phydsp0_ipc */
+			<0xf6862000 0x100>, /* phydsp1_ipc */
+			<0xfd490000 0x100>, /* apps_ipc_data */
+			<0xfd491000 0x100>, /* qdsp6_0_ipc */
+			<0xfd496000 0x100>, /* qdsp6_1_ipc */
+			<0xfd487000 0x100>; /* apps_ipc_pcap */
+		qcom,qdsp6-1-shm-size = <0x2000000>;
 		interrupts = <0 202 0>, <0 203 0>;
 	};

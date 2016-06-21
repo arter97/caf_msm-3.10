@@ -33,10 +33,11 @@
 #include <linux/danipc_ioctl.h>
 #include <ipc_api.h>
 
-#define RESOURCE_NUM		3
-#define MEM_MAP_RES		0
+#define RESOURCE_NUM		4
+#define IPC_BUFS_RES		0
 #define AGENT_TABLE_RES		1
 #define KRAIT_IPC_MUX_RES	2
+#define MEM_MAP_RES		3
 
 #define DANIPC_PROTOCOL_MATCH(p) (((p) & htons(0xf000)) == htons(COOKIE_BASE))
 #define DANIPC_AGENT_DISCOVERED(aid, list) \
@@ -211,6 +212,7 @@ struct danipc_drvr {
 	/* driver debug fs information */
 	struct dentry		*dirent;
 	struct danipc_dbgfs		dbgfsinf[DANIPC_DBGDRV_ENTRY_MAX];
+	bool			support_mem_map;
 	uint32_t		mem_map_version;
 };
 

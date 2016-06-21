@@ -539,14 +539,16 @@ static const struct header_ops danipc_header_ops ____cacheline_aligned = {
 };
 
 static int parse_resources(struct platform_device *pdev, const char *regs[],
-			   const char *resource[])
+			   const char *resource[], const char *shm_names[])
 {
 	struct device_node	*node = pdev->dev.of_node;
 	bool			parse_err = false;
 	int			rc = -ENODEV;
+	bool			has_ipc_bufs = false;
 
 	if (node) {
 		struct resource	*res;
+		int		shm_size = 0;
 		int		r;
 
 		for (r = 0; r < RESOURCE_NUM && !parse_err; r++) {
@@ -556,10 +558,34 @@ static int parse_resources(struct platform_device *pdev, const char *regs[],
 			if (res) {
 				danipc_driver.res_start[r] = res->start;
 				danipc_driver.res_len[r] = resource_size(res);
+
+				if (strcmp(resource[r], "mem_map") == 0)
+					danipc_driver.support_mem_map = true;
+
+				if (strcmp(resource[r], "ipc_bufs") == 0)
+					has_ipc_bufs = true;
 			} else {
-				pr_err("cannot get resource %s\n", resource[r]);
-				parse_err = true;
+				/* Whether mem_map resource is present tells us
+				 * that the device supports flexible memory
+				 * map
+				 */
+				if (strcmp(resource[r], "mem_map") == 0) {
+					danipc_driver.support_mem_map = false;
+				} else if (strcmp(resource[r],
+						"ipc_bufs") == 0) {
+					has_ipc_bufs = false;
+				} else {
+					pr_err("cannot get resource %s\n",
+					       resource[r]);
+					parse_err = true;
+				}
 			}
+		}
+
+		if ((danipc_driver.support_mem_map && has_ipc_bufs) ||
+		    (!danipc_driver.support_mem_map && !has_ipc_bufs)) {
+			pr_err("Must specify either ipc_bufs or mem_map, not both\n");
+			parse_err = true;
 		}
 
 		for (r = 0; r < PLATFORM_MAX_NUM_OF_NODES && !parse_err; r++) {
@@ -572,6 +598,17 @@ static int parse_resources(struct platform_device *pdev, const char *regs[],
 				ipc_regs_phys[r] = res->start;
 				ipc_regs_len[r] = resource_size(res);
 			}
+
+			/* Don't look at shared memory regions if we support
+			 * flexible memory map
+			 */
+			if (!danipc_driver.support_mem_map &&
+			    (!shm_names[r] ||
+			    (of_property_read_u32((&pdev->dev)->of_node,
+						  shm_names[r], &shm_size))))
+				ipc_shared_mem_sizes[r] = 0;
+			else
+				ipc_shared_mem_sizes[r] = shm_size;
 		}
 
 		rc = (!parse_err) ? 0 : -ENOMEM;
@@ -735,8 +772,13 @@ static void danipc_dump_resource_map(struct seq_file *s)
 	seq_puts(s, "| Name        | Phys Address  | Virtual Address | Size    |\n");
 	seq_puts(s, " --------------------------------------------------------\n");
 
-	seq_printf(s, format, "Mem_map_tbl", res_addr[MEM_MAP_RES],
-		   mem_map_seg_table, res_len[MEM_MAP_RES]);
+	if (drvr->support_mem_map)
+		seq_printf(s, format, "Mem_map_tbl", res_addr[MEM_MAP_RES],
+			   mem_map_seg_table, res_len[MEM_MAP_RES]);
+	else
+		seq_printf(s, format, "q6ul_ipcbuf", res_addr[IPC_BUFS_RES],
+			   ipc_buffers, res_len[IPC_BUFS_RES]);
+
 	seq_printf(s, format, "Agnt_tbl", res_addr[AGENT_TABLE_RES],
 		   agent_table, res_len[AGENT_TABLE_RES]);
 	seq_printf(s, format, "Intren_map", res_addr[KRAIT_IPC_MUX_RES],
@@ -1339,10 +1381,19 @@ static int danipc_probe(struct platform_device *pdev)
 		"qdsp6_2_ipc", "qdsp6_3_ipc", "apps_ipc_pcap", NULL, NULL
 	};
 	static const char	*resource[RESOURCE_NUM] = {
-		"mem_map", "agent_table", "apps_ipc_intr_en"
+		"ipc_bufs", "agent_table", "apps_ipc_intr_en", "mem_map"
+	};
+	static const char	*shm_names[PLATFORM_MAX_NUM_OF_NODES] = {
+		"qcom,phycpu0-shm-size", "qcom,phycpu1-shm-size",
+		"qcom,phycpu2-shm-size", "qcom,phycpu3-shm-size",
+		"qcom,phydsp0-shm-size", "qcom,phydsp1-shm-size",
+		"qcom,phydsp2-shm-size", NULL, "qcom,apps-shm-size",
+		"qcom,qdsp6-0-shm-size", "qcom,qdsp6-1-shm-size",
+		"qcom,qdsp6-2-shm-size", "qcom,qdsp6-3-shm-size",
+		NULL, NULL, NULL
 	};
 
-	rc = parse_resources(pdev, regs, resource);
+	rc = parse_resources(pdev, regs, resource, shm_names);
 	if (rc == 0) {
 		rc = danipc_probe_lfifo(pdev, regs);
 		if (rc == 0)
