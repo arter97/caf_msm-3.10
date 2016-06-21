@@ -1,4 +1,4 @@
-/* Copyright (c) 2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -36,6 +36,7 @@
 #include "../codecs/wcd9335.h"
 #include "../codecs/wcd-mbhc-v2.h"
 #include "../codecs/wsa881x.h"
+#include "../codecs/wcd9306.h"
 
 #define DRV_NAME "msm8952-slimbus-wcd"
 
@@ -277,6 +278,83 @@ static void *def_codec_mbhc_cal(void)
 	return codec_cal;
 }
 
+static void *def_tapan_mbhc_cal(void)
+{
+	void *tapan_cal;
+	struct wcd9xxx_mbhc_btn_detect_cfg *btn_cfg;
+	u16 *btn_low, *btn_high;
+	u8 *n_ready, *n_cic, *gain;
+
+	tapan_cal = kzalloc(WCD9XXX_MBHC_CAL_SIZE(WCD9XXX_MBHC_DEF_BUTTONS,
+						WCD9XXX_MBHC_DEF_RLOADS),
+			    GFP_KERNEL);
+	if (!tapan_cal) {
+		pr_err("%s: out of memory\n", __func__);
+		return NULL;
+	}
+
+#define S(X, Y) ((WCD9XXX_MBHC_CAL_GENERAL_PTR(tapan_cal)->X) = (Y))
+	S(t_ldoh, 100);
+	S(t_bg_fast_settle, 100);
+	S(t_shutdown_plug_rem, 255);
+	S(mbhc_nsa, 2);
+	S(mbhc_navg, 128);
+#undef S
+#define S(X, Y) ((WCD9XXX_MBHC_CAL_PLUG_DET_PTR(tapan_cal)->X) = (Y))
+	S(mic_current, TAPAN_PID_MIC_5_UA);
+	S(hph_current, TAPAN_PID_MIC_5_UA);
+	S(t_mic_pid, 100);
+	S(t_ins_complete, 250);
+	S(t_ins_retry, 200);
+#undef S
+#define S(X, Y) ((WCD9XXX_MBHC_CAL_PLUG_TYPE_PTR(tapan_cal)->X) = (Y))
+	S(v_no_mic, 30);
+	S(v_hs_max, 2450);
+#undef S
+#define S(X, Y) ((WCD9XXX_MBHC_CAL_BTN_DET_PTR(tapan_cal)->X) = (Y))
+	S(c[0], 62);
+	S(c[1], 124);
+	S(nc, 1);
+	S(n_meas, 5);
+	S(mbhc_nsc, 10);
+	S(n_btn_meas, 1);
+	S(n_btn_con, 2);
+	S(num_btn, WCD9XXX_MBHC_DEF_BUTTONS);
+	S(v_btn_press_delta_sta, 100);
+	S(v_btn_press_delta_cic, 50);
+#undef S
+	btn_cfg = WCD9XXX_MBHC_CAL_BTN_DET_PTR(tapan_cal);
+	btn_low = wcd9xxx_mbhc_cal_btn_det_mp(btn_cfg, MBHC_BTN_DET_V_BTN_LOW);
+	btn_high = wcd9xxx_mbhc_cal_btn_det_mp(btn_cfg,
+					       MBHC_BTN_DET_V_BTN_HIGH);
+	btn_low[0] = -50;
+	btn_high[0] = 20;
+	btn_low[1] = 21;
+	btn_high[1] = 61;
+	btn_low[2] = 62;
+	btn_high[2] = 104;
+	btn_low[3] = 105;
+	btn_high[3] = 148;
+	btn_low[4] = 149;
+	btn_high[4] = 189;
+	btn_low[5] = 190;
+	btn_high[5] = 228;
+	btn_low[6] = 229;
+	btn_high[6] = 269;
+	btn_low[7] = 270;
+	btn_high[7] = 500;
+	n_ready = wcd9xxx_mbhc_cal_btn_det_mp(btn_cfg, MBHC_BTN_DET_N_READY);
+	n_ready[0] = 80;
+	n_ready[1] = 12;
+	n_cic = wcd9xxx_mbhc_cal_btn_det_mp(btn_cfg, MBHC_BTN_DET_N_CIC);
+	n_cic[0] = 60;
+	n_cic[1] = 47;
+	gain = wcd9xxx_mbhc_cal_btn_det_mp(btn_cfg, MBHC_BTN_DET_GAIN);
+	gain[0] = 11;
+	gain[1] = 14;
+	return tapan_cal;
+}
+
 static struct afe_clk_cfg mi2s_rx_clk = {
 	AFE_API_VERSION_I2S_CONFIG,
 	Q6AFE_LPASS_IBIT_CLK_1_P536_MHZ,
@@ -450,7 +528,9 @@ static int msm8952_enable_codec_mclk(struct snd_soc_codec *codec, int enable,
 {
 	pr_debug("%s: enable = %d\n", __func__, enable);
 
-	if (!strcmp(dev_name(codec->dev), "tomtom_codec"))
+	if (!strcmp(dev_name(codec->dev), "tapan_codec"))
+		tapan_mclk_enable(codec, enable, dapm);
+	else if (!strcmp(dev_name(codec->dev), "tomtom_codec"))
 		tomtom_codec_mclk_enable(codec, enable, dapm);
 	else if (!strcmp(dev_name(codec->dev), "tasha_codec"))
 		tasha_cdc_mclk_enable(codec, enable, dapm);
@@ -1862,6 +1942,27 @@ static int msm8952_mclk_event(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
+static const struct snd_soc_dapm_widget msm8952_tapan_dapm_widgets[] = {
+
+	SND_SOC_DAPM_SUPPLY_S("MCLK", -1, SND_SOC_NOPM, 0, 0,
+	msm8952_mclk_event, SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
+
+	SND_SOC_DAPM_MIC("Handset Mic", NULL),
+	SND_SOC_DAPM_MIC("Headset Mic", NULL),
+	SND_SOC_DAPM_MIC("ANCRight Headset Mic", NULL),
+	SND_SOC_DAPM_MIC("ANCLeft Headset Mic", NULL),
+	SND_SOC_DAPM_MIC("Analog Mic4", NULL),
+	SND_SOC_DAPM_MIC("Analog Mic6", NULL),
+	SND_SOC_DAPM_MIC("Analog Mic7", NULL),
+
+	SND_SOC_DAPM_MIC("Digital Mic1", NULL),
+	SND_SOC_DAPM_MIC("Digital Mic2", NULL),
+	SND_SOC_DAPM_MIC("Digital Mic3", NULL),
+	SND_SOC_DAPM_MIC("Digital Mic4", NULL),
+	SND_SOC_DAPM_MIC("Digital Mic5", NULL),
+	SND_SOC_DAPM_MIC("Digital Mic6", NULL),
+};
+
 static const struct snd_soc_dapm_widget msm8952_tomtom_dapm_widgets[] = {
 
 	SND_SOC_DAPM_SUPPLY_S("MCLK", -1, SND_SOC_NOPM, 0, 0,
@@ -1967,6 +2068,9 @@ int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 					     134, 135, 136, 137, 138, 139,
 					     140, 141, 142, 143};
 
+	unsigned int tapan_rx_ch[TAPAN_RX_MAX] = {144, 145, 146, 147, 148};
+	unsigned int tapan_tx_ch[TAPAN_TX_MAX]  = {128, 129, 130, 131, 132};
+
 	pr_debug("%s: dev_name%s\n", __func__, dev_name(cpu_dai->dev));
 
 	pdata = snd_soc_card_get_drvdata(codec->card);
@@ -1981,7 +2085,13 @@ int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 		return err;
 	}
 
-	if (!strcmp(dev_name(codec_dai->dev), "tomtom_codec")) {
+	if (!strcmp(dev_name(codec_dai->dev), "tapan_codec")) {
+		pdata->msm8952_codec_fn.get_afe_config_fn =
+			tapan_get_afe_config;
+		pdata->msm8952_codec_fn.mbhc_hs_detect = tapan_hs_detect;
+		snd_soc_dapm_new_controls(dapm, msm8952_tapan_dapm_widgets,
+				ARRAY_SIZE(msm8952_tapan_dapm_widgets));
+	} else if (!strcmp(dev_name(codec_dai->dev), "tomtom_codec")) {
 		pdata->msm8952_codec_fn.get_afe_config_fn =
 			tomtom_get_afe_config;
 		pdata->msm8952_codec_fn.mbhc_hs_detect = tomtom_hs_detect;
@@ -2007,58 +2117,83 @@ int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 			}
 	}
 
-	snd_soc_dapm_enable_pin(dapm, "Lineout_1 amp");
-	snd_soc_dapm_enable_pin(dapm, "Lineout_3 amp");
-	snd_soc_dapm_enable_pin(dapm, "Lineout_2 amp");
-	snd_soc_dapm_enable_pin(dapm, "Lineout_4 amp");
+	if (!strcmp(dev_name(codec_dai->dev), "tapan_codec")) {
+		snd_soc_dapm_ignore_suspend(dapm, "Handset Mic");
+		snd_soc_dapm_ignore_suspend(dapm, "Headset Mic");
+		snd_soc_dapm_ignore_suspend(dapm, "Secondary Mic");
+		snd_soc_dapm_ignore_suspend(dapm, "Digital Mic1");
+		snd_soc_dapm_ignore_suspend(dapm, "Digital Mic2");
 
-	snd_soc_dapm_ignore_suspend(dapm, "MADINPUT");
-	snd_soc_dapm_ignore_suspend(dapm, "MAD_CPE_INPUT");
-	snd_soc_dapm_ignore_suspend(dapm, "Handset Mic");
-	snd_soc_dapm_ignore_suspend(dapm, "Headset Mic");
-	snd_soc_dapm_ignore_suspend(dapm, "Secondary Mic");
-	snd_soc_dapm_ignore_suspend(dapm, "Digital Mic1");
-	snd_soc_dapm_ignore_suspend(dapm, "Digital Mic2");
-	snd_soc_dapm_ignore_suspend(dapm, "Lineout_1 amp");
-	snd_soc_dapm_ignore_suspend(dapm, "Lineout_3 amp");
-	snd_soc_dapm_ignore_suspend(dapm, "Lineout_2 amp");
-	snd_soc_dapm_ignore_suspend(dapm, "Lineout_4 amp");
-	snd_soc_dapm_ignore_suspend(dapm, "Handset Mic");
-	snd_soc_dapm_ignore_suspend(dapm, "Headset Mic");
-	snd_soc_dapm_ignore_suspend(dapm, "ANCRight Headset Mic");
-	snd_soc_dapm_ignore_suspend(dapm, "ANCLeft Headset Mic");
-	snd_soc_dapm_ignore_suspend(dapm, "Digital Mic1");
-	snd_soc_dapm_ignore_suspend(dapm, "Digital Mic2");
-	snd_soc_dapm_ignore_suspend(dapm, "Digital Mic3");
-	snd_soc_dapm_ignore_suspend(dapm, "Digital Mic4");
-	snd_soc_dapm_ignore_suspend(dapm, "Digital Mic5");
-	snd_soc_dapm_ignore_suspend(dapm, "Analog Mic4");
-	snd_soc_dapm_ignore_suspend(dapm, "Analog Mic6");
-	snd_soc_dapm_ignore_suspend(dapm, "Analog Mic7");
-	snd_soc_dapm_ignore_suspend(dapm, "Analog Mic8");
-	snd_soc_dapm_ignore_suspend(dapm, "MADINPUT");
-	snd_soc_dapm_ignore_suspend(dapm, "MAD_CPE_INPUT");
+		snd_soc_dapm_ignore_suspend(dapm, "EAR");
+		snd_soc_dapm_ignore_suspend(dapm, "HEADPHONE");
+		snd_soc_dapm_ignore_suspend(dapm, "SPK_OUT");
+		snd_soc_dapm_ignore_suspend(dapm, "LINEOUT1");
+		snd_soc_dapm_ignore_suspend(dapm, "LINEOUT2");
+		snd_soc_dapm_ignore_suspend(dapm, "AMIC1");
+		snd_soc_dapm_ignore_suspend(dapm, "AMIC2");
+		snd_soc_dapm_ignore_suspend(dapm, "AMIC3");
+		snd_soc_dapm_ignore_suspend(dapm, "AMIC4");
+		snd_soc_dapm_ignore_suspend(dapm, "AMIC5");
+		snd_soc_dapm_ignore_suspend(dapm, "DMIC1");
+		snd_soc_dapm_ignore_suspend(dapm, "DMIC2");
+		snd_soc_dapm_ignore_suspend(dapm, "DMIC3");
+		snd_soc_dapm_ignore_suspend(dapm, "DMIC4");
+		snd_soc_dapm_ignore_suspend(dapm, "ANC EAR");
+		snd_soc_dapm_ignore_suspend(dapm, "ANC HEADPHONE");
+	} else {
+		snd_soc_dapm_enable_pin(dapm, "Lineout_1 amp");
+		snd_soc_dapm_enable_pin(dapm, "Lineout_3 amp");
+		snd_soc_dapm_enable_pin(dapm, "Lineout_2 amp");
+		snd_soc_dapm_enable_pin(dapm, "Lineout_4 amp");
 
-	snd_soc_dapm_ignore_suspend(dapm, "EAR");
-	snd_soc_dapm_ignore_suspend(dapm, "LINEOUT1");
-	snd_soc_dapm_ignore_suspend(dapm, "LINEOUT2");
-	snd_soc_dapm_ignore_suspend(dapm, "LINEOUT3");
-	snd_soc_dapm_ignore_suspend(dapm, "LINEOUT4");
-	snd_soc_dapm_ignore_suspend(dapm, "AMIC1");
-	snd_soc_dapm_ignore_suspend(dapm, "AMIC2");
-	snd_soc_dapm_ignore_suspend(dapm, "AMIC3");
-	snd_soc_dapm_ignore_suspend(dapm, "AMIC4");
-	snd_soc_dapm_ignore_suspend(dapm, "AMIC5");
-	snd_soc_dapm_ignore_suspend(dapm, "AMIC6");
-	snd_soc_dapm_ignore_suspend(dapm, "DMIC1");
-	snd_soc_dapm_ignore_suspend(dapm, "DMIC2");
-	snd_soc_dapm_ignore_suspend(dapm, "DMIC3");
-	snd_soc_dapm_ignore_suspend(dapm, "DMIC4");
-	snd_soc_dapm_ignore_suspend(dapm, "DMIC5");
-	snd_soc_dapm_ignore_suspend(dapm, "DMIC6");
-	snd_soc_dapm_ignore_suspend(dapm, "Digital Mic6");
-	snd_soc_dapm_ignore_suspend(dapm, "ANC EAR");
-	snd_soc_dapm_ignore_suspend(dapm, "ANC HEADPHONE");
+		snd_soc_dapm_ignore_suspend(dapm, "MADINPUT");
+		snd_soc_dapm_ignore_suspend(dapm, "MAD_CPE_INPUT");
+		snd_soc_dapm_ignore_suspend(dapm, "Handset Mic");
+		snd_soc_dapm_ignore_suspend(dapm, "Headset Mic");
+		snd_soc_dapm_ignore_suspend(dapm, "Secondary Mic");
+		snd_soc_dapm_ignore_suspend(dapm, "Digital Mic1");
+		snd_soc_dapm_ignore_suspend(dapm, "Digital Mic2");
+		snd_soc_dapm_ignore_suspend(dapm, "Lineout_1 amp");
+		snd_soc_dapm_ignore_suspend(dapm, "Lineout_3 amp");
+		snd_soc_dapm_ignore_suspend(dapm, "Lineout_2 amp");
+		snd_soc_dapm_ignore_suspend(dapm, "Lineout_4 amp");
+		snd_soc_dapm_ignore_suspend(dapm, "Handset Mic");
+		snd_soc_dapm_ignore_suspend(dapm, "Headset Mic");
+		snd_soc_dapm_ignore_suspend(dapm, "ANCRight Headset Mic");
+		snd_soc_dapm_ignore_suspend(dapm, "ANCLeft Headset Mic");
+		snd_soc_dapm_ignore_suspend(dapm, "Digital Mic1");
+		snd_soc_dapm_ignore_suspend(dapm, "Digital Mic2");
+		snd_soc_dapm_ignore_suspend(dapm, "Digital Mic3");
+		snd_soc_dapm_ignore_suspend(dapm, "Digital Mic4");
+		snd_soc_dapm_ignore_suspend(dapm, "Digital Mic5");
+		snd_soc_dapm_ignore_suspend(dapm, "Analog Mic4");
+		snd_soc_dapm_ignore_suspend(dapm, "Analog Mic6");
+		snd_soc_dapm_ignore_suspend(dapm, "Analog Mic7");
+		snd_soc_dapm_ignore_suspend(dapm, "Analog Mic8");
+		snd_soc_dapm_ignore_suspend(dapm, "MADINPUT");
+		snd_soc_dapm_ignore_suspend(dapm, "MAD_CPE_INPUT");
+
+		snd_soc_dapm_ignore_suspend(dapm, "EAR");
+		snd_soc_dapm_ignore_suspend(dapm, "LINEOUT1");
+		snd_soc_dapm_ignore_suspend(dapm, "LINEOUT2");
+		snd_soc_dapm_ignore_suspend(dapm, "LINEOUT3");
+		snd_soc_dapm_ignore_suspend(dapm, "LINEOUT4");
+		snd_soc_dapm_ignore_suspend(dapm, "AMIC1");
+		snd_soc_dapm_ignore_suspend(dapm, "AMIC2");
+		snd_soc_dapm_ignore_suspend(dapm, "AMIC3");
+		snd_soc_dapm_ignore_suspend(dapm, "AMIC4");
+		snd_soc_dapm_ignore_suspend(dapm, "AMIC5");
+		snd_soc_dapm_ignore_suspend(dapm, "AMIC6");
+		snd_soc_dapm_ignore_suspend(dapm, "DMIC1");
+		snd_soc_dapm_ignore_suspend(dapm, "DMIC2");
+		snd_soc_dapm_ignore_suspend(dapm, "DMIC3");
+		snd_soc_dapm_ignore_suspend(dapm, "DMIC4");
+		snd_soc_dapm_ignore_suspend(dapm, "DMIC5");
+		snd_soc_dapm_ignore_suspend(dapm, "DMIC6");
+		snd_soc_dapm_ignore_suspend(dapm, "Digital Mic6");
+		snd_soc_dapm_ignore_suspend(dapm, "ANC EAR");
+		snd_soc_dapm_ignore_suspend(dapm, "ANC HEADPHONE");
+	}
 	if (!strcmp(dev_name(codec_dai->dev), "tomtom_codec")) {
 		snd_soc_dapm_ignore_suspend(dapm, "SPK_OUT");
 		snd_soc_dapm_ignore_suspend(dapm, "HEADPHONE");
@@ -2080,9 +2215,13 @@ int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 
 	snd_soc_dapm_sync(dapm);
 
-	snd_soc_dai_set_channel_map(codec_dai, ARRAY_SIZE(tx_ch),
-				    tx_ch, ARRAY_SIZE(rx_ch), rx_ch);
-
+	if (!strcmp(dev_name(codec_dai->dev), "tapan_codec")) {
+		snd_soc_dai_set_channel_map(codec_dai, ARRAY_SIZE(tapan_tx_ch),
+			tapan_tx_ch, ARRAY_SIZE(tapan_rx_ch), tapan_rx_ch);
+	} else {
+		snd_soc_dai_set_channel_map(codec_dai, ARRAY_SIZE(tx_ch),
+					tx_ch, ARRAY_SIZE(rx_ch), rx_ch);
+	}
 
 	err = msm_afe_set_config(codec);
 	if (err) {
@@ -2100,7 +2239,30 @@ int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 		goto out;
 	}
 
-	if (!strcmp(dev_name(codec_dai->dev), "tomtom_codec")) {
+	if (!strcmp(dev_name(codec_dai->dev), "tapan_codec")) {
+
+		wcd9xxx_mbhc_cfg.gpio_level_insert = of_property_read_bool(
+						codec->card->dev->of_node,
+						"qcom,headset-jack-type-NC");
+		/* start mbhc */
+		wcd9xxx_mbhc_cfg.calibration = def_tapan_mbhc_cal();
+		if (wcd9xxx_mbhc_cfg.calibration) {
+			/*
+			 * mbhc inital calibration needs mclk to be enabled,
+			 * so schedule headset detection for 4sec so that
+			 * adsp gets loaded and will be ready to accept
+			 * mclk request command.
+			 */
+			pdata->codec = codec;
+			schedule_delayed_work(&pdata->hs_detect_dwork,
+					msecs_to_jiffies(HS_STARTWORK_TIMEOUT));
+		} else {
+			pr_err("%s: wcd9xxx_mbhc_cfg calibration is NULL\n",
+					__func__);
+			err = -ENOMEM;
+			goto out;
+		}
+	} else if (!strcmp(dev_name(codec_dai->dev), "tomtom_codec")) {
 
 		wcd9xxx_mbhc_cfg.gpio_level_insert = of_property_read_bool(
 						codec->card->dev->of_node,
@@ -2140,7 +2302,9 @@ int msm_audrx_init(struct snd_soc_pcm_runtime *rtd)
 
 	}
 
-	if (!strcmp(dev_name(codec_dai->dev), "tomtom_codec"))
+	if (!strcmp(dev_name(codec_dai->dev), "tapan_codec"))
+		tapan_event_register(msm8952_codec_event_cb, rtd->codec);
+	else if (!strcmp(dev_name(codec_dai->dev), "tomtom_codec"))
 		tomtom_event_register(msm8952_codec_event_cb, rtd->codec);
 	else if (!strcmp(dev_name(codec_dai->dev), "tasha_codec"))
 		tasha_event_register(msm8976_tasha_codec_event_cb, rtd->codec);
@@ -2185,7 +2349,9 @@ static void hs_detect_work(struct work_struct *work)
 						&wcd9xxx_mbhc_cfg);
 	if (ret < 0)
 		pr_err("%s: Failed to intialise mbhc %d\n", __func__, ret);
-	tomtom_enable_qfuse_sensing(pdata->codec);
+
+	if (strcmp(pdata->codec->name, "tapan_codec"))
+		tomtom_enable_qfuse_sensing(pdata->codec);
 	/*
 	 * Set pdata->codec back to NULL, to ensure codec pointer
 	 * is not referenced further from this structure.
