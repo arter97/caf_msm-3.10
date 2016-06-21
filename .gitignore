@@ -50,6 +50,9 @@ modules.builtin
 #
 /debian/
 
+# Out of tree drivers
+drivers/staging/prima
+
 #
 # git files that we don't want to ignore even it they are dot-files
 #
