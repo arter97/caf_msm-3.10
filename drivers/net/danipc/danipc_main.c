@@ -275,6 +275,9 @@ struct danipc_drvr danipc_driver = {
 	}
 };
 
+const struct ipc_buf_desc *ext_bufs = NULL;
+uint32_t num_ext_bufs = 0;
+
 void alloc_pool_buffers(struct danipc_if *intf)
 {
 	struct net_device	*dev = intf->dev;
@@ -559,20 +562,10 @@ static int parse_resources(struct platform_device *pdev, const char *regs[],
 				danipc_driver.res_start[r] = res->start;
 				danipc_driver.res_len[r] = resource_size(res);
 
-				if (strcmp(resource[r], "mem_map") == 0)
-					danipc_driver.support_mem_map = true;
-
 				if (strcmp(resource[r], "ipc_bufs") == 0)
 					has_ipc_bufs = true;
 			} else {
-				/* Whether mem_map resource is present tells us
-				 * that the device supports flexible memory
-				 * map
-				 */
-				if (strcmp(resource[r], "mem_map") == 0) {
-					danipc_driver.support_mem_map = false;
-				} else if (strcmp(resource[r],
-						"ipc_bufs") == 0) {
+				if (strcmp(resource[r], "ipc_bufs") == 0) {
 					has_ipc_bufs = false;
 				} else {
 					pr_err("cannot get resource %s\n",
@@ -582,10 +575,31 @@ static int parse_resources(struct platform_device *pdev, const char *regs[],
 			}
 		}
 
-		if ((danipc_driver.support_mem_map && has_ipc_bufs) ||
-		    (!danipc_driver.support_mem_map && !has_ipc_bufs)) {
-			pr_err("Must specify either ipc_bufs or mem_map, not both\n");
-			parse_err = true;
+		if (!has_ipc_bufs) {
+			const struct ipc_buf_desc *buf_desc;
+			uint32_t len;
+
+			buf_desc = of_get_property(node, "ul-bufs", &len);
+
+			if (buf_desc == NULL) {
+				pr_err("could not find ul-bufs property\n");
+				parse_err = true;
+			} else {
+				danipc_driver.res_start[IPC_BUFS_RES] =
+					buf_desc->phy_addr;
+				danipc_driver.res_len[IPC_BUFS_RES] =
+					buf_desc->sz;
+			}
+
+			ext_bufs = of_get_property(node, "dl-bufs", &len);
+
+			if (ext_bufs == NULL) {
+				pr_err("could not find dl-bufs property\n");
+				parse_err = true;
+			}
+
+			danipc_driver.support_mem_map = true;
+			num_ext_bufs = len/sizeof(struct ipc_buf_desc);
 		}
 
 		for (r = 0; r < PLATFORM_MAX_NUM_OF_NODES && !parse_err; r++) {
@@ -604,7 +618,7 @@ static int parse_resources(struct platform_device *pdev, const char *regs[],
 			 */
 			if (!danipc_driver.support_mem_map &&
 			    (!shm_names[r] ||
-			    (of_property_read_u32((&pdev->dev)->of_node,
+			    (of_property_read_u32(node,
 						  shm_names[r], &shm_size))))
 				ipc_shared_mem_sizes[r] = 0;
 			else
@@ -772,13 +786,8 @@ static void danipc_dump_resource_map(struct seq_file *s)
 	seq_puts(s, "| Name        | Phys Address  | Virtual Address | Size    |\n");
 	seq_puts(s, " --------------------------------------------------------\n");
 
-	if (drvr->support_mem_map)
-		seq_printf(s, format, "Mem_map_tbl", res_addr[MEM_MAP_RES],
-			   mem_map_seg_table, res_len[MEM_MAP_RES]);
-	else
-		seq_printf(s, format, "q6ul_ipcbuf", res_addr[IPC_BUFS_RES],
-			   ipc_buffers, res_len[IPC_BUFS_RES]);
-
+	seq_printf(s, format, "q6ul_ipcbuf", res_addr[IPC_BUFS_RES],
+		   ipc_buffers, res_len[IPC_BUFS_RES]);
 	seq_printf(s, format, "Agnt_tbl", res_addr[AGENT_TABLE_RES],
 		   agent_table, res_len[AGENT_TABLE_RES]);
 	seq_printf(s, format, "Intren_map", res_addr[KRAIT_IPC_MUX_RES],
@@ -1381,7 +1390,7 @@ static int danipc_probe(struct platform_device *pdev)
 		"qdsp6_2_ipc", "qdsp6_3_ipc", "apps_ipc_pcap", NULL, NULL
 	};
 	static const char	*resource[RESOURCE_NUM] = {
-		"ipc_bufs", "agent_table", "apps_ipc_intr_en", "mem_map"
+		"ipc_bufs", "agent_table", "apps_ipc_intr_en"
 	};
 	static const char	*shm_names[PLATFORM_MAX_NUM_OF_NODES] = {
 		"qcom,phycpu0-shm-size", "qcom,phycpu1-shm-size",

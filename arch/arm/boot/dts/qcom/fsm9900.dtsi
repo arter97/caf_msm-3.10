@@ -1889,14 +1889,13 @@
 
 	qcom,danipc@0xfe803c00 {
 		compatible = "qcom,danipc";
-		reg-names = "mem_map", "agent_table", "apps_ipc_intr_en",
+		reg-names = "agent_table", "apps_ipc_intr_en",
 			"phycpu0_ipc", "phycpu1_ipc", "phycpu2_ipc",
 			"phycpu3_ipc", "phydsp0_ipc", "phydsp1_ipc",
 			"phydsp2_ipc", "apps_ipc_data",
 			"qdsp6_0_ipc", "qdsp6_1_ipc", "qdsp6_2_ipc",
 			"qdsp6_3_ipc", "apps_ipc_pcap" ;
-		reg = <0xfe803c00 0x400>, /* mem_map */
-			<0x19d00000 0x80000>, /* agent_table */
+		reg = <0x19d00000 0x80000>, /* agent_table */
 			<0xfd4a3500 0x100>, /* apps_ipc_intr_en */
 			<0xf683a000 0x100>, /* phycpu0_ipc */
 			<0xf683a000 0x100>, /* phycpu1_ipc */

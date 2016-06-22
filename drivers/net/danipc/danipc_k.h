@@ -33,11 +33,12 @@
 #include <linux/danipc_ioctl.h>
 #include <ipc_api.h>
 
-#define RESOURCE_NUM		4
-#define IPC_BUFS_RES		0
-#define AGENT_TABLE_RES		1
-#define KRAIT_IPC_MUX_RES	2
-#define MEM_MAP_RES		3
+enum danipc_resources {
+	IPC_BUFS_RES = 0,
+	AGENT_TABLE_RES,
+	KRAIT_IPC_MUX_RES,
+	RESOURCE_NUM
+};
 
 #define DANIPC_PROTOCOL_MATCH(p) (((p) & htons(0xf000)) == htons(COOKIE_BASE))
 #define DANIPC_AGENT_DISCOVERED(aid, list) \
@@ -239,25 +240,11 @@ struct danipc_pair {
 void danipc_ll_init(struct danipc_if *intf);
 void danipc_ll_cleanup(struct danipc_if *intf);
 
-#define MEM_TAG_NONE		0x00000000
-#define MEM_OEM_DEBUG		0x00000001
-#define MEM_LOADABLE_HEX0	0x00000002
-#define MEM_LOADABLE_HEX1	0x00000003
-#define MEM_LOADABLE_HEX2	0x00000004
-#define MEM_LOADABLE_HEX3	0x00000005
-#define MEM_SHARED_LTEFAPI_UL	0x00000006
-#define MEM_SHARED_LTEFAPI_DL	0x00000007
-#define MEM_SHARED_LTEIPC	0x00000008
-#define MEM_SHARED_LTEL2_DL	0x00000009
-#define MEM_SHARED_LTEL2_UL	0x0000000A
-
-struct mem_map_seg {
+/* Describes an IPC buffer region, either ours or an extern one */
+struct ipc_buf_desc {
 	uint32_t phy_addr;
 	uint32_t sz;
-	uint32_t rd_vmid;
-	uint32_t wr_vmid;
-	uint32_t tag;
-} __attribute__((__packed__));
+};
 
 int danipc_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd);
 int danipc_hard_start_xmit(struct sk_buff *skb, struct net_device *dev);

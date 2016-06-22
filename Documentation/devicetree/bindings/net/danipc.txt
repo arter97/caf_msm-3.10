@@ -7,7 +7,6 @@ for fast and reliable data passing between processors.
 Required properties:
 - compatible:	should be "qcom,danipc"
 - reg-names:	"ipc_bufs" - APPS IPC buffers region
-		"mem_map" - Flexible memory map region
 		"agent_table" - IPC global agent table region
 		"apps_ipc_intr_en" - APPS IPC interrupt enable MUX region
 		"phycpu0_ipc" - PHY CPU0 IPC region
@@ -54,16 +53,20 @@ Optional properties:
 	-qcom,qdsp6-1-shm-size: size of shared memory region for QDSP6 1
 	-qcom,qdsp6-2-shm-size: size of shared memory region for QDSP6 2
 	-qcom,qdsp6-3-shm-size: size of shared memory region for QDSP6 3
+	-ul-bufs: starting address and size of UL buffer region
+	-dl-bufs: starting address and size of DL buffer region
 
 Note:
-Either mem_map or ipc_bufs must be specified, not both.  If mem_map
-is specified, the *shm-size properties are ignored.
+ipc_bufs should not be defined for targets that support the flexible memory
+map.
+ul-bufs and dl-bufs is added dynamically by the board init file for fsm9900.
+It is not used by fsm9010.
 
 
 Examples:
 	qcom,danipc@0xfe803c00 {
 		compatible = "qcom,danipc";
-		reg-names = "mem_map", "agent_table", "apps_ipc_intr_en",
+		reg-names = "agent_table", "apps_ipc_intr_en",
 			"phycpu0_ipc", "phycpu1_ipc", "phycpu2_ipc",
 			"phycpu3_ipc", "phydsp0_ipc", "phydsp1_ipc",
 			"phydsp2_ipc", "apps_ipc_data",

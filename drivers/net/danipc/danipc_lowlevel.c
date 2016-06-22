@@ -99,43 +99,19 @@ struct ipc_to_virt_map		ipc_to_virt_map[PLATFORM_MAX_NUM_OF_NODES][2];
 
 void __iomem		*apps_ipc_mux;
 
-struct mem_map_seg __iomem *mem_map_seg_table = NULL;
-
 static uint32_t apps_ipc_mux_val[apps_ipc_int_mux_max] = {
 	APPS_IPC_DATA_FIFO_INT,
 	APPS_IPC_PCAP_FIFO_INT
 };
 
-static struct mem_map_seg *get_mem_map_seg(uint32_t tag)
+static const struct ipc_buf_desc *find_ext_buf_from_addr(uint32_t addr)
 {
-	struct mem_map_seg *tbl = mem_map_seg_table;
+	uint32_t buf;
 
-	if (tbl == NULL)
-		return NULL;
-
-	while (tbl->tag != MEM_TAG_NONE) {
-		if (tbl->tag == tag)
-			return tbl;
-
-		tbl++;
-	}
-
-	return NULL;
-}
-
-static struct mem_map_seg *find_mem_map_seg_from_addr(uint32_t addr)
-{
-	struct mem_map_seg *tbl = mem_map_seg_table;
-
-	if (tbl == NULL)
-		return NULL;
-
-	while (tbl->tag != MEM_TAG_NONE) {
-		if (addr >= tbl->phy_addr &&
-		    addr < tbl->phy_addr + tbl->sz)
-			return tbl;
-
-		tbl++;
+	for (buf = 0; buf < num_ext_bufs; buf++) {
+		if (addr >= ext_bufs[buf].phy_addr &&
+		    addr < ext_bufs[buf].phy_addr + ext_bufs[buf].sz)
+			return ext_bufs + buf;
 	}
 
 	return NULL;
@@ -167,24 +143,8 @@ void danipc_unmask_interrupt(uint8_t fifo)
 
 static void *map_ipc_buffers(struct danipc_drvr *drv)
 {
-	struct mem_map_seg *seg;
-	resource_size_t res_start;
-	resource_size_t res_len;
-
-	if (drv->support_mem_map) {
-		seg = get_mem_map_seg(MEM_SHARED_LTEL2_UL);
-
-		if (seg == NULL) {
-			pr_err("Could not find tag %i\n", MEM_SHARED_LTEL2_UL);
-			BUG();
-		}
-
-		res_start = seg->phy_addr;
-		res_len = seg->sz;
-	} else {
-		res_start = drv->res_start[IPC_BUFS_RES];
-		res_len = drv->res_len[IPC_BUFS_RES];
-	}
+	resource_size_t res_start = drv->res_start[IPC_BUFS_RES];
+	resource_size_t res_len = drv->res_len[IPC_BUFS_RES];
 
 	ipc_buffers = ioremap_nocache(res_start, res_len);
 
@@ -220,19 +180,7 @@ int init_own_ipc_to_virt_map(struct danipc_if *intf)
 	if (buf) {
 		/* This prevents remapping by remap_fifo_mem() */
 		high_map->vaddr = buf;
-
-		if (intf->drvr->support_mem_map) {
-			struct mem_map_seg *ipc_buf_region;
-
-			ipc_buf_region = get_mem_map_seg(MEM_SHARED_LTEL2_UL);
-
-			if (ipc_buf_region)
-				high_map->paddr = ipc_buf_region->phy_addr;
-			else
-				rc = -1;
-		} else {
-			high_map->paddr = intf->drvr->res_start[IPC_BUFS_RES];
-		}
+		high_map->paddr = intf->drvr->res_start[IPC_BUFS_RES];
 
 		high_map->paddr += (idx * IPC_BUF_SIZE);
 		low_map->vaddr	= &buf[IPC_BUF_SIZE / 2];
@@ -251,21 +199,6 @@ static void unmap_ipc_to_virt_map(struct danipc_if *intf)
 	struct danipc_drvr	*drvr = intf->drvr;
 	void			*vaddr_hi;
 	void			*vaddr_lo;
-	resource_size_t	size;
-
-	if (drvr->support_mem_map) {
-		struct mem_map_seg	*ipc_buf_region;
-
-		ipc_buf_region = get_mem_map_seg(MEM_SHARED_LTEL2_UL);
-
-		if (ipc_buf_region == NULL) {
-			pr_err("UL region not found\n");
-			BUG();
-		}
-
-		size = ipc_buf_region->sz;
-	} else
-		size = drvr->res_len[IPC_BUFS_RES];
 
 	for (cpuid = 0; cpuid < PLATFORM_MAX_NUM_OF_NODES; cpuid++) {
 		vaddr_hi = ipc_to_virt_map[cpuid][ipc_trns_prio_1].vaddr;
@@ -274,7 +207,7 @@ static void unmap_ipc_to_virt_map(struct danipc_if *intf)
 		/* Exclude APPS IPC buffers */
 		if (((uint8_t *)vaddr_hi >= ipc_buffers) &&
 		    ((uint8_t *)vaddr_hi <
-		     ipc_buffers + size))
+		     ipc_buffers + drvr->res_len[IPC_BUFS_RES]))
 			continue;
 		if (vaddr_hi)
 			iounmap(vaddr_hi);
@@ -291,19 +224,19 @@ static void remap_fifo_mem(const int cpuid, const unsigned prio,
 	struct ipc_to_virt_map *const map = ipc_to_virt_map[cpuid];
 	unsigned other_prio = (prio == ipc_trns_prio_0) ?
 				ipc_trns_prio_1 : ipc_trns_prio_0;
-	struct mem_map_seg *seg;
+	const struct ipc_buf_desc *desc = NULL;
 	uint32_t start_addr;
 	uint32_t map_size;
 	uint32_t map_mask;
 
 	/* If mem_map was not defined in DT, this will return NULL */
-	seg = find_mem_map_seg_from_addr(paddr);
+	desc = find_ext_buf_from_addr(paddr);
 
-	if (seg != NULL) {
-		start_addr = seg->phy_addr;
-		map[prio].paddr = seg->phy_addr;
-		map[other_prio].paddr = seg->phy_addr;
-		map[prio].vaddr = ioremap_nocache(seg->phy_addr, seg->sz);
+	if (desc != NULL) {
+		start_addr = desc->phy_addr;
+		map[prio].paddr = desc->phy_addr;
+		map[other_prio].paddr = desc->phy_addr;
+		map[prio].vaddr = ioremap_nocache(start_addr, desc->sz);
 		map[other_prio].vaddr = map[prio].vaddr;
 	} else if (ipc_shared_mem_sizes[cpuid]) {
 		map_size = ipc_shared_mem_sizes[cpuid];
@@ -319,7 +252,7 @@ static void remap_fifo_mem(const int cpuid, const unsigned prio,
 		start_addr = ((paddr + map_mask) & ~map_mask) - 2 * map_size;
 		map[prio].paddr = start_addr;
 		map[prio].vaddr = ioremap_nocache(start_addr, 2 * map_size);
-}
+	}
 
 	if (!map[prio].vaddr) {
 		pr_err(
@@ -614,33 +547,6 @@ static void unmap_agent_table(struct danipc_if *intf)
 	}
 }
 
-static void remap_mem_map_table(struct danipc_drvr *drv)
-{
-	void *entire_region;
-
-	if (!drv->support_mem_map)
-		return;
-
-	entire_region = ioremap_nocache(drv->res_start[MEM_MAP_RES],
-					drv->res_len[MEM_MAP_RES]);
-
-	if (!entire_region) {
-		pr_err("%s: cannot remap global memory map table\n", __func__);
-		BUG();
-	}
-
-	drv->mem_map_version = *(uint32_t *)entire_region;
-	mem_map_seg_table = entire_region + sizeof(uint32_t);
-}
-
-static void unmap_mem_map_table(void)
-{
-	if (mem_map_seg_table) {
-		iounmap(mem_map_seg_table);
-		mem_map_seg_table = NULL;
-	}
-}
-
 static void prepare_node(const int cpuid)
 {
 	struct ipc_to_virt_map	*map;
@@ -696,7 +602,6 @@ static void unmap_apps_ipc_mux(void)
 void danipc_ll_init(struct danipc_if *intf)
 {
 	prepare_nodes();
-	remap_mem_map_table(intf->drvr);
 	remap_agent_table(intf->drvr);
 	remap_apps_ipc_mux(intf->drvr);
 }
@@ -706,7 +611,6 @@ void danipc_ll_cleanup(struct danipc_if *intf)
 	unmap_apps_ipc_mux();
 	unmap_ipc_to_virt_map(intf);
 	unmap_agent_table(intf);
-	unmap_mem_map_table();
 	unmap_nodes_memory();
 	free_ipc_buffers();
 }
