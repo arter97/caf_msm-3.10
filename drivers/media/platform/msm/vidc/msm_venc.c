@@ -71,7 +71,8 @@ static const char *const mpeg_video_rate_control[] = {
 	"VBR CFR",
 	"CBR VFR",
 	"CBR CFR",
-	"MBR",
+	"MBR CFR",
+	"MBR VFR",
 	NULL
 };
 
@@ -176,6 +177,7 @@ static const char *const mpeg_video_vidc_extradata[] = {
 	"Extradata digital zoom",
 	"Extradata aspect ratio",
 	"Extradata macroblock metadata",
+	"Extradata Perceptual QP Info",
 };
 
 static const char *const perf_level[] = {
@@ -253,7 +255,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.name = "Video Framerate and Bitrate Control",
 		.type = V4L2_CTRL_TYPE_MENU,
 		.minimum = V4L2_CID_MPEG_VIDC_VIDEO_RATE_CONTROL_OFF,
-		.maximum = V4L2_CID_MPEG_VIDC_VIDEO_RATE_CONTROL_MBR,
+		.maximum = V4L2_CID_MPEG_VIDC_VIDEO_RATE_CONTROL_MBR_VFR,
 		.default_value = V4L2_CID_MPEG_VIDC_VIDEO_RATE_CONTROL_OFF,
 		.step = 0,
 		.menu_skip_mask = ~(
@@ -262,7 +264,8 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		(1 << V4L2_CID_MPEG_VIDC_VIDEO_RATE_CONTROL_VBR_CFR) |
 		(1 << V4L2_CID_MPEG_VIDC_VIDEO_RATE_CONTROL_CBR_VFR) |
 		(1 << V4L2_CID_MPEG_VIDC_VIDEO_RATE_CONTROL_CBR_CFR) |
-		(1 << V4L2_CID_MPEG_VIDC_VIDEO_RATE_CONTROL_MBR)
+		(1 << V4L2_CID_MPEG_VIDC_VIDEO_RATE_CONTROL_MBR_CFR) |
+		(1 << V4L2_CID_MPEG_VIDC_VIDEO_RATE_CONTROL_MBR_VFR)
 		),
 		.qmenu = mpeg_video_rate_control,
 	},
@@ -754,7 +757,7 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 		.name = "Extradata Type",
 		.type = V4L2_CTRL_TYPE_MENU,
 		.minimum = V4L2_MPEG_VIDC_EXTRADATA_NONE,
-		.maximum = V4L2_MPEG_VIDC_EXTRADATA_METADATA_MBI,
+		.maximum = V4L2_MPEG_VIDC_EXTRADATA_PERCEPTUAL_QP,
 		.default_value = V4L2_MPEG_VIDC_EXTRADATA_NONE,
 		.menu_skip_mask = ~(
 			(1 << V4L2_MPEG_VIDC_EXTRADATA_NONE) |
@@ -774,7 +777,8 @@ static struct msm_vidc_ctrl msm_venc_ctrls[] = {
 			(1 << V4L2_MPEG_VIDC_EXTRADATA_DIGITAL_ZOOM) |
 			(1 << V4L2_MPEG_VIDC_EXTRADATA_ASPECT_RATIO) |
 			(1 << V4L2_MPEG_VIDC_EXTRADATA_LTR) |
-			(1 << V4L2_MPEG_VIDC_EXTRADATA_METADATA_MBI)
+			(1 << V4L2_MPEG_VIDC_EXTRADATA_METADATA_MBI) |
+			(1 << V4L2_MPEG_VIDC_EXTRADATA_PERCEPTUAL_QP)
 			),
 		.qmenu = mpeg_video_vidc_extradata,
 		.step = 0,
@@ -1333,8 +1337,17 @@ static int msm_venc_queue_setup(struct vb2_queue *q,
 				V4L2_CID_MPEG_VIDC_VIDEO_EXTRADATA);
 		if (ctrl)
 			extradata = v4l2_ctrl_g_ctrl(ctrl);
-		if (extradata != V4L2_MPEG_VIDC_EXTRADATA_NONE)
+		switch (extradata) {
+		case V4L2_MPEG_VIDC_EXTRADATA_MULTISLICE_INFO:
+		case V4L2_MPEG_VIDC_EXTRADATA_NUM_CONCEALED_MB:
+		case V4L2_MPEG_VIDC_EXTRADATA_LTR:
+		case V4L2_MPEG_VIDC_EXTRADATA_METADATA_MBI:
 			*num_planes = *num_planes + 1;
+			break;
+		default:
+			dprintk(VIDC_DBG,"%s: Extradata not found for Capture Plane\n",__func__);
+			break;
+		}
 		inst->fmts[CAPTURE_PORT]->num_planes = *num_planes;
 
 		for (i = 0; i < *num_planes; i++) {
@@ -1396,8 +1409,15 @@ static int msm_venc_queue_setup(struct vb2_queue *q,
 			V4L2_CID_MPEG_VIDC_VIDEO_EXTRADATA);
 		if (ctrl)
 			extradata = v4l2_ctrl_g_ctrl(ctrl);
-		if (extradata == V4L2_MPEG_VIDC_EXTRADATA_INPUT_CROP)
+		switch (extradata) {
+		case V4L2_MPEG_VIDC_EXTRADATA_PERCEPTUAL_QP:
+		case V4L2_MPEG_VIDC_EXTRADATA_INPUT_CROP:
 			*num_planes = *num_planes + 1;
+			break;
+		default:
+			dprintk(VIDC_DBG,"%s: Extradata not found for Output Plane\n",__func__);
+			break;
+		}
 		inst->fmts[OUTPUT_PORT]->num_planes = *num_planes;
 		rc = call_hfi_op(hdev, session_set_property, inst->session,
 					property_id, &new_buf_count);
@@ -2095,7 +2115,8 @@ static int try_set_ctrl(struct msm_vidc_inst *inst, struct v4l2_ctrl *ctrl)
 					V4L2_MPEG_VIDEO_BITRATE_MODE_VBR;
 			case V4L2_CID_MPEG_VIDC_VIDEO_RATE_CONTROL_CBR_VFR:
 			case V4L2_CID_MPEG_VIDC_VIDEO_RATE_CONTROL_CBR_CFR:
-			case V4L2_CID_MPEG_VIDC_VIDEO_RATE_CONTROL_MBR:
+			case V4L2_CID_MPEG_VIDC_VIDEO_RATE_CONTROL_MBR_CFR:
+			case V4L2_CID_MPEG_VIDC_VIDEO_RATE_CONTROL_MBR_VFR:
 				update_ctrl.val =
 					V4L2_MPEG_VIDEO_BITRATE_MODE_CBR;
 			}
@@ -3417,7 +3438,9 @@ int msm_venc_s_fmt(struct msm_vidc_inst *inst, struct v4l2_format *f)
 	struct msm_vidc_format *fmt = NULL;
 	struct hal_frame_size frame_sz = {0};
 	int rc = 0;
-	int i;
+	int i, num_planes = 1;
+	struct v4l2_ctrl *ctrl = NULL;
+	u32 extradata = 0;
 	struct hfi_device *hdev;
 	if (!inst || !f) {
 		dprintk(VIDC_ERR,
@@ -3454,6 +3477,21 @@ int msm_venc_s_fmt(struct msm_vidc_inst *inst, struct v4l2_format *f)
 			dprintk(VIDC_ERR,
 				"%s: session not supported\n", __func__);
 			goto exit;
+		}
+		ctrl = v4l2_ctrl_find(&inst->ctrl_handler,
+				V4L2_CID_MPEG_VIDC_VIDEO_EXTRADATA);
+		if (ctrl)
+			extradata = v4l2_ctrl_g_ctrl(ctrl);
+		switch (extradata) {
+		case V4L2_MPEG_VIDC_EXTRADATA_MULTISLICE_INFO:
+		case V4L2_MPEG_VIDC_EXTRADATA_NUM_CONCEALED_MB:
+		case V4L2_MPEG_VIDC_EXTRADATA_LTR:
+		case V4L2_MPEG_VIDC_EXTRADATA_METADATA_MBI:
+			num_planes = num_planes + 1;
+			break;
+		default:
+			dprintk(VIDC_DBG,"%s: Extradata not found for Capture Plane\n",__func__);
+			break;
 		}
 	} else if (f->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 		inst->prop.width[OUTPUT_PORT] = f->fmt.pix_mp.width;
@@ -3506,6 +3544,18 @@ int msm_venc_s_fmt(struct msm_vidc_inst *inst, struct v4l2_format *f)
 				"Failed to set input color format\n");
 			goto exit;
 		}
+		ctrl = v4l2_ctrl_find(&inst->ctrl_handler,
+			V4L2_CID_MPEG_VIDC_VIDEO_EXTRADATA);
+		if (ctrl)
+			extradata = v4l2_ctrl_g_ctrl(ctrl);
+		switch (extradata) {
+		case V4L2_MPEG_VIDC_EXTRADATA_PERCEPTUAL_QP:
+			num_planes = num_planes + 1;
+			break;
+		default:
+			dprintk(VIDC_DBG,"%s: Extradata not found for Output Plane\n",__func__);
+			break;
+		}
 	} else {
 		dprintk(VIDC_ERR, "%s: Unsupported buf type: %d\n",
 			__func__, f->type);
@@ -3521,8 +3571,10 @@ int msm_venc_s_fmt(struct msm_vidc_inst *inst, struct v4l2_format *f)
 	}
 
 	inst->fmts[fmt->type] = fmt;
-	f->fmt.pix_mp.num_planes = fmt->num_planes;
-	for (i = 0; i < fmt->num_planes; ++i) {
+	inst->fmts[fmt->type]->num_planes = num_planes;
+	f->fmt.pix_mp.num_planes = num_planes;
+
+	for (i = 0; i < num_planes; ++i) {
 		f->fmt.pix_mp.plane_fmt[i].sizeimage = fmt->get_frame_size(i,
 				f->fmt.pix_mp.height, f->fmt.pix_mp.width);
 	}
@@ -3581,7 +3633,7 @@ int msm_venc_s_fmt(struct msm_vidc_inst *inst, struct v4l2_format *f)
 		struct hal_buffer_requirements *bufreq = NULL;
 		int extra_idx = 0;
 
-		extra_idx = EXTRADATA_IDX(fmt->num_planes);
+		extra_idx = EXTRADATA_IDX(num_planes);
 		if (extra_idx && (extra_idx < VIDEO_MAX_PLANES)) {
 			bufreq = get_buff_req_buffer(inst,
 					HAL_BUFFER_EXTRADATA_INPUT);

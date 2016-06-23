@@ -636,6 +636,9 @@ static int get_hfi_extradata_index(enum hal_extradata_id index)
 	case HAL_EXTRADATA_METADATA_MBI:
 		ret = HFI_PROPERTY_PARAM_VENC_MBI_DUMPING;
 		break;
+	case HAL_EXTRADATA_PERCEPTUAL_QP:
+		ret = HFI_PROPERTY_PARAM_VENC_OVERRIDE_QP_EXTRADATA;
+		break;
 	default:
 		dprintk(VIDC_WARN, "Extradata index not found: %d\n", index);
 		break;
@@ -1400,8 +1403,11 @@ int create_pkt_cmd_session_set_property(
 		case HAL_RATE_CONTROL_VBR_VFR:
 			pkt->rg_property_data[1] = HFI_RATE_CONTROL_VBR_VFR;
 			break;
-		case HAL_RATE_CONTROL_MBR:
-			pkt->rg_property_data[1] = HFI_RATE_CONTROL_MBR_RC;
+		case HAL_RATE_CONTROL_MBR_CFR:
+			pkt->rg_property_data[1] = HFI_RATE_CONTROL_MBR_CFR;
+			break;
+		case HAL_RATE_CONTROL_MBR_VFR:
+			pkt->rg_property_data[1] = HFI_RATE_CONTROL_MBR_VFR;
 			break;
 		default:
 			dprintk(VIDC_ERR,
