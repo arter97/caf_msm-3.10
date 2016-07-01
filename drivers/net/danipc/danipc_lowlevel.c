@@ -193,10 +193,9 @@ int init_own_ipc_to_virt_map(struct danipc_if *intf)
 }
 
 /* Free IPC buffers for all remote FIFO's.*/
-static void unmap_ipc_to_virt_map(struct danipc_if *intf)
+static void unmap_ipc_to_virt_map(struct danipc_drvr *drvr)
 {
 	uint8_t			cpuid;
-	struct danipc_drvr	*drvr = intf->drvr;
 	void			*vaddr_hi;
 	void			*vaddr_lo;
 
@@ -539,7 +538,7 @@ static void remap_agent_table(struct danipc_drvr *drv)
 	}
 }
 
-static void unmap_agent_table(struct danipc_if *intf)
+static void unmap_agent_table(void)
 {
 	if (agent_table) {
 		iounmap(agent_table);
@@ -599,18 +598,18 @@ static void unmap_apps_ipc_mux(void)
 	}
 }
 
-void danipc_ll_init(struct danipc_if *intf)
+void danipc_ll_init(struct danipc_drvr *drv)
 {
 	prepare_nodes();
-	remap_agent_table(intf->drvr);
-	remap_apps_ipc_mux(intf->drvr);
+	remap_agent_table(drv);
+	remap_apps_ipc_mux(drv);
 }
 
-void danipc_ll_cleanup(struct danipc_if *intf)
+void danipc_ll_cleanup(struct danipc_drvr *drv)
 {
 	unmap_apps_ipc_mux();
-	unmap_ipc_to_virt_map(intf);
-	unmap_agent_table(intf);
+	unmap_ipc_to_virt_map(drv);
+	unmap_agent_table();
 	unmap_nodes_memory();
 	free_ipc_buffers();
 }

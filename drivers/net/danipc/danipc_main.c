@@ -369,10 +369,6 @@ static int danipc_open(struct net_device *dev)
 	uint8_t		rxptype_lo = pproc_lo->rxproc_type;
 	int			rc = -ENOMEM;
 
-	/* Low-level is initialized only for first interface */
-	if (intf->drvr->ndev_active == 0)
-		danipc_ll_init(intf);
-
 	rc = init_own_ipc_to_virt_map(intf);
 	if (rc == 0) {
 		ipc_init(
@@ -438,12 +434,6 @@ static int danipc_close(struct net_device *dev)
 
 	danipc_if_cleanup(intf);
 
-	/* Free register-map, ipc bufferes-map, agenttable-map,
-	 * and fifo-reg-map.
-	 */
-	if (intf->drvr->ndev_active == 1)
-		danipc_ll_cleanup(intf);
-
 	drv->ndev_active--;
 
 	return 0;
@@ -504,6 +494,8 @@ static int danipc_remove(struct platform_device *pdev)
 			danipc_cleanup_dev(danipc_driver.if_list[ifidx]->dev);
 		ifidx++;
 	}
+
+	danipc_ll_cleanup(&danipc_driver);
 
 	pr_info("DANIPC driver " DANIPC_VERSION " unregistered.\n");
 	return 0;
@@ -1404,9 +1396,13 @@ static int danipc_probe(struct platform_device *pdev)
 
 	rc = parse_resources(pdev, regs, resource, shm_names);
 	if (rc == 0) {
+		danipc_ll_init(&danipc_driver);
+
 		rc = danipc_probe_lfifo(pdev, regs);
 		if (rc == 0)
 			danipc_dbgfs_init();
+		else
+			danipc_ll_cleanup(&danipc_driver);
 	}
 
 	return rc;

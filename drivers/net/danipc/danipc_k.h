@@ -237,8 +237,8 @@ struct danipc_pair {
 					  ((agentid) << PRIO_SHIFT) +	\
 					  (pri))
 
-void danipc_ll_init(struct danipc_if *intf);
-void danipc_ll_cleanup(struct danipc_if *intf);
+void danipc_ll_init(struct danipc_drvr *drv);
+void danipc_ll_cleanup(struct danipc_drvr *drv);
 
 /* Describes an IPC buffer region, either ours or an extern one */
 struct ipc_buf_desc {
