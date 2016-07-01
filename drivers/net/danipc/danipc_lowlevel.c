@@ -603,6 +603,7 @@ void danipc_ll_init(struct danipc_drvr *drv)
 	prepare_nodes();
 	remap_agent_table(drv);
 	remap_apps_ipc_mux(drv);
+	memset(agent_table, 0, drv->res_len[AGENT_TABLE_RES]);
 }
 
 void danipc_ll_cleanup(struct danipc_drvr *drv)
