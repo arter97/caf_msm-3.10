@@ -1159,6 +1159,7 @@ static int __msm8x16_wcd_reg_read(struct snd_soc_codec *codec,
 					break;
 			}
 			case Q6_SUBSYS_AVS2_7:
+			case Q6_SUBSYS_AVS2_8:
 			{
 				pdata->digital_cdc_core_clk.enable = 1;
 				ret = afe_set_lpass_clock_v2(
@@ -1230,6 +1231,7 @@ static int __msm8x16_wcd_reg_write(struct snd_soc_codec *codec,
 					&pdata->digital_cdc_clk);
 				break;
 			case Q6_SUBSYS_AVS2_7:
+			case Q6_SUBSYS_AVS2_8:
 				pdata->digital_cdc_core_clk.enable = 1;
 				ret = afe_set_lpass_clock_v2(
 					AFE_PORT_ID_PRIMARY_MI2S_RX,
@@ -5619,6 +5621,7 @@ int msm8x16_wcd_suspend(struct snd_soc_codec *codec)
 					&pdata->digital_cdc_clk);
 				break;
 			case Q6_SUBSYS_AVS2_7:
+			case Q6_SUBSYS_AVS2_8:
 				pdata->digital_cdc_core_clk.enable = 0;
 				ret = afe_set_lpass_clock_v2(
 					AFE_PORT_ID_PRIMARY_MI2S_RX,

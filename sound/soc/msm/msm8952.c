@@ -622,6 +622,7 @@ static int msm_mi2s_sclk_ctl(struct snd_pcm_substream *substream, bool enable)
 							&mi2s_rx_clk_v1);
 				break;
 			case (Q6_SUBSYS_AVS2_7):
+			case (Q6_SUBSYS_AVS2_8):
 				mi2s_rx_clk.enable = enable;
 				mi2s_rx_clk.clk_id =
 						msm8952_get_clk_id(port_id);
@@ -645,6 +646,7 @@ static int msm_mi2s_sclk_ctl(struct snd_pcm_substream *substream, bool enable)
 							&mi2s_tx_clk_v1);
 				break;
 			case (Q6_SUBSYS_AVS2_7):
+			case (Q6_SUBSYS_AVS2_8):
 				mi2s_tx_clk.enable = enable;
 				mi2s_tx_clk.clk_id =
 						msm8952_get_clk_id(port_id);
@@ -675,6 +677,7 @@ static int msm_mi2s_sclk_ctl(struct snd_pcm_substream *substream, bool enable)
 							&mi2s_rx_clk_v1);
 				break;
 			case (Q6_SUBSYS_AVS2_7):
+			case (Q6_SUBSYS_AVS2_8):
 				mi2s_rx_clk.enable = enable;
 				mi2s_rx_clk.clk_id =
 						msm8952_get_clk_id(port_id);
@@ -696,6 +699,7 @@ static int msm_mi2s_sclk_ctl(struct snd_pcm_substream *substream, bool enable)
 							&mi2s_tx_clk_v1);
 				break;
 			case (Q6_SUBSYS_AVS2_7):
+			case (Q6_SUBSYS_AVS2_8):
 				mi2s_tx_clk.enable = enable;
 				mi2s_tx_clk.clk_id =
 						msm8952_get_clk_id(port_id);
@@ -742,6 +746,7 @@ static int msm8952_enable_dig_cdc_clk(struct snd_soc_codec *codec,
 						&pdata->digital_cdc_clk);
 					break;
 				case Q6_SUBSYS_AVS2_7:
+				case Q6_SUBSYS_AVS2_8:
 					pdata->digital_cdc_core_clk.enable = 1;
 					ret = afe_set_lpass_clock_v2(
 						AFE_PORT_ID_PRIMARY_MI2S_RX,
@@ -777,6 +782,7 @@ static int msm8952_enable_dig_cdc_clk(struct snd_soc_codec *codec,
 					&pdata->digital_cdc_clk);
 				break;
 			case Q6_SUBSYS_AVS2_7:
+			case Q6_SUBSYS_AVS2_8:
 				pdata->digital_cdc_core_clk.enable = 0;
 				ret = afe_set_lpass_clock_v2(
 					AFE_PORT_ID_PRIMARY_MI2S_RX,
@@ -905,6 +911,7 @@ static int loopback_mclk_put(struct snd_kcontrol *kcontrol,
 					break;
 			}
 			case (Q6_SUBSYS_AVS2_7):
+			case (Q6_SUBSYS_AVS2_8):
 			{
 				pdata->digital_cdc_core_clk.enable = 1;
 				ret = afe_set_lpass_clock_v2(
@@ -954,6 +961,7 @@ static int loopback_mclk_put(struct snd_kcontrol *kcontrol,
 					break;
 			}
 			case (Q6_SUBSYS_AVS2_7):
+			case (Q6_SUBSYS_AVS2_8):
 			{
 				pdata->digital_cdc_core_clk.enable = 0;
 				ret = afe_set_lpass_clock_v2(
@@ -1203,6 +1211,7 @@ static int msm8952_enable_wsa_mclk(struct snd_soc_card *card, bool enable)
 					break;
 			}
 			case (Q6_SUBSYS_AVS2_7):
+			case (Q6_SUBSYS_AVS2_8):
 			{
 				wsa_ana_clk.enable = enable;
 				ret = afe_set_lpass_clock_v2(
@@ -1240,6 +1249,7 @@ static int msm8952_enable_wsa_mclk(struct snd_soc_card *card, bool enable)
 					break;
 			}
 			case (Q6_SUBSYS_AVS2_7):
+			case (Q6_SUBSYS_AVS2_8):
 			{
 				wsa_ana_clk.enable = enable;
 				ret = afe_set_lpass_clock_v2(
@@ -2619,6 +2629,7 @@ void msm8952_disable_mclk(struct work_struct *work)
 				break;
 		}
 		case (Q6_SUBSYS_AVS2_7):
+		case (Q6_SUBSYS_AVS2_8):
 		{
 			pdata->digital_cdc_core_clk.enable = 0;
 			ret = afe_set_lpass_clock_v2(
