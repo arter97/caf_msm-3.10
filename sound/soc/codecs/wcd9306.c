@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -24,6 +24,7 @@
 #include <linux/mfd/wcd9xxx/wcd9306_registers.h>
 #include <linux/mfd/wcd9xxx/pdata.h>
 #include <linux/regulator/consumer.h>
+#include <linux/clk.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
@@ -44,14 +45,17 @@
 
 #define DAPM_MICBIAS2_EXTERNAL_STANDALONE "MIC BIAS2 External Standalone"
 #define TAPAN_VALIDATE_RX_SBPORT_RANGE(port) ((port >= 16) && (port <= 20))
+#define TAPAN_VALIDATE_TX_SBPORT_RANGE(port) ((port >= 0) && (port <= 15))
 #define TAPAN_CONVERT_RX_SBPORT_ID(port) (port - 16) /* RX1 port ID = 0 */
-
+#define TAPAN_BIT_ADJ_SHIFT_PORT1_6 4
+#define TAPAN_BIT_ADJ_SHIFT_PORT7_10 5
 #define TAPAN_VDD_CX_OPTIMAL_UA 10000
 #define TAPAN_VDD_CX_SLEEP_UA 2000
 
 /* RX_HPH_CNP_WG_TIME increases by 0.24ms */
 #define TAPAN_WG_TIME_FACTOR_US  240
 
+#define TAPAN_SLIM_PGD_PORT_INT_TX_EN0 (TAPAN_SLIM_PGD_PORT_INT_EN0 + 2)
 #define TAPAN_SB_PGD_PORT_RX_BASE   0x40
 #define TAPAN_SB_PGD_PORT_TX_BASE   0x50
 #define TAPAN_REGISTER_START_OFFSET 0x800
@@ -302,6 +306,7 @@ struct tapan_priv {
 	/*track tapan interface type*/
 	u8 intf_type;
 
+	struct clk *wcd_ext_clk;
 	/* num of slim ports required */
 	struct wcd9xxx_codec_dai_data  dai[NUM_CODEC_DAIS];
 
@@ -3700,12 +3705,22 @@ static void tapan_set_vdd_cx_current(struct snd_soc_codec *codec,
 int tapan_mclk_enable(struct snd_soc_codec *codec, int mclk_enable, bool dapm)
 {
 	struct tapan_priv *tapan = snd_soc_codec_get_drvdata(codec);
+	int ret = 0;
 
 	dev_dbg(codec->dev, "%s: mclk_enable = %u, dapm = %d\n", __func__,
 		 mclk_enable, dapm);
 
 	WCD9XXX_BG_CLK_LOCK(&tapan->resmgr);
 	if (mclk_enable) {
+		if (tapan->wcd_ext_clk) {
+			dev_dbg(codec->dev, "%s: Calling clk_prepare_enable() for wcd_ext_clk\n", __func__);
+			ret = clk_prepare_enable(tapan->wcd_ext_clk);
+			if (ret) {
+				dev_err(codec->dev, "%s: ext clk enable failed\n",
+					__func__);
+				goto err;
+			}
+		}
 		tapan_set_vdd_cx_current(codec, TAPAN_VDD_CX_OPTIMAL_UA);
 		wcd9xxx_resmgr_get_bandgap(&tapan->resmgr,
 					   WCD9XXX_BANDGAP_AUDIO_MODE);
@@ -3717,10 +3732,12 @@ int tapan_mclk_enable(struct snd_soc_codec *codec, int mclk_enable, bool dapm)
 					   WCD9XXX_BANDGAP_AUDIO_MODE);
 		/* Set the vdd cx power rail sleep mode current */
 		tapan_set_vdd_cx_current(codec, TAPAN_VDD_CX_SLEEP_UA);
+		dev_dbg(codec->dev, "%s: Calling clk_disable_unprepare() for wcd_ext_clk\n", __func__);
+		clk_disable_unprepare(tapan->wcd_ext_clk);
 	}
+err:
 	WCD9XXX_BG_CLK_UNLOCK(&tapan->resmgr);
-
-	return 0;
+	return ret;
 }
 
 static int tapan_set_dai_sysclk(struct snd_soc_dai *dai,
@@ -4055,6 +4072,65 @@ static void tapan_set_rxsb_port_format(struct snd_pcm_hw_params *params,
 	}
 }
 
+static void tapan_set_tx_sb_port_format(struct snd_pcm_hw_params *params,
+					 struct snd_soc_dai *dai)
+{
+	struct snd_soc_codec *codec = dai->codec;
+	struct tapan_priv *tapan_p = snd_soc_codec_get_drvdata(codec);
+	struct wcd9xxx_codec_dai_data *cdc_dai;
+	struct wcd9xxx_ch *ch;
+	int port;
+	u8 bit_sel, bit_shift;
+	u16 sb_ctl_reg;
+
+	switch (params_format(params)) {
+	case SNDRV_PCM_FORMAT_S16_LE:
+		bit_sel = 0x2;
+		tapan_p->dai[dai->id].bit_width = 16;
+		break;
+	case SNDRV_PCM_FORMAT_S24_LE:
+		bit_sel = 0x0;
+		tapan_p->dai[dai->id].bit_width = 24;
+		break;
+	default:
+		dev_err(codec->dev, "%s: Invalid format %d\n", __func__,
+			params_format(params));
+		return;
+	}
+
+	cdc_dai = &tapan_p->dai[dai->id];
+
+	list_for_each_entry(ch, &cdc_dai->wcd9xxx_ch_list, list) {
+		port = wcd9xxx_get_slave_port(ch->ch_num);
+
+		if (IS_ERR_VALUE(port) ||
+		    !TAPAN_VALIDATE_TX_SBPORT_RANGE(port)) {
+			dev_warn(codec->dev,
+				 "%s: invalid port ID %d returned for TX DAI\n",
+				 __func__, port);
+			return;
+		}
+
+		if (port < 6) /* 6 = SLIMBUS TX7 */
+			bit_shift = TAPAN_BIT_ADJ_SHIFT_PORT1_6;
+		else if (port < 10)
+			bit_shift = TAPAN_BIT_ADJ_SHIFT_PORT7_10;
+		else {
+			dev_warn(codec->dev,
+				 "%s: port ID %d bitwidth is fixed\n",
+				 __func__, port);
+			return;
+		}
+
+		sb_ctl_reg = (TAPAN_A_CDC_CONN_TX_SB_B1_CTL + port);
+
+		dev_dbg(codec->dev, "%s: reg %x bit_sel %x bit_shift %x\n",
+			__func__, sb_ctl_reg, bit_sel, bit_shift);
+		snd_soc_update_bits(codec, sb_ctl_reg, 0x3 <<
+				    bit_shift, bit_sel << bit_shift);
+	}
+}
+
 
 static int tapan_hw_params(struct snd_pcm_substream *substream,
 			    struct snd_pcm_hw_params *params,
@@ -4062,7 +4138,7 @@ static int tapan_hw_params(struct snd_pcm_substream *substream,
 {
 	struct snd_soc_codec *codec = dai->codec;
 	struct tapan_priv *tapan = snd_soc_codec_get_drvdata(dai->codec);
-	u8 tx_fs_rate, rx_fs_rate;
+	u8 tx_fs_rate, rx_fs_rate, i2s_bit_mode;
 	u32 compander_fs;
 	int ret;
 
@@ -4117,27 +4193,37 @@ static int tapan_hw_params(struct snd_pcm_substream *substream,
 			return ret;
 		}
 
-		if (tapan->intf_type == WCD9XXX_INTERFACE_TYPE_I2C) {
-			switch (params_format(params)) {
-			case SNDRV_PCM_FORMAT_S16_LE:
-				snd_soc_update_bits(codec,
-					TAPAN_A_CDC_CLK_I2S_CTL,
-					0x20, 0x20);
-				break;
-			case SNDRV_PCM_FORMAT_S32_LE:
-				snd_soc_update_bits(codec,
-					TAPAN_A_CDC_CLK_I2S_CTL,
-					0x20, 0x00);
-				break;
-			default:
-				pr_err("invalid format\n");
-				break;
-			}
-			snd_soc_update_bits(codec, TAPAN_A_CDC_CLK_I2S_CTL,
-					    0x07, tx_fs_rate);
-		} else {
-			tapan->dai[dai->id].rate   = params_rate(params);
-		}
+		tapan->dai[dai->id].rate   = params_rate(params);
+
+                switch (params_format(params)) {
+                case SNDRV_PCM_FORMAT_S16_LE:
+                        i2s_bit_mode = 0x01;
+                        tapan->dai[dai->id].bit_width = 16;
+                        break;
+                case SNDRV_PCM_FORMAT_S24_LE:
+                        tapan->dai[dai->id].bit_width = 24;
+                        i2s_bit_mode = 0x00;
+                        break;
+                case SNDRV_PCM_FORMAT_S32_LE:
+                        tapan->dai[dai->id].bit_width = 32;
+                        i2s_bit_mode = 0x00;
+                        break;
+                default:
+                        dev_err(codec->dev,
+                                "%s: Invalid format 0x%x\n",
+                                 __func__, params_format(params));
+                        return -EINVAL;
+                }
+
+                if (tapan->intf_type == WCD9XXX_INTERFACE_TYPE_I2C) {
+                        snd_soc_update_bits(codec, TAPAN_A_CDC_CLK_I2S_CTL,
+                                            0x20, i2s_bit_mode << 5);
+                        snd_soc_update_bits(codec, TAPAN_A_CDC_CLK_I2S_CTL,
+                                            0x07, tx_fs_rate);
+                } else {
+                        tapan_set_tx_sb_port_format(params, dai);
+                }
+
 		break;
 
 	case SNDRV_PCM_STREAM_PLAYBACK:
@@ -4476,6 +4562,47 @@ static int tapan_codec_enable_slim_chmask(struct wcd9xxx_codec_dai_data *dai,
 	return ret;
 }
 
+static void tapan_codec_enable_int_port(struct wcd9xxx_codec_dai_data *dai,
+					  struct snd_soc_codec *codec)
+{
+	struct wcd9xxx_ch *ch;
+	int port_num = 0;
+	unsigned short reg = 0;
+	u8 val = 0;
+
+	if (!dai || !codec) {
+		pr_err("%s: Invalid params\n", __func__);
+		return;
+	}
+	list_for_each_entry(ch, &dai->wcd9xxx_ch_list, list) {
+		if (ch->port >= TAPAN_RX_PORT_START_NUMBER) {
+			port_num = ch->port - TAPAN_RX_PORT_START_NUMBER;
+			reg = TAPAN_SLIM_PGD_PORT_INT_EN0 + (port_num / 8);
+			val = wcd9xxx_interface_reg_read(codec->control_data,
+				reg);
+			if (!(val & (1 << (port_num % 8)))) {
+				val |= (1 << (port_num % 8));
+				wcd9xxx_interface_reg_write(
+					codec->control_data, reg, val);
+				val = wcd9xxx_interface_reg_read(
+					codec->control_data, reg);
+			}
+		} else {
+			port_num = ch->port;
+			reg = TAPAN_SLIM_PGD_PORT_INT_TX_EN0 + (port_num / 8);
+			val = wcd9xxx_interface_reg_read(codec->control_data,
+				reg);
+			if (!(val & (1 << (port_num % 8)))) {
+				val |= (1 << (port_num % 8));
+				wcd9xxx_interface_reg_write(codec->control_data,
+					reg, val);
+				val = wcd9xxx_interface_reg_read(
+					codec->control_data, reg);
+			}
+		}
+	}
+}
+
 static int tapan_codec_enable_slimrx(struct snd_soc_dapm_widget *w,
 				     struct snd_kcontrol *kcontrol,
 				     int event)
@@ -4510,24 +4637,22 @@ static int tapan_codec_enable_slimrx(struct snd_soc_dapm_widget *w,
 	switch (event) {
 	case SND_SOC_DAPM_POST_PMU:
 		dai->bus_down_in_recovery = false;
+		tapan_codec_enable_int_port(dai, codec);
 		(void) tapan_codec_enable_slim_chmask(dai, true);
 		ret = wcd9xxx_cfg_slim_sch_rx(core, &dai->wcd9xxx_ch_list,
 					      dai->rate, dai->bit_width,
 					      &dai->grph);
 		break;
 	case SND_SOC_DAPM_POST_PMD:
-		ret = wcd9xxx_close_slim_sch_rx(core, &dai->wcd9xxx_ch_list,
-						dai->grph);
+		ret = wcd9xxx_disconnect_port(core, &dai->wcd9xxx_ch_list,
+					      dai->grph);
+		dev_dbg(codec->dev, "%s: Disconnect RX port, ret = %d\n",
+			__func__, ret);
 		if (!dai->bus_down_in_recovery)
 			ret = tapan_codec_enable_slim_chmask(dai, false);
-		if (ret < 0) {
-			ret = wcd9xxx_disconnect_port(core,
-						      &dai->wcd9xxx_ch_list,
-						      dai->grph);
-			dev_dbg(codec->dev, "%s: Disconnect RX port, ret = %d\n",
-				 __func__, ret);
-		}
 		dai->bus_down_in_recovery = false;
+		ret = wcd9xxx_close_slim_sch_rx(core, &dai->wcd9xxx_ch_list,
+						dai->grph);
 		break;
 	}
 	return ret;
@@ -4560,6 +4685,7 @@ static int tapan_codec_enable_slimtx(struct snd_soc_dapm_widget *w,
 	switch (event) {
 	case SND_SOC_DAPM_POST_PMU:
 		dai->bus_down_in_recovery = false;
+		tapan_codec_enable_int_port(dai, codec);
 		(void) tapan_codec_enable_slim_chmask(dai, true);
 		ret = wcd9xxx_cfg_slim_sch_tx(core, &dai->wcd9xxx_ch_list,
 					      dai->rate, dai->bit_width,
@@ -5232,8 +5358,9 @@ static irqreturn_t tapan_slimbus_irq(int irq, void *data)
 	unsigned long status = 0;
 	int i, j, port_id, k;
 	u32 bit;
-	u8 val;
+	u8 val, int_val = 0;
 	bool tx, cleared;
+	unsigned short reg = 0;
 
 	for (i = TAPAN_SLIM_PGD_PORT_INT_STATUS_RX_0, j = 0;
 	     i <= TAPAN_SLIM_PGD_PORT_INT_STATUS_TX_1; i++, j++) {
@@ -5246,6 +5373,22 @@ static irqreturn_t tapan_slimbus_irq(int irq, void *data)
 		port_id = (tx ? j - 16 : j);
 		val = wcd9xxx_interface_reg_read(codec->control_data,
 					TAPAN_SLIM_PGD_PORT_INT_RX_SOURCE0 + j);
+		if (val) {
+			if (!tx)
+				reg = TAPAN_SLIM_PGD_PORT_INT_EN0 +
+					(port_id / 8);
+			else
+				reg = TAPAN_SLIM_PGD_PORT_INT_TX_EN0 +
+					(port_id / 8);
+			int_val = wcd9xxx_interface_reg_read(
+				codec->control_data, reg);
+			/*
+			 * Ignore interrupts for ports for which the
+			 * interrupts are not specifically enabled.
+			 */
+			if (!(int_val & (1 << (port_id % 8))))
+				continue;
+		}
 		if (val & TAPAN_SLIM_IRQ_OVERFLOW)
 			pr_err_ratelimited(
 			    "%s: overflow error on %s port %d, value %x\n",
@@ -5254,6 +5397,22 @@ static irqreturn_t tapan_slimbus_irq(int irq, void *data)
 			pr_err_ratelimited(
 			    "%s: underflow error on %s port %d, value %x\n",
 			    __func__, (tx ? "TX" : "RX"), port_id, val);
+		if ((val & TAPAN_SLIM_IRQ_OVERFLOW) ||
+			(val & TAPAN_SLIM_IRQ_UNDERFLOW)) {
+			if (!tx)
+				reg = TAPAN_SLIM_PGD_PORT_INT_EN0 +
+					(port_id / 8);
+			else
+				reg = TAPAN_SLIM_PGD_PORT_INT_TX_EN0 +
+					(port_id / 8);
+			int_val = wcd9xxx_interface_reg_read(
+				codec->control_data, reg);
+			if (int_val & (1 << (port_id % 8))) {
+				int_val = int_val ^ (1 << (port_id % 8));
+				wcd9xxx_interface_reg_write(codec->control_data,
+					reg, int_val);
+			}
+		}
 		if (val & TAPAN_SLIM_IRQ_PORT_CLOSED) {
 			/*
 			 * INT SOURCE register starts from RX to TX
@@ -6402,6 +6561,7 @@ static int tapan_codec_probe(struct snd_soc_codec *codec)
 	struct wcd9xxx_pdata *pdata;
 	struct wcd9xxx *wcd9xxx;
 	struct snd_soc_dapm_context *dapm = &codec->dapm;
+	struct clk *wcd_ext_clk;
 	int ret = 0;
 	int i, rco_clk_rate;
 	void *ptr = NULL;
@@ -6551,6 +6711,14 @@ static int tapan_codec_probe(struct snd_soc_codec *codec)
 					ARRAY_SIZE(wcd9302_map));
 	}
 
+	dev_info(codec->dev, "%s: Registering wcd_clk\n", __func__);
+	/* Register for Clock */
+	wcd_ext_clk = clk_get(wcd9xxx->dev, "wcd_clk");
+	if (IS_ERR(wcd_ext_clk)) {
+		dev_err(codec->dev, "%s: clk get %s failed\n",
+			__func__, "wcd_ext_clk");
+	}
+	tapan->wcd_ext_clk = wcd_ext_clk;
 	control->num_rx_port = TAPAN_RX_MAX;
 	control->rx_chs = ptr;
 	memcpy(control->rx_chs, tapan_rx_chs, sizeof(tapan_rx_chs));
