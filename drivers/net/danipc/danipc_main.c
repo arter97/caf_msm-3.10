@@ -40,6 +40,14 @@
 
 #define DANIPC_VERSION		"v1.0"
 
+#define TX_MMAP_REGION_BUF_NUM	512
+
+struct shm_msg {
+	struct ipc_msg_hdr	*hdr;
+	struct shm_buf		*shmbuf;
+	uint8_t			prio;
+};
+
 struct danipc_drvr danipc_driver = {
 	.proc_rx = {
 			{
@@ -149,7 +157,9 @@ out:
 	return ret;
 }
 
-static int acquire_local_fifo(struct danipc_fifo *fifo, void *owner)
+static int acquire_local_fifo(struct danipc_fifo *fifo,
+			      void *owner,
+			      uint8_t owner_type)
 {
 	int ret = 0;
 
@@ -166,6 +176,7 @@ static int acquire_local_fifo(struct danipc_fifo *fifo, void *owner)
 	fifo->flag |= DANIPC_FIFO_F_INIT;
 
 	fifo->owner = owner;
+	fifo->owner_type = owner_type;
 	fifo->flag |= DANIPC_FIFO_F_INUSE;
 
 out:
@@ -187,15 +198,6 @@ static int release_local_fifo(struct danipc_fifo *fifo, void *owner)
 out:
 	mutex_unlock(&fifo->lock);
 	return ret;
-}
-
-static void enable_irq_local_fifo(struct danipc_fifo *fifo)
-{
-	if (!(fifo->flag & DANIPC_FIFO_F_IRQ_EN)) {
-		danipc_clear_interrupt(fifo->node_id);
-		danipc_unmask_interrupt(fifo->node_id);
-		fifo->flag |= DANIPC_FIFO_F_IRQ_EN;
-	}
 }
 
 static void clear_stats(struct danipc_pkt_histo *histo)
@@ -253,7 +255,7 @@ static int danipc_open(struct net_device *dev)
 	uint8_t		rxptype_lo = pproc_lo->rxproc_type;
 	int			rc;
 
-	rc = acquire_local_fifo(intf->fifo, intf);
+	rc = acquire_local_fifo(fifo, intf, DANIPC_FIFO_OWNER_TYPE_NETDEV);
 	if (rc) {
 		netdev_err(dev, "local fifo(%s) is in used\n",
 			   intf->fifo->probe_info->res_name);
@@ -636,73 +638,44 @@ static int danipc_probe_lfifo(struct platform_device *pdev, const char *regs[])
 }
 
 /* Character device interface */
-static inline bool valid_ipc_msg_hdr(struct danipc_cdev *cdev,
-				     const struct ipc_msg_hdr *hdr)
+static inline void __shm_msg_free(struct danipc_cdev *cdev, struct shm_msg *msg)
 {
-	if (hdr->msg_len > IPC_FIRST_BUF_DATA_SIZE_MAX) {
-		dev_dbg(cdev->dev,
-			"%s: receive the message with bad message len(%u)\n",
-			__func__, hdr->msg_len);
-		cdev->status.rx_oversize_msg++;
-		return false;
-	}
-	if (!hdr->msg_len) {
-		cdev->status.rx_zlen_msg++;
-		return false;
-	}
-	if (ipc_get_node(hdr->dest_aid) != cdev->fifo->node_id) {
-		dev_dbg(cdev->dev,
-			"%s: receive the message with bad dest_aid(%u)\n",
-			__func__, hdr->dest_aid);
-		cdev->status.rx_inval_msg++;
-		return false;
-	}
-	/* no buffer chain */
-	if (hdr->next != NULL) {
-		dev_dbg(cdev->dev,
-			"%s: receive the message with next point(%p)\n",
-			__func__, hdr->next);
-		cdev->status.rx_chained_msg++;
-		return false;
-	}
-	return true;
+	shm_bufpool_put_buf(&cdev->rx_queue[msg->prio].freeq, msg->shmbuf);
 }
 
-static inline struct ipc_msg_hdr *__ipc_msg_get(struct danipc_fifo *fifo,
-						uint8_t *prio)
+static void shm_msg_free(struct danipc_cdev *cdev, struct shm_msg *msg)
 {
-	char *data = ipc_trns_fifo_buf_read(ipc_trns_prio_1,
-					    fifo->node_id);
-	uint8_t priority = ipc_trns_prio_1;
+	unsigned long flags;
 
-	if (data == NULL) {
-		data = ipc_trns_fifo_buf_read(ipc_trns_prio_0,
-					      fifo->node_id);
-		priority = ipc_trns_prio_0;
-	}
-	if (data)
-		*prio = priority;
+	spin_lock_irqsave(&cdev->rx_lock, flags);
 
-	return (struct ipc_msg_hdr *)data;
+	__shm_msg_free(cdev, msg);
+	danipc_cdev_refill_rx_b_fifo(cdev, msg->prio);
+
+	spin_unlock_irqrestore(&cdev->rx_lock, flags);
 }
 
-static struct ipc_msg_hdr *ipc_msg_get(struct danipc_cdev *cdev, uint8_t *prio)
+static int __shm_msg_get(struct danipc_cdev *cdev, struct shm_msg *msg)
 {
 	struct danipc_fifo *fifo = cdev->fifo;
-	struct ipc_msg_hdr *hdr;
-	uint8_t priority = 0;
+	struct shm_buf *buf;
+	int prio;
+	int ret = -EAGAIN;
 
-	while ((hdr = __ipc_msg_get(fifo, &priority))) {
-		dev_dbg(cdev->dev, "get message at %p\n", hdr);
-		if (valid_ipc_msg_hdr(cdev, hdr))
+	for (prio = ipc_trns_prio_1; prio >= 0; prio--) {
+		buf = shm_bufpool_get_buf(&cdev->rx_queue[prio].recvq);
+		if (buf) {
+			msg->prio = prio;
+			msg->shmbuf = buf;
+			msg->hdr = ipc_to_virt(fifo->node_id, prio,
+					       buf_paddr(buf));
+
+			dev_dbg(cdev->dev, "get message at %p\n", msg->hdr);
+			ret = 0;
 			break;
-		dev_dbg(cdev->dev, "drop message at %p\n", hdr);
-		ipc_buf_free((char *)hdr, fifo->node_id, priority);
-		cdev->status.rx_drop++;
+		}
 	}
-	if (hdr)
-		*prio = priority;
-	return hdr;
+	return ret;
 }
 
 static ssize_t ipc_msg_copy_to_user(void *msg, enum ipc_trns_prio prio,
@@ -732,15 +705,117 @@ static ssize_t ipc_msg_copy_to_user(void *msg, enum ipc_trns_prio prio,
 	return n;
 }
 
+static void reset_rx_queue_status(struct rx_queue *rxque)
+{
+	rxque->status.bq_lo = rxque->bq.count;
+	rxque->status.freeq_lo = rxque->freeq.count;
+	rxque->status.recvq_hi = rxque->recvq.count;
+}
+
+static int danipc_cdev_rx_buf_init(struct danipc_cdev *cdev)
+{
+	struct danipc_fifo *fifo = cdev->fifo;
+
+	danipc_fifo_drain(fifo->node_id, ipc_trns_prio_1);
+	danipc_fifo_drain(fifo->node_id, ipc_trns_prio_0);
+	danipc_cdev_refill_rx_b_fifo(cdev, ipc_trns_prio_1);
+	danipc_cdev_refill_rx_b_fifo(cdev, ipc_trns_prio_0);
+	reset_rx_queue_status(&cdev->rx_queue[ipc_trns_prio_1]);
+	reset_rx_queue_status(&cdev->rx_queue[ipc_trns_prio_0]);
+
+	return 0;
+}
+
+static int danipc_cdev_rx_buf_release(struct danipc_cdev *cdev)
+{
+	struct danipc_fifo *fifo = cdev->fifo;
+	enum ipc_trns_prio pri;
+
+	for (pri = ipc_trns_prio_0; pri < max_ipc_prio; pri++)
+		danipc_fifo_drain(fifo->node_id, pri);
+	ipc_trns_fifo_buf_init(fifo->node_id, fifo->idx);
+
+	return 0;
+}
+
+void danipc_cdev_refill_rx_b_fifo(struct danipc_cdev *cdev,
+				  enum ipc_trns_prio pri)
+{
+	struct danipc_fifo *fifo = cdev->fifo;
+	struct rx_queue *rxq = &cdev->rx_queue[pri];
+	struct shm_bufpool *bq = &rxq->bq;
+	struct shm_bufpool *freeq = &rxq->freeq;
+	uint32_t n = 0;
+
+	while (bq->count < IPC_BUF_COUNT_MAX) {
+		struct shm_buf *buf;
+
+		buf = shm_bufpool_get_buf(freeq);
+
+		if (buf == NULL)
+			break;
+
+		danipc_b_fifo_push(buf_paddr(buf), fifo->node_id, pri);
+		shm_bufpool_put_buf(bq, buf);
+		n++;
+	}
+	if (freeq->count < rxq->status.freeq_lo)
+		rxq->status.freeq_lo = freeq->count;
+	if (bq->count < rxq->status.bq_lo)
+		rxq->status.bq_lo = bq->count;
+	if (n)
+		pr_debug("%s: fill fifo(%u/%u) with %d buffers\n",
+			 __func__, fifo->idx, pri, n);
+}
+
+static int danipc_cdev_init_tx_region(struct danipc_cdev *cdev,
+				      uint8_t cpuid,
+				      enum ipc_trns_prio pri)
+{
+	uint32_t size = SZ_256K;
+	phys_addr_t addr;
+	phys_addr_t start;
+
+	if (!valid_cpu_id(cpuid) || pri != ipc_trns_prio_1)
+		return -EINVAL;
+
+	addr = danipc_b_fifo_pop(cpuid, pri);
+	if (!addr)
+		return -EAGAIN;
+
+	danipc_b_fifo_push(addr, cpuid, pri);
+
+	if (ipc_to_virt(cpuid, pri, addr) == NULL)
+		return -EAGAIN;
+
+	start = ipc_to_virt_map[cpuid][pri].paddr;
+	size = ipc_to_virt_map[cpuid][pri].size;
+
+	dev_dbg(cdev->dev,
+		"%s: b_fifo(%u) start: 0x%x size: 0x%x\n",
+		__func__, cpuid, start, size);
+
+	cdev->tx_region = shm_region_create(start,
+					    ipc_to_virt_map[cpuid][pri].vaddr,
+					    size,
+					    IPC_BUF_SIZE_MAX,
+					    DANIPC_MMAP_TX_BUF_HEADROOM,
+					    TX_MMAP_REGION_BUF_NUM);
+	if (cdev->tx_region == NULL)
+		return -EPERM;
+
+	shm_bufpool_acquire_whole_region(&cdev->tx_queue.mmap_bufcacheq,
+					 cdev->tx_region);
+	return 0;
+}
+
 static ssize_t danipc_cdev_read(struct file *file, char __user *buf,
 				size_t count, loff_t *ppos)
 {
 	DECLARE_WAITQUEUE(wait, current);
 	struct danipc_cdev *cdev = file->private_data;
-	struct danipc_fifo *fifo = cdev->fifo;
 	unsigned int minor = iminor(file_inode(file));
-	struct ipc_msg_hdr *hdr;
-	uint8_t prio = 0;
+	struct shm_msg msg;
 	unsigned long flags;
 	ssize_t ret = 0;
 
@@ -751,10 +826,13 @@ static ssize_t danipc_cdev_read(struct file *file, char __user *buf,
 		return -EINVAL;
 	}
 
-	add_wait_queue(&cdev->rq, &wait);
+	add_wait_queue(&cdev->rx_wq, &wait);
 	while (1) {
-		hdr = ipc_msg_get(cdev, &prio);
-		if (hdr)
+		spin_lock_irqsave(&cdev->rx_lock, flags);
+		ret = __shm_msg_get(cdev, &msg);
+		spin_unlock_irqrestore(&cdev->rx_lock, flags);
+
+		if (!ret)
 			break;
 
 		if (file->f_flags & O_NONBLOCK) {
@@ -763,9 +841,6 @@ static ssize_t danipc_cdev_read(struct file *file, char __user *buf,
 		}
 
 		set_current_state(TASK_INTERRUPTIBLE);
-		spin_lock_irqsave(&cdev->lock, flags);
-		enable_irq_local_fifo(fifo);
-		spin_unlock_irqrestore(&cdev->lock, flags);
 		schedule();
 		if (signal_pending(current)) {
 			cdev->status.rx_error++;
@@ -774,19 +849,84 @@ static ssize_t danipc_cdev_read(struct file *file, char __user *buf,
 		}
 	}
 
-	ret = ipc_msg_copy_to_user(hdr, prio, buf, count);
+	ret = ipc_msg_copy_to_user(msg.hdr, msg.prio, buf, count);
 	if (ret < 0) {
 		cdev->status.rx_error++;
 	} else {
 		cdev->status.rx++;
+		cdev->status.rx_bytes += msg.hdr->msg_len;
+	}
+
+	shm_msg_free(cdev, &msg);
+
+out:
+	 __set_current_state(TASK_RUNNING);
+	remove_wait_queue(&cdev->rx_wq, &wait);
+	return ret;
+}
+
+int danipc_cdev_mmsg_rx(struct danipc_cdev *cdev,
+			struct danipc_cdev_mmsg *mmsg)
+{
+	struct rx_queue *rx_queue;
+	struct shm_bufpool msgs;
+	struct shm_buf *buf, *p;
+	unsigned long flags;
+	int n = 0;
+
+	if (unlikely(!cdev || !mmsg))
+		return -EINVAL;
+	if (mmsg->msgs.num_entry > DANIPC_BUFS_MAX_NUM_BUF ||
+	    !mmsg->msgs.num_entry)
+		return -EINVAL;
+	if (!valid_ipc_prio(mmsg->hdr.prio))
+		return -EINVAL;
+
+	rx_queue = &cdev->rx_queue[mmsg->hdr.prio];
+	shm_bufpool_init(&msgs);
+
+	spin_lock_irqsave(&cdev->rx_lock, flags);
+	list_for_each_entry_safe(buf, p, &rx_queue->recvq.head, list) {
+		struct ipc_msg_hdr *hdr = ipc_to_virt(cdev->fifo->node_id,
+						      mmsg->hdr.prio,
+						      buf_paddr(buf));
+		if (hdr->dest_aid == mmsg->hdr.dst &&
+		    hdr->src_aid == mmsg->hdr.src &&
+		    hdr->msg_len <= mmsg->msgs.entry[msgs.count].data_len) {
+			shm_bufpool_del_buf(&rx_queue->recvq, buf);
+			shm_bufpool_put_buf(&msgs, buf);
+			if (msgs.count == mmsg->msgs.num_entry)
+				break;
+		}
+	}
+	spin_unlock_irqrestore(&cdev->rx_lock, flags);
+
+	if (!msgs.count)
+		return 0;
+
+	list_for_each_entry(buf, &msgs.head, list) {
+		struct ipc_msg_hdr *hdr = ipc_to_virt(cdev->fifo->node_id,
+						      mmsg->hdr.prio,
+						      buf_paddr(buf));
+		if (copy_to_user(mmsg->msgs.entry[n].data,
+				 hdr+1,
+				 hdr->msg_len)) {
+			cdev->status.rx_error++;
+			n = -EFAULT;
+			break;
+		}
+		mmsg->msgs.entry[n++].data_len = hdr->msg_len;
+		cdev->status.rx++;
 		cdev->status.rx_bytes += hdr->msg_len;
 	}
 
-	ipc_buf_free((char *)hdr, fifo->node_id, prio);
-out:
-	 __set_current_state(TASK_RUNNING);
-	remove_wait_queue(&cdev->rq, &wait);
-	return ret;
+	spin_lock_irqsave(&cdev->rx_lock, flags);
+	while ((buf = shm_bufpool_get_buf(&msgs)))
+		shm_bufpool_put_buf(&rx_queue->freeq, buf);
+	danipc_cdev_refill_rx_b_fifo(cdev, mmsg->hdr.prio);
+	spin_unlock_irqrestore(&cdev->rx_lock, flags);
+
+	return n;
 }
 
 int danipc_cdev_tx(struct danipc_cdev *cdev,
@@ -834,7 +974,7 @@ int danipc_cdev_tx(struct danipc_cdev *cdev,
 		cdev->status.tx_error++;
 		dev_warn(cdev->dev, "%s: failed to send %d bytes\n",
 			 __func__, count);
-		return -EIO;
+		return -ENOMEM;
 	}
 
 	cdev->status.tx++;
@@ -874,19 +1014,704 @@ static unsigned int danipc_cdev_poll(struct file *file,
 				     struct poll_table_struct *wait)
 {
 	struct danipc_cdev *cdev = file->private_data;
-	struct danipc_fifo *fifo = cdev->fifo;
 	unsigned long flags;
 	unsigned int ret = 0;
 
 	dev_dbg(cdev->dev, "%s\n", __func__);
 
-	poll_wait(file, &cdev->rq, wait);
-	spin_lock_irqsave(&cdev->lock, flags);
-	if (danipc_fifo_is_empty(fifo))
-		enable_irq_local_fifo(fifo);
-	else
+	poll_wait(file, &cdev->rx_wq, wait);
+	spin_lock_irqsave(&cdev->rx_lock, flags);
+	if (!list_empty(&cdev->rx_queue[ipc_trns_prio_1].recvq.head) ||
+	    !list_empty(&cdev->rx_queue[ipc_trns_prio_0].recvq.head))
 		ret = POLLIN | POLLRDNORM;
-	spin_unlock_irqrestore(&cdev->lock, flags);
+	spin_unlock_irqrestore(&cdev->rx_lock, flags);
+
+	return ret;
+}
+
+static inline void *buf_vma_vaddr(struct shm_buf *buf,
+				  struct vm_area_struct *vma)
+{
+	phys_addr_t vm_size = vma->vm_end - vma->vm_start;
+	phys_addr_t offset_s = buf->offset + (buf->region->start & ~PAGE_MASK);
+	phys_addr_t offset_e = offset_s + buf->region->buf_sz;
+
+	if (!address_in_range(offset_e, 0, vm_size))
+		return NULL;
+	return (void *)(vma->vm_start + offset_s);
+}
+
+static inline phys_addr_t vma_paddr(struct vm_area_struct *vma,
+				    struct shm_region *region,
+				    void *addr)
+{
+	unsigned long offset;
+
+	if (unlikely(vma == NULL || region == NULL))
+		return 0;
+
+	if (!address_in_range((phys_addr_t)addr, vma->vm_start, vma->vm_end))
+		return 0;
+
+	offset = (unsigned long)(addr) - vma->vm_start;
+
+	return ((region->start & PAGE_MASK)+offset);
+}
+
+static inline phys_addr_t vma_rx_paddr(struct danipc_cdev *cdev, void *addr)
+{
+	return vma_paddr(cdev->rx_vma, cdev->rx_region, addr);
+}
+
+static inline void *to_ipc_data(void *msg)
+{
+	struct ipc_msg_hdr *hdr = (struct ipc_msg_hdr *)msg;
+
+	return (void *)(hdr+1);
+}
+
+static inline uint8_t vma_get_aid(struct vm_area_struct *vma)
+{
+	unsigned offset = vma->vm_pgoff << PAGE_SHIFT;
+	unsigned aid = (offset >> DANIPC_MMAP_AID_SHIFT) & 0xFF;
+
+	return (uint8_t)aid;
+}
+
+static inline uint8_t vma_get_lid(struct vm_area_struct *vma)
+{
+	unsigned offset = vma->vm_pgoff << PAGE_SHIFT;
+	unsigned lid = (offset >> DANIPC_MMAP_LID_SHIFT) & 0xFF;
+
+	return (uint8_t)lid;
+}
+
+static inline int vma_get_node(struct vm_area_struct *vma)
+{
+	int node_id;
+
+	node_id = ipc_get_node(vma_get_aid(vma)) & 0xFF;
+	if (node_id >= PLATFORM_MAX_NUM_OF_NODES)
+		return -EINVAL;
+
+	return node_id;
+}
+
+static bool vma_in_region(struct vm_area_struct *vma, struct shm_region *region)
+{
+	unsigned long vma_size = vma->vm_end - vma->vm_start;
+	unsigned long region_size = region->end - region->start;
+	unsigned long size;
+
+	size = region_size + (region->start & ~PAGE_MASK);
+
+	return (size > vma_size) ? true : false;
+}
+
+int danipc_cdev_mapped_recv(struct danipc_cdev *cdev,
+			    struct vm_area_struct *vma,
+			    struct danipc_bufs *bufs)
+{
+	struct shm_buf *buf, *p;
+	int n = 0, num;
+	int i;
+	unsigned long flags;
+
+	if (unlikely(!cdev || !vma || !bufs))
+		return -EINVAL;
+
+	if (!cdev->rx_vma) {
+		dev_err(cdev->dev, "%s: the region is not mmaped\n",
+			__func__);
+		return -EIO;
+	}
+
+	num = bufs->num_entry;
+	if (!num || num > DANIPC_BUFS_MAX_NUM_BUF)
+		return -EINVAL;
+
+	spin_lock_irqsave(&cdev->rx_lock, flags);
+
+	for (i = ipc_trns_prio_1; (i >= ipc_trns_prio_0) && (n < num); i--) {
+		struct shm_bufpool *pq = &cdev->rx_queue[i].recvq;
+		struct shm_bufpool *mmapq = &cdev->rx_queue[i].mmapq;
+
+		list_for_each_entry_safe(buf, p, &pq->head, list) {
+			void *vma_addr = buf_vma_vaddr(buf, cdev->rx_vma);
+
+			if (vma_addr) {
+				struct ipc_msg_hdr *ipchdr =
+					(struct ipc_msg_hdr *)vma_addr;
+
+				dev_dbg(cdev->dev,
+					"%s: put %p(%p) in mmapq, prio=%d\n",
+					__func__, buf, vma_addr, i);
+
+				shm_bufpool_del_buf(pq, buf);
+				shm_bufpool_put_buf(mmapq, buf);
+				bufs->entry[n].data = ipchdr+1;
+				bufs->entry[n].data_len = ipchdr->msg_len;
+				cdev->status.mmap_rx++;
+				n++;
+				if (n >= num)
+					break;
+			}
+		}
+	}
+
+	spin_unlock_irqrestore(&cdev->rx_lock, flags);
+	bufs->num_entry = n;
+	return n;
+}
+
+int danipc_cdev_mapped_recv_done(struct danipc_cdev *cdev,
+				 struct vm_area_struct *vma,
+				 struct danipc_bufs *bufs)
+{
+	unsigned long flags;
+	int i;
+	bool refill_hi = false, refill_lo = false;
+
+	if (unlikely(!bufs || !vma || !cdev))
+		return -EINVAL;
+
+	if (bufs->num_entry > DANIPC_BUFS_MAX_NUM_BUF || !bufs->num_entry)
+		return -EINVAL;
+
+	spin_lock_irqsave(&cdev->rx_lock, flags);
+
+	for (i = 0; i < bufs->num_entry; i++) {
+		phys_addr_t paddr = vma_rx_paddr(cdev, bufs->entry[i].data);
+		struct shm_buf *buf;
+		int pri;
+		bool found;
+
+		if (!paddr) {
+			cdev->status.mmap_rx_error++;
+			dev_warn(cdev->dev,
+				 "%s: address %x not in mmap area\n",
+				 __func__, paddr);
+			continue;
+		}
+
+		buf = shm_region_find_buf_by_pa(cdev->rx_region, paddr);
+		if (!buf) {
+			cdev->status.mmap_rx_error++;
+			dev_warn(cdev->dev,
+				 "%s: no buffer at phy_addr %x\n",
+				 __func__, paddr);
+			continue;
+		}
+
+		for (pri = ipc_trns_prio_1, found = false; pri >= 0; pri--) {
+			struct rx_queue *pq = &cdev->rx_queue[pri];
+
+			if (buf->head == &pq->mmapq.head) {
+				dev_dbg(cdev->dev,
+					"%s: put mapped buf %p to freeq\n",
+					__func__, buf);
+				shm_bufpool_del_buf(&pq->mmapq, buf);
+				shm_bufpool_put_buf(&pq->freeq, buf);
+				cdev->status.mmap_rx_done++;
+				found = true;
+				if (pri == ipc_trns_prio_1)
+					refill_hi = true;
+				else
+					refill_lo = true;
+				break;
+			}
+		}
+		if (!found) {
+			cdev->status.mmap_rx_error++;
+			dev_warn(cdev->dev,
+				 "%s: vaddr %p not in mmapq\n",
+				 __func__, bufs->entry[i].data);
+		}
+	}
+
+	if (refill_hi)
+		danipc_cdev_refill_rx_b_fifo(cdev, ipc_trns_prio_1);
+	if (refill_lo)
+		danipc_cdev_refill_rx_b_fifo(cdev, ipc_trns_prio_0);
+
+	spin_unlock_irqrestore(&cdev->rx_lock, flags);
+	return 0;
+}
+
+static void danipc_cdev_rx_vma_open(struct vm_area_struct *vma)
+{
+	struct danipc_cdev *cdev = vma->vm_private_data;
+
+	dev_dbg(cdev->dev, "%s: vma %p\n", __func__, vma);
+
+	if (atomic_add_return(1, &cdev->rx_vma_ref) == 1)
+		cdev->rx_vma = vma;
+}
+
+static void danipc_cdev_rx_vma_close(struct vm_area_struct *vma)
+{
+	struct danipc_cdev *cdev = vma->vm_private_data;
+	unsigned long flags;
+	int i;
+
+	dev_dbg(cdev->dev, "%s: vma %p\n", __func__, vma);
+
+	if (!atomic_dec_and_test(&cdev->rx_vma_ref))
+		return;
+
+	spin_lock_irqsave(&cdev->rx_lock, flags);
+	for (i = 0; i < max_ipc_prio; i++) {
+		struct rx_queue *pq = &cdev->rx_queue[i];
+		struct shm_buf *buf;
+
+		while ((buf = shm_bufpool_get_buf(&pq->mmapq)))
+			shm_bufpool_put_buf(&pq->freeq,  buf);
+		danipc_cdev_refill_rx_b_fifo(cdev, i);
+	}
+
+	spin_unlock_irqrestore(&cdev->rx_lock, flags);
+
+	cdev->rx_vma = NULL;
+}
+
+static struct vm_operations_struct danipc_cdev_rx_vma_ops = {
+	.open	= danipc_cdev_rx_vma_open,
+	.close	= danipc_cdev_rx_vma_close,
+};
+
+static int danipc_rx_mmap(struct danipc_cdev *cdev, struct vm_area_struct *vma)
+{
+	struct shm_region *region = cdev->rx_region;
+	unsigned long size = vma->vm_end - vma->vm_start;
+
+	if (cdev->rx_vma) {
+		dev_warn(cdev->dev, "%s: rx is already mmaped\n",
+			 __func__);
+		return -EBUSY;
+	}
+
+	if (vma_in_region(vma, region)) {
+		dev_dbg(cdev->dev,
+			"%s: vma area is too small, start=%lx end=%lx\n",
+			__func__, vma->vm_start, vma->vm_end);
+		return -EINVAL;
+	}
+
+	/* TODO: make it cachedable */
+	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+
+	if (remap_pfn_range(vma,
+			    vma->vm_start,
+			    (region->start) >> PAGE_SHIFT,
+			    size,
+			    vma->vm_page_prot)) {
+		dev_warn(cdev->dev,
+			 "%s: remap_pfn_range(%lx/%lx/%lx) failed\n",
+			 __func__, vma->vm_start, size, vma->vm_pgoff);
+		return -EAGAIN;
+	}
+
+	vma->vm_private_data = cdev;
+	vma->vm_ops = &danipc_cdev_rx_vma_ops;
+	danipc_cdev_rx_vma_open(vma);
+	return 0;
+}
+
+static struct shm_buf *tx_mmap_bufcacheq_get_buf(struct danipc_cdev *cdev,
+						 phys_addr_t phy_addr)
+{
+	struct shm_bufpool *pq = &cdev->tx_queue.mmap_bufcacheq;
+	struct shm_buf *buf = NULL;
+
+	if (cdev->tx_region->dir_buf_map) {
+		buf = shm_bufpool_find_buf_in_region(pq,
+						     cdev->tx_region,
+						     phy_addr);
+	} else {
+		buf = shm_bufpool_get_buf(pq);
+		if (buf)
+			buf->offset = phy_addr - buf->region->start;
+	}
+	return buf;
+}
+
+static inline void tx_mmap_bufcacheq_put_buf(struct danipc_cdev *cdev,
+					     struct shm_buf *buf)
+{
+	struct shm_bufpool *pq = &cdev->tx_queue.mmap_bufcacheq;
+
+	shm_bufpool_put_buf(pq, buf);
+}
+
+int danipc_cdev_mapped_tx(struct danipc_cdev *cdev, struct danipc_bufs *bufs)
+{
+	struct shm_region *region;
+	struct shm_buf *buf;
+	struct ipc_msg_hdr *ipchdr;
+	phys_addr_t paddr, paddr_buf, offset;
+	int i, num_tx;
+	uint8_t aid, lid, node;
+
+	if (unlikely(!bufs || !cdev))
+		return -EINVAL;
+
+	region = cdev->tx_region;
+	if (!region || !cdev->tx_vma) {
+		dev_warn(cdev->dev, "%s: tx is no mmaped\n", __func__);
+		return -EPERM;
+	}
+
+	if (bufs->num_entry > DANIPC_BUFS_MAX_NUM_BUF || !bufs->num_entry)
+		return -EINVAL;
+
+	aid = vma_get_aid(cdev->tx_vma);
+	lid = vma_get_lid(cdev->tx_vma);
+	node = ipc_get_node(aid);
+
+	for (i = 0, num_tx = 0; i < bufs->num_entry; i++) {
+		paddr = vma_paddr(cdev->tx_vma, region, bufs->entry[i].data);
+
+		buf = shm_bufpool_find_buf_in_region(&cdev->tx_queue.mmapq,
+						     region,
+						     paddr);
+		if (buf == NULL) {
+			dev_warn(cdev->dev,
+				 "%s: buffer at phy address %x not in mmapq\n",
+				 __func__, paddr);
+			cdev->status.tx_error++;
+			cdev->status.mmap_tx_error++;
+			continue;
+		}
+
+		if (shm_bufpool_del_buf(&cdev->tx_queue.mmapq, buf)) {
+			dev_warn(cdev->dev,
+				 "%s: vaddr %p not in mmapq\n",
+				 __func__, bufs->entry[i].data);
+			cdev->status.tx_error++;
+			cdev->status.mmap_tx_error++;
+			continue;
+		}
+
+		paddr_buf = buf_paddr(buf);
+		offset = paddr - paddr_buf;
+
+		dev_dbg(cdev->dev, "%s: buf(%p) is returned, paddr=%x\n",
+			__func__, buf, paddr_buf);
+
+		/* For now, the user must pass the same address it got
+		 * from ioctl
+		 */
+		if (offset != sizeof(*ipchdr)) {
+			dev_warn(cdev->dev,
+				 "%s: message offset(%p/%x) not expected.\n",
+				 __func__, bufs->entry[i].data, offset);
+			goto err;
+		}
+		if ((offset + bufs->entry[i].data_len > region->buf_sz) ||
+		    (offset < sizeof(*ipchdr))) {
+			dev_warn(cdev->dev,
+				 "%s: message(%p) cross the buffer boundary\n",
+				 __func__, bufs->entry[i].data);
+			goto err;
+		}
+
+		offset -= sizeof(*ipchdr);
+		ipchdr = (struct ipc_msg_hdr *)bufs->entry[i].data - 1;
+		ipchdr->msg_type = 0x12;
+		ipchdr->msg_len = bufs->entry[i].data_len;
+		ipchdr->reply = NULL;
+		ipchdr->dest_aid = aid;
+		ipchdr->src_aid = lid;
+		ipchdr->request_num = ipc_req_sn++;
+		ipchdr->next = NULL;
+
+		dev_dbg(cdev->dev,
+			"%s: send %u bytes to %u, lid=%u paddr=%08x\n",
+			__func__, ipchdr->msg_len, ipchdr->dest_aid,
+			ipchdr->src_aid, paddr_buf+offset);
+
+		danipc_m_fifo_push(paddr_buf+offset,
+				   node,
+				   ipc_trns_prio_1);
+
+		cdev->status.mmap_tx++;
+		cdev->status.tx++;
+		cdev->status.tx_bytes += bufs->entry[i].data_len;
+		num_tx++;
+
+		tx_mmap_bufcacheq_put_buf(cdev, buf);
+		continue;
+err:
+		tx_mmap_bufcacheq_put_buf(cdev, buf);
+		cdev->status.tx_drop++;
+		cdev->status.mmap_tx_error++;
+		danipc_b_fifo_push(paddr_buf, node, ipc_trns_prio_1);
+	}
+
+	return num_tx;
+}
+
+int danipc_cdev_mapped_tx_get_buf(struct danipc_cdev *cdev,
+				  struct danipc_bufs *bufs)
+{
+	struct shm_buf *buf;
+	phys_addr_t paddr;
+	void *vaddr;
+	int ret = 0, node, i = 0;
+
+	if (unlikely(!bufs || !cdev))
+		return -EINVAL;
+
+	if (bufs->num_entry > DANIPC_BUFS_MAX_NUM_BUF || !bufs->num_entry)
+		return -EINVAL;
+
+	if (!cdev->tx_vma) {
+		dev_warn(cdev->dev, "%s: tx is not mmaped.\n", __func__);
+		return -EPERM;
+	}
+
+	node = vma_get_node(cdev->tx_vma);
+	if (node < 0) {
+		dev_warn(cdev->dev, "%s: invalid node from tx_vma\n", __func__);
+		return -EINVAL;
+	}
+
+	while (i < bufs->num_entry) {
+		paddr = danipc_b_fifo_pop(node, ipc_trns_prio_1);
+		if (!paddr)
+			break;
+
+		if (!address_in_range(paddr,
+				      cdev->tx_region->start,
+				      cdev->tx_region->end)) {
+			cdev->status.mmap_tx_bad_buf++;
+			dev_warn(cdev->dev,
+				 "%s: phy_addr %x is out of region range\n",
+				 __func__, paddr);
+			continue;
+		}
+
+		buf = shm_bufpool_find_buf_overlap(&cdev->tx_queue.mmapq,
+						   cdev->tx_region,
+						   paddr);
+		if (buf) {
+			cdev->status.mmap_tx_bad_buf++;
+			dev_warn(cdev->dev,
+				 "%s: addr %x is used by mmap buf(%p/%x)\n",
+				 __func__, paddr, buf, buf->offset);
+			continue;
+		}
+
+		buf = tx_mmap_bufcacheq_get_buf(cdev, paddr);
+		if (!buf) {
+			cdev->status.mmap_tx_reqbuf_error++;
+			dev_warn(cdev->dev,
+				 "%s: can't get buf from cache, phy_addr %x\n",
+				 __func__, paddr);
+			goto err;
+		}
+		shm_bufpool_put_buf(&cdev->tx_queue.mmapq, buf);
+		vaddr = buf_vma_vaddr(buf, cdev->tx_vma);
+		BUG_ON(!vaddr);
+
+		dev_dbg(cdev->dev,
+			"%s: give buf to user space, phys=%x vaddr=%p\n",
+			__func__, paddr, vaddr);
+
+		bufs->entry[i].data = (struct ipc_msg_hdr *)(vaddr) + 1;
+		bufs->entry[i].data_len = buf->region->buf_sz -
+			sizeof(struct ipc_msg_hdr);
+		cdev->status.mmap_tx_reqbuf++;
+		i++;
+	}
+
+	if (i == 0) {
+		cdev->status.mmap_tx_nobuf++;
+		ret = -ENOBUFS;
+	} else {
+		bufs->num_entry = i;
+	}
+
+	return ret;
+err:
+	danipc_b_fifo_push(paddr, node, ipc_trns_prio_1);
+	return ret;
+}
+
+int danipc_cdev_mapped_tx_put_buf(struct danipc_cdev *cdev,
+				  struct danipc_bufs *bufs)
+{
+	struct shm_region *region;
+	struct shm_buf *buf;
+	phys_addr_t paddr, paddr_buf;
+	int i, node, ret = 0;
+
+	if (unlikely(!bufs || !cdev))
+		return -EINVAL;
+
+	if (bufs->num_entry > DANIPC_BUFS_MAX_NUM_BUF || !bufs->num_entry)
+		return -EINVAL;
+
+	if (!cdev->tx_vma) {
+		dev_warn(cdev->dev, "%s: tx is not mmaped.\n", __func__);
+		return -EPERM;
+	}
+
+	node = vma_get_node(cdev->tx_vma);
+	if (node < 0) {
+		dev_warn(cdev->dev, "%s: invalid node from tx_vma\n", __func__);
+		return -EINVAL;
+	}
+
+	region = cdev->tx_region;
+	for (i = 0; i < bufs->num_entry; i++) {
+		paddr = vma_paddr(cdev->tx_vma, region, bufs->entry[i].data);
+
+		buf = shm_bufpool_find_buf_in_region(&cdev->tx_queue.mmapq,
+						     region,
+						     paddr);
+		if (buf == NULL) {
+			dev_warn(cdev->dev,
+				 "%s: buffer at phy address %x not in mmapq\n",
+				 __func__, paddr);
+			ret = -EINVAL;
+			continue;
+		}
+
+		if (shm_bufpool_del_buf(&cdev->tx_queue.mmapq, buf)) {
+			dev_warn(cdev->dev,
+				 "%s: vaddr %p not in mmapq\n",
+				 __func__, bufs->entry[i].data);
+			ret = -EINVAL;
+			continue;
+		}
+
+		paddr_buf = buf_paddr(buf);
+
+		dev_dbg(cdev->dev, "%s: buf(%p) is returned, paddr=%x\n",
+			__func__, buf, paddr_buf);
+
+		danipc_b_fifo_push(paddr_buf, node, ipc_trns_prio_1);
+
+		tx_mmap_bufcacheq_put_buf(cdev, buf);
+	}
+
+	return ret;
+}
+
+static void danipc_cdev_tx_vma_open(struct vm_area_struct *vma)
+{
+	struct danipc_cdev *cdev = vma->vm_private_data;
+
+	dev_dbg(cdev->dev, "%s: vma %p\n", __func__, vma);
+
+	if (atomic_add_return(1, &cdev->tx_vma_ref) == 1)
+		cdev->tx_vma = vma;
+}
+
+static void danipc_cdev_tx_vma_close(struct vm_area_struct *vma)
+{
+	struct danipc_cdev *cdev = vma->vm_private_data;
+	struct tx_queue *pq = &cdev->tx_queue;
+	struct shm_buf *buf;
+	int node;
+
+	dev_dbg(cdev->dev, "%s: vma %p\n", __func__, vma);
+
+	if (!atomic_dec_and_test(&cdev->tx_vma_ref))
+		return;
+
+	node = vma_get_node(cdev->tx_vma);
+	while ((buf = shm_bufpool_get_buf(&pq->mmapq))) {
+		danipc_b_fifo_push(buf_paddr(buf),
+				   node,
+				   ipc_trns_prio_1);
+		tx_mmap_bufcacheq_put_buf(cdev, buf);
+	}
+
+	cdev->tx_vma = NULL;
+}
+
+static struct vm_operations_struct danipc_cdev_tx_vma_ops = {
+	.open	= danipc_cdev_tx_vma_open,
+	.close	= danipc_cdev_tx_vma_close,
+};
+
+static int danipc_tx_mmap(struct danipc_cdev *cdev, struct vm_area_struct *vma)
+{
+	struct shm_region *region;
+	unsigned long size = vma->vm_end - vma->vm_start;
+
+	if (cdev->tx_vma) {
+		dev_warn(cdev->dev, "%s: tx is already mmaped\n",
+			 __func__);
+		return -EBUSY;
+	}
+
+	if (cdev->tx_region == NULL)
+		danipc_cdev_init_tx_region(cdev,
+					   vma_get_node(vma),
+					   ipc_trns_prio_1);
+
+	region = cdev->tx_region;
+	if (region == NULL)
+		return -EPERM;
+
+	if (vma_in_region(vma, region)) {
+		dev_dbg(cdev->dev,
+			"%s: vma area is too small, start=%lx end=%lx\n",
+			__func__, vma->vm_start, vma->vm_end);
+		return -EINVAL;
+	}
+
+	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+
+	if (remap_pfn_range(vma,
+			    vma->vm_start,
+			    region->start >> PAGE_SHIFT,
+			    size,
+			    vma->vm_page_prot)) {
+		dev_warn(cdev->dev,
+			 "%s: remap_pfn_range(%lx/%lx/%lx) failed\n",
+			 __func__, vma->vm_start, size, vma->vm_pgoff);
+		return -EAGAIN;
+	}
+
+	vma->vm_private_data = cdev;
+	vma->vm_ops = &danipc_cdev_tx_vma_ops;
+	danipc_cdev_tx_vma_open(vma);
+	return 0;
+}
+
+static int danipc_cdev_mmap(struct file *file, struct vm_area_struct *vma)
+{
+	unsigned int minor = iminor(file_inode(file));
+	struct danipc_cdev *cdev;
+	int node_id;
+	int ret;
+
+	if (minor >= DANIPC_MAX_CDEV)
+		return -ENODEV;
+
+	cdev = &danipc_driver.cdev[minor];
+
+	dev_dbg(cdev->dev, "%s\n", __func__);
+
+	if (!vma->vm_pgoff)
+		node_id = cdev->fifo->node_id;
+	else
+		node_id = vma_get_node(vma);
+
+	if (node_id < 0) {
+		dev_dbg(cdev->dev, "%s: invalid offset 0x%lx\n",
+			__func__, vma->vm_pgoff);
+		return -EINVAL;
+	}
+
+	if (node_id == cdev->fifo->node_id)
+		ret = danipc_rx_mmap(cdev, vma);
+	else
+		ret = danipc_tx_mmap(cdev, vma);
 
 	return ret;
 }
@@ -897,7 +1722,10 @@ static int danipc_cdev_open(struct inode *inode, struct file *file)
 	struct danipc_cdev *cdev;
 	struct danipc_fifo *fifo;
 	struct device *dev;
+	struct ipc_to_virt_map *map;
+	int i;
 	int ret = 0;
+	uint32_t off_netdev, off_cdev, sz_netdev, sz_cdev;
 
 	if (minor >= DANIPC_MAX_CDEV)
 		return -ENODEV;
@@ -905,33 +1733,103 @@ static int danipc_cdev_open(struct inode *inode, struct file *file)
 	cdev = &danipc_driver.cdev[minor];
 	fifo = cdev->fifo;
 	dev = cdev->dev;
+	map = &ipc_to_virt_map[fifo->node_id][ipc_trns_prio_1];
 
 	dev_dbg(cdev->dev, "%s\n", __func__);
 
-	ret = acquire_local_fifo(fifo, cdev);
+	ret = acquire_local_fifo(fifo, cdev, DANIPC_FIFO_OWNER_TYPE_CDEV);
 	if (ret) {
 		dev_warn(cdev->dev, "%s: fifo(%s) is busy\n",
 			 __func__, fifo->probe_info->res_name);
 		goto out;
 	}
 
-	init_waitqueue_head(&cdev->rq);
+	cdev->rx_region = shm_region_create(map->paddr,
+					    map->vaddr,
+					    map->size,
+					    IPC_BUF_SIZE_MAX,
+					    0,
+					    map->size/IPC_BUF_SIZE_MAX);
+	if (cdev->rx_region == NULL) {
+		ret = -ENOBUFS;
+		goto err;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(cdev->rx_queue); i++) {
+		shm_bufpool_init(&cdev->rx_queue[i].freeq);
+		shm_bufpool_init(&cdev->rx_queue[i].recvq);
+		shm_bufpool_init(&cdev->rx_queue[i].bq);
+		shm_bufpool_init(&cdev->rx_queue[i].mmapq);
+	}
+
+	/* The netdev interface use 128 buffer for each priority fifo.
+	 * The cdev interface will use these buffers. The remaining
+	 * share memory space will be equally divided among the
+	 * cdev interface for high priority fifo
+	 */
+	off_netdev = IPC_BUF_SIZE * fifo->idx;
+	off_cdev = IPC_BUF_SIZE * DANIPC_MAX_IF;
+	sz_cdev = (map->size - off_cdev)/DANIPC_MAX_CDEV;
+	off_cdev += sz_cdev * minor;
+	sz_netdev = IPC_BUF_SIZE/ARRAY_SIZE(cdev->rx_queue);
+
+	for (i = 0; i < ARRAY_SIZE(cdev->rx_queue); i++) {
+		ret = shm_bufpool_acquire_region(&cdev->rx_queue[i].freeq,
+						 cdev->rx_region,
+						 off_netdev,
+						 sz_netdev);
+		if (ret)
+			goto err_release_region;
+		off_netdev += sz_netdev;
+
+		if (i != ipc_trns_prio_1)
+			continue;
+
+		ret = shm_bufpool_acquire_region(&cdev->rx_queue[i].freeq,
+						 cdev->rx_region,
+						 off_cdev,
+						 sz_cdev);
+		if (ret)
+			goto err_release_region;
+		off_cdev += sz_cdev;
+	}
+
+	danipc_cdev_rx_buf_init(cdev);
+
+	init_waitqueue_head(&cdev->rx_wq);
+
+	danipc_cdev_init_rx_work(cdev);
+
+	shm_bufpool_init(&cdev->tx_queue.mmapq);
+	shm_bufpool_init(&cdev->tx_queue.mmap_bufcacheq);
 
 	ret = request_irq(fifo->irq, danipc_cdev_interrupt, 0,
 			  dev->kobj.name, cdev);
 	if (ret) {
 		dev_err(cdev->dev, "%s: request irq(%d) failed, fifo(%s)\n",
 			__func__, fifo->irq, fifo->probe_info->res_name);
-		release_local_fifo(fifo, cdev);
-		goto out;
+		goto err_release_ul_buf;
 	}
 
 	danipc_init_irq(fifo);
 
 	file->private_data = cdev;
 
+	atomic_set(&cdev->rx_vma_ref, 0);
+	atomic_set(&cdev->tx_vma_ref, 0);
 out:
 	return ret;
+
+err_release_ul_buf:
+	danipc_cdev_rx_buf_release(cdev);
+	for (i = 0; i < ARRAY_SIZE(cdev->rx_queue); i++)
+		shm_bufpool_release(&cdev->rx_queue[i].freeq);
+err_release_region:
+	shm_region_release(cdev->rx_region);
+err:
+	release_local_fifo(fifo, cdev);
+	return ret;
+
 }
 
 static int danipc_cdev_release(struct inode *inode, struct file *file)
@@ -940,6 +1838,7 @@ static int danipc_cdev_release(struct inode *inode, struct file *file)
 	struct danipc_cdev *cdev;
 	struct danipc_fifo *fifo;
 	int ret = 0;
+	int i;
 
 	if (minor >= DANIPC_MAX_CDEV)
 		return -ENODEV;
@@ -951,6 +1850,17 @@ static int danipc_cdev_release(struct inode *inode, struct file *file)
 
 	danipc_disable_irq(fifo);
 	free_irq(fifo->irq, cdev);
+	danipc_cdev_stop_rx_work(cdev);
+
+	for (i = 0; i < ARRAY_SIZE(cdev->rx_queue); i++) {
+		shm_bufpool_release(&cdev->rx_queue[i].freeq);
+		shm_bufpool_release(&cdev->rx_queue[i].recvq);
+	}
+	shm_region_release(cdev->rx_region);
+	shm_region_release(cdev->tx_region);
+	cdev->rx_region = NULL;
+	cdev->tx_region = NULL;
+
 	release_local_fifo(cdev->fifo, cdev);
 	file->private_data = NULL;
 	return ret;
@@ -961,6 +1871,7 @@ static const struct file_operations danipc_cdevs_fops = {
 	.write		= danipc_cdev_write,
 	.poll		= danipc_cdev_poll,
 	.unlocked_ioctl = danipc_cdev_ioctl,
+	.mmap		= danipc_cdev_mmap,
 	.open		= danipc_cdev_open,
 	.release	= danipc_cdev_release,
 };
@@ -983,7 +1894,7 @@ static int cdev_create(struct danipc_cdev *cdev,
 	cdev->drvr = &danipc_driver;
 	cdev->fifo = fifo;
 	cdev->minor = minor;
-	spin_lock_init(&cdev->lock);
+	spin_lock_init(&cdev->rx_lock);
 
 	return 0;
 }
@@ -1019,7 +1930,7 @@ static int danipc_cdev_init(void)
 		return PTR_ERR(danipc_class);
 	}
 
-	for (minor = 0; minor < DANIPC_MAX_LFIFO && !ret; minor++, cdev++)
+	for (minor = 0; minor < DANIPC_MAX_CDEV && !ret; minor++, cdev++)
 		ret = cdev_create(cdev, &pdrv->lfifo[minor], minor);
 
 	return ret;
@@ -1051,15 +1962,118 @@ static void danipc_cdev_show_status(struct seq_file *s)
 	seq_printf(s, "%-25s: %u\n", "rx_invalid_aid_msg", stats->rx_inval_msg);
 	seq_printf(s, "%-25s: %u\n", "rx_chained_msg", stats->rx_chained_msg);
 
+	seq_printf(s, "%-25s: %u\n", "mmap_rx", stats->mmap_rx);
+	seq_printf(s, "%-25s: %u\n", "mmap_rx_done", stats->mmap_rx_done);
+	seq_printf(s, "%-25s: %u\n", "mmap_rx_error", stats->mmap_rx_error);
+
 	seq_printf(s, "%-25s: %u\n", "tx", stats->tx);
 	seq_printf(s, "%-25s: %u\n", "tx_bytes", stats->tx_bytes);
 	seq_printf(s, "%-25s: %u\n", "tx_drop", stats->tx_drop);
 	seq_printf(s, "%-25s: %u\n", "tx_error", stats->tx_error);
 	seq_printf(s, "%-25s: %u\n", "tx_no_buf", stats->tx_no_buf);
+
+	seq_printf(s, "%-25s: %u\n", "mmap_tx", stats->mmap_tx);
+	seq_printf(s, "%-25s: %u\n", "mmap_tx_reqbuf", stats->mmap_tx_reqbuf);
+	seq_printf(s, "%-25s: %u\n", "mmap_tx_reqbuf_error",
+		   stats->mmap_tx_reqbuf_error);
+	seq_printf(s, "%-25s: %u\n", "mmap_tx_nobuf", stats->mmap_tx_nobuf);
+	seq_printf(s, "%-25s: %u\n", "mmap_tx_error", stats->mmap_tx_error);
+
+	seq_printf(s, "%-25s: %u\n", "mmap_tx_bad_buf", stats->mmap_tx_bad_buf);
+}
+
+static void danipc_cdev_show_queue_info(struct seq_file *s)
+{
+	struct dbgfs_hdlr *hdlr = (struct dbgfs_hdlr *)s->private;
+	struct danipc_cdev *cdev = (struct danipc_cdev *)hdlr->data;
+	int i;
+
+	seq_puts(s, "\nReceiving:\n");
+	for (i = 0; i < max_ipc_prio; i++) {
+		seq_printf(s, "%s\n",
+			   (i == ipc_trns_prio_1) ? "high_prio" : "low_prio");
+		seq_printf(s, "%-25s: %u\n",
+			   "recv_queue", cdev->rx_queue[i].recvq.count);
+		seq_printf(s, "%-25s: %u\n",
+			   "recv_queue_hi", cdev->rx_queue[i].status.recvq_hi);
+		seq_printf(s, "%-25s: %u\n",
+			   "fifo_b_queue", cdev->rx_queue[i].bq.count);
+		seq_printf(s, "%-25s: %u\n",
+			   "fifo_b_queue_lo", cdev->rx_queue[i].status.bq_lo);
+		seq_printf(s, "%-25s: %u\n",
+			   "free_queue", cdev->rx_queue[i].freeq.count);
+		seq_printf(s, "%-25s: %u\n",
+			   "free_queue_lo", cdev->rx_queue[i].status.freeq_lo);
+		seq_printf(s, "%-25s: %u\n",
+			   "mmap_queue", cdev->rx_queue[i].mmapq.count);
+	}
+	seq_puts(s, "\nSending:\n");
+	seq_printf(s, "%-25s: %u\n",
+		   "mmap_queue", cdev->tx_queue.mmapq.count);
+	seq_printf(s, "%-25s: %u\n",
+		   "mmap_bufcache_queue", cdev->tx_queue.mmap_bufcacheq.count);
+}
+
+static ssize_t danipc_cdev_reset_queue_info(struct file *filep,
+					    const char __user *ubuf,
+					    size_t cnt,
+					    loff_t *ppos)
+{
+	struct seq_file *m = filep->private_data;
+	struct dbgfs_hdlr *hdlr = (struct dbgfs_hdlr *)m->private;
+	struct danipc_cdev *cdev = (struct danipc_cdev *)hdlr->data;
+	unsigned long flags;
+
+	spin_lock_irqsave(&cdev->rx_lock, flags);
+	reset_rx_queue_status(&cdev->rx_queue[ipc_trns_prio_1]);
+	reset_rx_queue_status(&cdev->rx_queue[ipc_trns_prio_0]);
+	spin_unlock_irqrestore(&cdev->rx_lock, flags);
+
+	return cnt;
+}
+
+static void danipc_cdev_show_vma(struct seq_file *s,
+				 struct vm_area_struct *vma)
+{
+	seq_printf(s, "%-25s: %lx\n", "vma_start", vma->vm_start);
+	seq_printf(s, "%-25s: %lx\n", "vma_end", vma->vm_end);
+}
+
+static void danipc_cdev_show_region(struct seq_file *s,
+				    struct shm_region *region)
+{
+	seq_printf(s, "%-25s: %x\n", "phy_start", region->start);
+	seq_printf(s, "%-25s: %x\n", "phy_end", region->end);
+	seq_printf(s, "%-25s: %u\n", "num_buf", region->buf_num);
+	seq_printf(s, "%-25s: %u\n", "buf_sz", region->buf_sz);
+	seq_printf(s, "%-25s: %u\n", "buf_headroom", region->buf_headroom_sz);
+	seq_printf(s, "%-25s: %u\n", "real_buf_sz", region->real_buf_sz);
+	seq_printf(s, "%-25s: %s\n", "direct_buf_mapping",
+		   (region->dir_buf_map) ? "true" : "false");
+}
+
+static void danipc_cdev_show_mmap_mapping(struct seq_file *s)
+{
+	struct dbgfs_hdlr *hdlr = (struct dbgfs_hdlr *)s->private;
+	struct danipc_cdev *cdev = (struct danipc_cdev *)hdlr->data;
+
+	if (cdev->rx_vma) {
+		seq_puts(s, "\nRX_MMAP:\n");
+		danipc_cdev_show_vma(s, cdev->rx_vma);
+		danipc_cdev_show_region(s, cdev->rx_region);
+	}
+	if (cdev->tx_vma) {
+		seq_puts(s, "\nTX_MMAP:\n");
+		danipc_cdev_show_vma(s, cdev->tx_vma);
+		danipc_cdev_show_region(s, cdev->tx_region);
+	}
 }
 
 static struct danipc_dbgfs cdev_dbgfs[] = {
 	DBGFS_NODE("status", 0444, danipc_cdev_show_status, NULL),
+	DBGFS_NODE("queue", 0666, danipc_cdev_show_queue_info,
+		   danipc_cdev_reset_queue_info),
+	DBGFS_NODE("mmap-mapping", 0444, danipc_cdev_show_mmap_mapping, NULL),
 	DBGFS_NODE_LAST
 };
 

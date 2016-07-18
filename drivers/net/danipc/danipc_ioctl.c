@@ -226,8 +226,10 @@ long danipc_cdev_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	struct danipc_reg danipc_reg;
 	struct danipc_name danipc_name;
 	struct danipc_cdev_mmsg mmsg;
+	struct danipc_bufs danipc_bufs;
 	int i;
 	int rc = -EINVAL;
+	unsigned num;
 
 	switch (cmd) {
 	case DANIPC_IOCS_REGISTER:
@@ -302,7 +304,6 @@ long danipc_cdev_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			rc = -EINVAL;
 			break;
 		}
-
 		for (i = 0; i < mmsg.msgs.num_entry; i++) {
 			rc = danipc_cdev_tx(cdev,
 					    &mmsg.hdr,
@@ -313,6 +314,135 @@ long danipc_cdev_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		}
 		if (!rc)
 			rc = i;
+		break;
+	case DANIPC_IOCS_MMSGRECV:
+		if (copy_from_user(&mmsg, argp, sizeof(mmsg))) {
+			rc = -EFAULT;
+			break;
+		}
+		rc = danipc_cdev_mmsg_rx(cdev, &mmsg);
+		if (rc < 0)
+			break;
+		if (copy_to_user(argp, &mmsg, sizeof(mmsg))) {
+			rc = -EFAULT;
+			break;
+		}
+		break;
+	case DANIPC_IOCG_RECV:
+		if (get_user(danipc_bufs.num_entry,
+			     &((struct danipc_bufs *)argp)->num_entry)) {
+			rc = -EFAULT;
+			break;
+		}
+		if (danipc_bufs.num_entry > DANIPC_BUFS_MAX_NUM_BUF) {
+			dev_dbg(cdev->dev,
+				"%s: DANIPC_IOCG_RECV invalid num_buf %u\n",
+				__func__, danipc_bufs.num_entry);
+			rc = -EINVAL;
+			break;
+		}
+
+		rc = danipc_cdev_mapped_recv(cdev, cdev->rx_vma, &danipc_bufs);
+		if (rc < 0)
+			break;
+
+		if (copy_to_user(argp, &danipc_bufs, sizeof(danipc_bufs))) {
+			rc = -EFAULT;
+			break;
+		}
+		break;
+	case DANIPC_IOCS_RECVACK:
+		if (copy_from_user(&danipc_bufs, argp, sizeof(danipc_bufs))) {
+			rc = -EFAULT;
+			break;
+		}
+		rc = danipc_cdev_mapped_recv_done(cdev,
+						  cdev->rx_vma,
+						  &danipc_bufs);
+		break;
+	case DANIPC_IOCS_RECVACK_RECV:
+		if (copy_from_user(&danipc_bufs, argp, sizeof(danipc_bufs))) {
+			rc = -EFAULT;
+			break;
+		}
+		num = danipc_bufs.num_entry;
+
+		rc = danipc_cdev_mapped_recv_done(cdev,
+						  cdev->rx_vma,
+						  &danipc_bufs);
+		if (rc)
+			break;
+
+		danipc_bufs.num_entry = num;
+
+		rc = danipc_cdev_mapped_recv(cdev, cdev->rx_vma, &danipc_bufs);
+
+		if (rc < 0)
+			break;
+
+		if (copy_to_user(argp, &danipc_bufs, sizeof(danipc_bufs))) {
+			rc = -EFAULT;
+			break;
+		}
+		break;
+	case DANIPC_IOCS_SEND:
+		if (copy_from_user(&danipc_bufs, argp, sizeof(danipc_bufs))) {
+			rc = -EFAULT;
+			break;
+		}
+
+		rc = danipc_cdev_mapped_tx(cdev, &danipc_bufs);
+		break;
+	case DANIPC_IOCG_GET_SENDBUF:
+		if (get_user(danipc_bufs.num_entry,
+			     &((struct danipc_bufs *)argp)->num_entry)) {
+			rc = -EFAULT;
+			break;
+		}
+		if (danipc_bufs.num_entry > DANIPC_BUFS_MAX_NUM_BUF) {
+			dev_dbg(cdev->dev,
+				"%s: IOCG_GET_SENDBUF invalid num_buf %u\n",
+				__func__, danipc_bufs.num_entry);
+			rc = -EINVAL;
+			break;
+		}
+		rc = danipc_cdev_mapped_tx_get_buf(cdev, &danipc_bufs);
+		if (rc)
+			break;
+
+		if (copy_to_user(argp, &danipc_bufs, sizeof(danipc_bufs))) {
+			rc = -EFAULT;
+			break;
+		}
+		break;
+	case DANIPC_IOCG_SEND_GET_SENDBUF:
+		if (copy_from_user(&danipc_bufs, argp, sizeof(danipc_bufs))) {
+			rc = -EFAULT;
+			break;
+		}
+
+		num = danipc_bufs.num_entry;
+		rc = danipc_cdev_mapped_tx(cdev, &danipc_bufs);
+		if (rc < 0)
+			break;
+
+		danipc_bufs.num_entry = num;
+		rc = danipc_cdev_mapped_tx_get_buf(cdev, &danipc_bufs);
+		if (rc)
+			break;
+
+		if (copy_to_user(argp, &danipc_bufs, sizeof(danipc_bufs))) {
+			rc = -EFAULT;
+			break;
+		}
+		break;
+	case DANIPC_IOCS_RET_SENDBUF:
+		if (copy_from_user(&danipc_bufs, argp, sizeof(danipc_bufs))) {
+			rc = -EFAULT;
+			break;
+		}
+
+		rc = danipc_cdev_mapped_tx_put_buf(cdev, &danipc_bufs);
 		break;
 	}
 	return rc;

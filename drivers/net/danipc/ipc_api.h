@@ -23,6 +23,8 @@
 #ifndef _IPC_API_H_
 #define _IPC_API_H_
 
+#include <linux/list.h>
+
 /*****************************************************************************
  *                      MACROS
  *****************************************************************************
@@ -257,7 +259,114 @@ char *ipc_msg_alloc
  */
 int32_t ipc_msg_send(char *buf_first, enum ipc_trns_prio pri);
 
+extern uint8_t ipc_req_sn;
 
 extern const struct ipc_trns_func ipc_fifo_utils;
+
+/* Buffer Management */
+struct shm_region {
+	phys_addr_t	start;
+	phys_addr_t	end;
+	void		*vaddr;
+	uint32_t	buf_headroom_sz;
+	uint32_t	buf_sz;
+	uint32_t	buf_num;
+	uint32_t	real_buf_sz;
+	bool		dir_buf_map;
+};
+
+struct shm_bufpool {
+	struct list_head	head;
+	uint32_t		count;
+};
+
+struct shm_buf {
+	struct list_head	list;
+	struct shm_region	*region;
+	struct list_head	*head;
+	uint32_t		offset;
+};
+
+struct shm_buf *shm_region_find_buf_by_pa(
+	struct shm_region *region,
+	phys_addr_t phy_addr);
+
+struct shm_buf *shm_find_buf_by_pa(phys_addr_t phy_addr);
+
+struct shm_region *shm_region_create(
+	phys_addr_t	start,
+	void		*vaddr,
+	resource_size_t	size,
+	uint32_t	buf_sz,
+	uint32_t	buf_headroom,
+	uint32_t	buf_num);
+
+void shm_region_release(struct shm_region *region);
+
+void shm_region_release_all(void);
+
+static inline void shm_bufpool_init(struct shm_bufpool *pool)
+{
+	if (pool) {
+		INIT_LIST_HEAD(&pool->head);
+		pool->count = 0;
+	}
+}
+
+void shm_bufpool_release(struct shm_bufpool *pool);
+
+int shm_bufpool_acquire_region(
+	struct shm_bufpool *pool,
+	struct shm_region *region,
+	uint32_t offset,
+	uint32_t size);
+
+int shm_bufpool_acquire_whole_region(
+	struct shm_bufpool *pool,
+	struct shm_region *region);
+
+struct shm_buf *shm_bufpool_get_buf(struct shm_bufpool *pool);
+
+int shm_bufpool_del_buf(struct shm_bufpool *pool, struct shm_buf *buf);
+
+void shm_bufpool_put_buf(struct shm_bufpool *pool, struct shm_buf *buf);
+
+struct shm_buf *shm_bufpool_find_buf_in_region(struct shm_bufpool *pool,
+					       struct shm_region *region,
+					       phys_addr_t phy_addr);
+
+struct shm_buf *shm_bufpool_find_buf_overlap(struct shm_bufpool *pool,
+					     struct shm_region *region,
+					     phys_addr_t phy_addr);
+
+static inline phys_addr_t buf_paddr(struct shm_buf *buf)
+{
+	return (buf->region->start + buf->offset);
+}
+
+static inline void *buf_vaddr(struct shm_buf *buf)
+{
+	return (void *)(buf->region->vaddr + buf->offset);
+}
+
+static inline bool address_in_range(
+	phys_addr_t addr,
+	phys_addr_t start,
+	phys_addr_t end)
+{
+	return (((addr >= start) && (addr < end)) ? true : false);
+}
+
+static inline bool address_space_overlap(
+	phys_addr_t start_l,
+	resource_size_t size_l,
+	phys_addr_t start_r,
+	resource_size_t size_r)
+{
+	phys_addr_t end_l = start_l + size_l;
+	phys_addr_t end_r = start_r + size_r;
+
+	return ((end_r <= start_l || start_r >= end_l) ? false : true);
+}
 
 #endif /*_IPC_API_H_*/

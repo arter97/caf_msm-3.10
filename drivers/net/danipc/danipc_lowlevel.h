@@ -29,6 +29,57 @@
 #define PLATFORM_MAX_NUM_OF_NODES 16
 #define IPC_BUF_SIZE		  ((2 * IPC_BUF_COUNT_MAX) * IPC_BUF_SIZE_MAX)
 
+#define IPC_FIFO_EMPTY	1
+#define IPC_FIFO_FULL	0x10
+
+#define TCSR_IPC_IF_FIFO_RD_ACCESS_2_OFFSET		0x18
+#define TCSR_IPC_IF_FIFO_RD_ACCESS_0_OFFSET		0x8
+
+#define TCSR_IPC_IF_FIFO_0_STATS_OFFSET		0x24
+#define TCSR_IPC_IF_FIFO_1_STATS_OFFSET		0x28
+#define TCSR_IPC_IF_FIFO_2_STATS_OFFSET		0x2C
+#define TCSR_IPC_IF_FIFO_3_STATS_OFFSET		0x30
+
+#define TCSR_IPC_FIFO_RD_IN_LOW_ADDR(cpuid)				\
+	(ipc_regs[cpuid] + TCSR_IPC_IF_FIFO_RD_ACCESS_2_OFFSET)
+#define TCSR_IPC_FIFO_RD_IN_HIGH_ADDR(cpuid)				\
+	(ipc_regs[cpuid] + TCSR_IPC_IF_FIFO_RD_ACCESS_0_OFFSET)
+
+#define TCSR_IPC_FIFO_STATUS_LOW_ADDR(cpuid)				\
+	(ipc_regs[cpuid] + TCSR_IPC_IF_FIFO_2_STATS_OFFSET)
+#define TCSR_IPC_FIFO_STATUS_HIGH_ADDR(cpuid)				\
+	(ipc_regs[cpuid] + TCSR_IPC_IF_FIFO_0_STATS_OFFSET)
+
+#define IPC_FIFO_ACCESS(cpuid, odd, even)		({		\
+	const typeof(cpuid) __cpuid = cpuid;				\
+	ipc_regs[__cpuid] + ((__cpuid & 1) ? (odd) : (even)); })
+
+#define IPC_REMOTE_FIFO_STATUS_HIGH_ADDR(cpuid)				\
+	IPC_FIFO_ACCESS(cpuid, TCSR_IPC_IF_FIFO_1_STATS_OFFSET,		\
+		TCSR_IPC_IF_FIFO_1_STATS_OFFSET)
+
+#define IPC_REMOTE_FIFO_STATUS_LOW_ADDR(cpuid)				\
+	IPC_FIFO_ACCESS(cpuid, TCSR_IPC_IF_FIFO_3_STATS_OFFSET,		\
+		TCSR_IPC_IF_FIFO_3_STATS_OFFSET)
+
+#define IPC_FIFO_RD_OUT_HIGH_ADDR(cpuid)				\
+	IPC_FIFO_ACCESS(cpuid, DAN_IPC_IF_FIFO_RD_5, DAN_IPC_IF_FIFO_RD_1)
+
+#define IPC_FIFO_RD_OUT_LOW_ADDR(cpuid)				\
+	IPC_FIFO_ACCESS(cpuid, DAN_IPC_IF_FIFO_RD_7, DAN_IPC_IF_FIFO_RD_3)
+
+#define IPC_FIFO_WR_IN_HIGH_ADDR(cpuid)				\
+	IPC_FIFO_ACCESS(cpuid, DAN_IPC_IF_FIFO_WR_4, DAN_IPC_IF_FIFO_WR_0)
+
+#define IPC_FIFO_WR_OUT_HIGH_ADDR(cpuid)			\
+	IPC_FIFO_ACCESS(cpuid, DAN_IPC_IF_FIFO_WR_5, DAN_IPC_IF_FIFO_WR_1)
+
+#define IPC_FIFO_WR_IN_LOW_ADDR(cpuid)				\
+	IPC_FIFO_ACCESS(cpuid, DAN_IPC_IF_FIFO_WR_6, DAN_IPC_IF_FIFO_WR_2)
+
+#define IPC_FIFO_WR_OUT_LOW_ADDR(cpuid)				\
+	IPC_FIFO_ACCESS(cpuid, DAN_IPC_IF_FIFO_WR_7, DAN_IPC_IF_FIFO_WR_3)
+
 extern void __iomem			*apps_ipc_mux;
 extern uint8_t __iomem			*ipc_buffers;
 extern uint32_t			ipc_regs_phys[];
@@ -45,6 +96,9 @@ struct ipc_to_virt_map {
 
 	/* Virtual address of the FIFO data buffer. */
 	void __iomem		*vaddr;
+
+	/* Size of the address space */
+	uint32_t		size;
 
 	/* How many skbs destined for this core are on delayed_skb list */
 	atomic_t		pending_skbs;
@@ -83,7 +137,6 @@ int32_t ipc_trns_fifo2eth_buf_send(char *ptr, uint8_t dest_id,
 char *ipc_trns_fifo_buf_read(enum ipc_trns_prio pri, uint8_t cpuid);
 
 void ipc_agent_table_clean(uint8_t local_cpuid);
-uint8_t ipc_get_own_node(void);
 struct ipc_trns_func const *get_trns_funcs(uint8_t cpuid);
 
 extern struct ipc_to_virt_map	ipc_to_virt_map[PLATFORM_MAX_NUM_OF_NODES][2];
@@ -104,5 +157,25 @@ uint32_t danipc_read_fifo_irq_status(uint8_t fifo);
 uint32_t danipc_read_fifo_irq_status_raw(uint8_t fifo);
 
 bool danipc_m_fifo_is_empty(uint8_t cpuid, enum ipc_trns_prio pri);
+bool danipc_b_fifo_is_full(uint8_t cpuid, enum ipc_trns_prio pri);
+
+void danipc_b_fifo_push(phys_addr_t paddr,
+			int cpuid,
+			enum ipc_trns_prio prio);
+
+void danipc_m_fifo_push(phys_addr_t paddr,
+			int cpuid,
+			enum ipc_trns_prio prio);
+
+phys_addr_t danipc_b_fifo_pop(int cpuid, enum ipc_trns_prio prio);
+
+void danipc_fifo_drain(int cpuid, enum ipc_trns_prio prio);
+
+static inline bool valid_cpu_id(int cpuid)
+{
+	if (cpuid < 0 || cpuid >= PLATFORM_MAX_NUM_OF_NODES)
+		return false;
+	return true;
+}
 
 #endif /* __DANIPC_LOWLEVEL_H__ */

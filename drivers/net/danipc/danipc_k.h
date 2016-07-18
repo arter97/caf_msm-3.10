@@ -147,7 +147,9 @@ struct danipc_probe_info {
 #define DANIPC_MAX_LFIFO	2
 #define DANIPC_FIFO_F_INIT	1
 #define DANIPC_FIFO_F_INUSE	2
-#define DANIPC_FIFO_F_IRQ_EN	4
+
+#define DANIPC_FIFO_OWNER_TYPE_NETDEV	0
+#define DANIPC_FIFO_OWNER_TYPE_CDEV	1
 
 struct danipc_fifo {
 	struct mutex			lock;	/* lock for fifo */
@@ -157,6 +159,7 @@ struct danipc_fifo {
 	uint32_t			irq;
 	uint8_t				node_id;
 	uint8_t				idx;
+	uint8_t				owner_type;
 	uint32_t			flag;
 };
 
@@ -222,7 +225,26 @@ struct packet_proc {
 /* Character device interface */
 #define DANIPC_MAJOR		100
 #define DANIPC_CDEV_NAME	"danipc"
-#define DANIPC_MAX_CDEV		DANIPC_MAX_IF
+#define DANIPC_MAX_CDEV		1
+
+struct rx_queue_status {
+	uint32_t	recvq_hi;
+	uint32_t	freeq_lo;
+	uint32_t	bq_lo;
+};
+
+struct rx_queue {
+	struct shm_bufpool	recvq;
+	struct shm_bufpool	freeq;
+	struct shm_bufpool	bq;
+	struct shm_bufpool	mmapq;
+	struct rx_queue_status	status;
+};
+
+struct tx_queue {
+	struct shm_bufpool	mmapq;
+	struct shm_bufpool	mmap_bufcacheq;
+};
 
 struct danipc_cdev_status {
 	uint32_t	rx;
@@ -234,11 +256,22 @@ struct danipc_cdev_status {
 	uint32_t	rx_inval_msg;
 	uint32_t	rx_chained_msg;
 
+	uint32_t	mmap_rx;
+	uint32_t	mmap_rx_done;
+	uint32_t	mmap_rx_error;
+
 	uint32_t	tx;
 	uint32_t	tx_bytes;
 	uint32_t	tx_drop;
 	uint32_t	tx_error;
 	uint32_t	tx_no_buf;
+
+	uint32_t	mmap_tx;
+	uint32_t	mmap_tx_reqbuf;
+	uint32_t	mmap_tx_reqbuf_error;
+	uint32_t	mmap_tx_nobuf;
+	uint32_t	mmap_tx_error;
+	uint32_t	mmap_tx_bad_buf;
 };
 
 struct danipc_cdev {
@@ -246,14 +279,24 @@ struct danipc_cdev {
 	struct device		*dev;
 	struct danipc_fifo	*fifo;
 
+	struct shm_region	*rx_region;
+	struct vm_area_struct	*rx_vma;
+	atomic_t		rx_vma_ref;
+	struct rx_queue		rx_queue[max_ipc_prio];
+	struct tasklet_struct	rx_work;
+	spinlock_t		rx_lock;	/* sync access to HW FIFO */
+	wait_queue_head_t	rx_wq;
+
+	struct shm_region	*tx_region;
+	struct vm_area_struct	*tx_vma;
+	atomic_t		tx_vma_ref;
+	struct tx_queue		tx_queue;
+
 	int			minor;
 
 	/* Debug fs node */
 	struct dentry		*dirent;
 	struct danipc_dbgfs	*dbgfs;
-
-	spinlock_t		lock;	/* sync access to HW FIFO */
-	wait_queue_head_t	rq;
 
 	struct danipc_cdev_status	status;
 };
@@ -371,6 +414,32 @@ int danipc_cdev_tx(struct danipc_cdev *cdev,
 		   struct danipc_cdev_msghdr *hdr,
 		   const char __user *buf,
 		   size_t count);
+
+int danipc_cdev_mmsg_rx(struct danipc_cdev *cdev,
+			struct danipc_cdev_mmsg *mmsg);
+
+void danipc_cdev_refill_rx_b_fifo(struct danipc_cdev *cdev,
+				  enum ipc_trns_prio pri);
+
+void danipc_cdev_init_rx_work(struct danipc_cdev *cdev);
+void danipc_cdev_stop_rx_work(struct danipc_cdev *cdev);
+
+int danipc_cdev_mapped_recv(struct danipc_cdev *cdev,
+			    struct vm_area_struct *vma,
+			    struct danipc_bufs *bufs);
+
+int danipc_cdev_mapped_recv_done(struct danipc_cdev *cdev,
+				 struct vm_area_struct *vma,
+				 struct danipc_bufs *bufs);
+
+int danipc_cdev_mapped_tx(struct danipc_cdev *cdev,
+			  struct danipc_bufs *bufs);
+
+int danipc_cdev_mapped_tx_get_buf(struct danipc_cdev *cdev,
+				  struct danipc_bufs *bufs);
+
+int danipc_cdev_mapped_tx_put_buf(struct danipc_cdev *cdev,
+				  struct danipc_bufs *bufs);
 
 static inline bool local_fifo_owner(struct danipc_fifo *fifo, void *owner)
 {

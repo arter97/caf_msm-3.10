@@ -57,6 +57,7 @@
 /* Pop counter set FIFO'd*/
 #define FIFO_POP_SET_ALL_FIFOS 0x15
 
+#define FIFO_SHIFT(n)		((n) * 8)
 /* Almost Full(AF) interrupt indication bit */
 #define IPC_INTR_FIFO_AF	5
 #define IPC_INTR(intr)		(1 << (intr))
@@ -168,7 +169,6 @@ static void free_ipc_buffers(void)
 
 int init_own_ipc_to_virt_map(struct danipc_fifo *fifo)
 {
-	uint8_t	idx = fifo->idx;
 	int	rc = 0;
 	struct danipc_drvr *drvr = &danipc_driver;
 	struct ipc_to_virt_map *high_map =
@@ -176,16 +176,16 @@ int init_own_ipc_to_virt_map(struct danipc_fifo *fifo)
 	struct ipc_to_virt_map *low_map =
 		&ipc_to_virt_map[fifo->node_id][ipc_trns_prio_0];
 	uint8_t __iomem *buf = (ipc_buffers == NULL) ?
-		map_ipc_buffers(drvr) : &ipc_buffers[idx * IPC_BUF_SIZE];
+		map_ipc_buffers(drvr) : ipc_buffers;
 
 	if (buf) {
 		/* This prevents remapping by remap_fifo_mem() */
 		high_map->vaddr = buf;
 		high_map->paddr = drvr->res_start[IPC_BUFS_RES];
-
-		high_map->paddr += (idx * IPC_BUF_SIZE);
-		low_map->vaddr	= &buf[IPC_BUF_SIZE / 2];
-		low_map->paddr	= high_map->paddr + (IPC_BUF_SIZE / 2);
+		high_map->size = drvr->res_len[IPC_BUFS_RES];
+		low_map->vaddr	= high_map->vaddr;
+		low_map->paddr	= high_map->paddr;
+		low_map->size = high_map->size;
 	} else {
 		rc = -1;
 	}
@@ -235,7 +235,9 @@ static void remap_fifo_mem(const int cpuid, const unsigned prio,
 	if (desc != NULL) {
 		start_addr = desc->phy_addr;
 		map[prio].paddr = desc->phy_addr;
+		map[prio].size  = desc->sz;
 		map[other_prio].paddr = desc->phy_addr;
+		map[other_prio].size  = desc->sz;
 		map[prio].vaddr = ioremap_nocache(start_addr, desc->sz);
 		map[other_prio].vaddr = map[prio].vaddr;
 	} else if (ipc_shared_mem_sizes[cpuid]) {
@@ -243,7 +245,9 @@ static void remap_fifo_mem(const int cpuid, const unsigned prio,
 		map_mask = map_size - 1;
 		start_addr = ((paddr + map_mask) & ~map_mask) - map_size;
 		map[prio].paddr = start_addr;
+		map[prio].size = map_size;
 		map[other_prio].paddr = start_addr;
+		map[other_prio].size = map_size;
 		map[prio].vaddr = ioremap_nocache(start_addr, 2 * map_size);
 		map[other_prio].vaddr = map[prio].vaddr;
 	} else {
@@ -251,6 +255,7 @@ static void remap_fifo_mem(const int cpuid, const unsigned prio,
 		map_mask = FIFO_MAP_MASK;
 		start_addr = ((paddr + map_mask) & ~map_mask) - 2 * map_size;
 		map[prio].paddr = start_addr;
+		map[prio].size = map_size;
 		map[prio].vaddr = ioremap_nocache(start_addr, 2 * map_size);
 	}
 
@@ -305,26 +310,152 @@ void *ipc_to_virt(const int cpuid, const unsigned prio, const uint32_t ipc_addr)
 	return NULL;
 }
 
-irqreturn_t danipc_cdev_interrupt(int irq, void *data)
+static inline bool valid_ipc_msg_hdr(struct danipc_cdev *cdev,
+				     const struct ipc_msg_hdr *hdr)
+{
+	if (hdr->msg_len > IPC_FIRST_BUF_DATA_SIZE_MAX) {
+		dev_dbg(cdev->dev,
+			"%s: receive the message with bad message len(%u)\n",
+			__func__, hdr->msg_len);
+		cdev->status.rx_oversize_msg++;
+		return false;
+	}
+	if (!hdr->msg_len) {
+		cdev->status.rx_zlen_msg++;
+		return false;
+	}
+	if (ipc_get_node(hdr->dest_aid) != cdev->fifo->node_id) {
+		dev_dbg(cdev->dev,
+			"%s: receive the message with bad dest_aid(%u)\n",
+			__func__, hdr->dest_aid);
+		cdev->status.rx_inval_msg++;
+		return false;
+	}
+	/* no buffer chain */
+	if (hdr->next != NULL) {
+		dev_dbg(cdev->dev,
+			"%s: receive the message with next point(%p)\n",
+			__func__, hdr->next);
+		cdev->status.rx_chained_msg++;
+		return false;
+	}
+	return true;
+}
+
+static int danipc_cdev_recv(struct danipc_cdev *cdev, uint8_t hwfifo)
+{
+	struct danipc_fifo *fifo = cdev->fifo;
+	uint32_t reg_addr = ipc_regs[fifo->node_id];
+	enum ipc_trns_prio prio =
+		(hwfifo == 0) ? ipc_trns_prio_1 : ipc_trns_prio_0;
+	struct rx_queue *pq = &cdev->rx_queue[prio];
+	uint32_t msg_paddr;
+	struct shm_buf *buf;
+	struct ipc_msg_hdr *hdr;
+	int n = 0;
+
+	reg_addr += TCSR_IPC_IF_FIFO_RD_ACCESS_0_OFFSET + (8 * hwfifo);
+
+	while (1) {
+		msg_paddr = __raw_readl_no_log((void *)reg_addr);
+		if (!msg_paddr)
+			break;
+		buf = shm_region_find_buf_by_pa(cdev->rx_region, msg_paddr);
+		if (buf == NULL) {
+			cdev->status.rx_error++;
+			dev_warn(cdev->dev,
+				 "%s: can't find buffer, paddr=0x%x\n",
+				 __func__, msg_paddr);
+			continue;
+		}
+
+		if (shm_bufpool_del_buf(&pq->bq, buf)) {
+			cdev->status.rx_error++;
+			dev_err(cdev->dev,
+				"%s: buffer %p not in the buffer queue\n",
+				__func__, buf);
+			continue;
+		}
+		hdr = buf_vaddr(buf);
+
+		/* TODO: invalid cache here */
+
+		if (!valid_ipc_msg_hdr(cdev, hdr)) {
+			cdev->status.rx_drop++;
+			dev_dbg(cdev->dev,
+				"%s: drop message paddr=0x%x, vaddr=%p\n",
+				__func__, msg_paddr, hdr);
+			shm_bufpool_put_buf(&pq->freeq, buf);
+		} else {
+			cdev->status.rx++;
+			cdev->status.rx_bytes += hdr->msg_len;
+			shm_bufpool_put_buf(&pq->recvq, buf);
+			if (pq->recvq.count > pq->status.recvq_hi)
+				pq->status.recvq_hi = pq->recvq.count;
+			n++;
+		}
+	}
+
+	danipc_cdev_refill_rx_b_fifo(cdev, prio);
+	return n;
+}
+
+static void danipc_cdev_rx_poll(unsigned long data)
 {
 	struct danipc_cdev *cdev = (struct danipc_cdev *)data;
 	struct danipc_fifo *fifo = cdev->fifo;
 	const unsigned	base_addr = ipc_regs[fifo->node_id];
 	unsigned long flags;
+	int n = 0;
+	uint32_t intval = IPC_INTR(IPC_INTR_FIFO_AF) |
+		(IPC_INTR(IPC_INTR_FIFO_AF) << FIFO_SHIFT(2));
+
+	spin_lock_irqsave(&cdev->rx_lock, flags);
+
+	n = danipc_cdev_recv(cdev, 0);
+	n += danipc_cdev_recv(cdev, 2);
+
+	spin_unlock_irqrestore(&cdev->rx_lock, flags);
+
+	if (n) {
+		tasklet_schedule(&cdev->rx_work);
+		wake_up(&cdev->rx_wq);
+	} else {
+		__raw_writel_no_log(intval,
+				    (void *)(base_addr + CDU_INT0_CLEAR_F0));
+		__raw_writel_no_log(~intval,
+				    (void *)(base_addr + CDU_INT0_MASK_F0));
+	}
+}
+
+irqreturn_t danipc_cdev_interrupt(int irq, void *data)
+{
+	struct danipc_cdev *cdev = (struct danipc_cdev *)data;
+	struct danipc_fifo *fifo = cdev->fifo;
+	const unsigned	base_addr = ipc_regs[fifo->node_id];
 
 	dev_dbg(cdev->dev, "%s: receive danipc IRQ, base_addr = 0x%x\n",
 		__func__, base_addr);
 
-	spin_lock_irqsave(&cdev->lock, flags);
 	/* Mask all IPC interrupts. */
 	__raw_writel_no_log(~0, (void *)(base_addr + CDU_INT0_MASK_F0));
-	fifo->flag &= ~DANIPC_FIFO_F_IRQ_EN;
-
-	wake_up(&cdev->rq);
-
-	spin_unlock_irqrestore(&cdev->lock, flags);
+	tasklet_schedule(&cdev->rx_work);
 
 	return IRQ_HANDLED;
+}
+
+void danipc_cdev_init_rx_work(struct danipc_cdev *cdev)
+{
+	if (likely(cdev))
+		tasklet_init(&cdev->rx_work,
+			     danipc_cdev_rx_poll,
+			     (unsigned long)cdev);
+}
+
+void danipc_cdev_stop_rx_work(struct danipc_cdev *cdev)
+{
+	if (likely(cdev))
+		tasklet_kill(&cdev->rx_work);
 }
 
 irqreturn_t danipc_interrupt(int irq, void *data)
@@ -350,26 +481,32 @@ irqreturn_t danipc_interrupt(int irq, void *data)
 void danipc_init_irq(struct danipc_fifo *fifo)
 {
 	const unsigned		 base_addr = ipc_regs[fifo->node_id];
+	uint32_t int_val = IPC_INTR(IPC_INTR_FIFO_AF);
+	uint32_t af_val = AF_THRESHOLD;
 
-	if (fifo->idx == 0)
-		__raw_writel_no_log(AF_THRESHOLD,
-				    (void *)(base_addr + FIFO_THR_AF_CFG_F0));
-	else if (fifo->idx == 1)
-		__raw_writel_no_log(AF_PCAP_THRESHOLD,
-				    (void *)(base_addr + FIFO_THR_AF_CFG_F0));
-	else {
+	if (fifo->owner_type == DANIPC_FIFO_OWNER_TYPE_CDEV)
+		int_val |= IPC_INTR(IPC_INTR_FIFO_AF) << FIFO_SHIFT(2);
+
+	if (fifo->idx == 0) {
+		if (fifo->owner_type == DANIPC_FIFO_OWNER_TYPE_CDEV)
+			af_val |= AF_THRESHOLD << FIFO_SHIFT(2);
+	} else if (fifo->idx == 1) {
+		af_val = AF_PCAP_THRESHOLD;
+		if (fifo->owner_type == DANIPC_FIFO_OWNER_TYPE_CDEV)
+			af_val |= AF_PCAP_THRESHOLD << FIFO_SHIFT(2);
+	} else {
 		pr_err("%s: Unknown device passed %p\n", __func__ , fifo);
 		return;
 	}
 
+	__raw_writel_no_log(af_val,
+			    (void *)(base_addr + FIFO_THR_AF_CFG_F0));
+
 	__raw_writel_no_log(FIFO_POP_SET_ALL_FIFOS,
 			    (void *)(base_addr + FIFO_POP_COUNTER_ENABLE));
-	__raw_writel_no_log(IPC_INTR(IPC_INTR_FIFO_AF),
-			    (void *)(base_addr + CDU_INT0_CLEAR_F0));
-	__raw_writel_no_log(IPC_INTR(IPC_INTR_FIFO_AF),
-			    (void *)(base_addr + CDU_INT0_ENABLE_F0));
-	__raw_writel_no_log(~IPC_INTR(IPC_INTR_FIFO_AF),
-			    (void *)(base_addr + CDU_INT0_MASK_F0));
+	__raw_writel_no_log(int_val, (void *)(base_addr + CDU_INT0_CLEAR_F0));
+	__raw_writel_no_log(int_val, (void *)(base_addr + CDU_INT0_ENABLE_F0));
+	__raw_writel_no_log(~int_val, (void *)(base_addr + CDU_INT0_MASK_F0));
 
 	/* Route interrupts from TCSR to APPS (relevant to APPS-FIFO) */
 	/* TBD: makesure apps_ipc_mux is incremented by 4 bytes */
@@ -532,13 +669,15 @@ uint32_t danipc_read_fifo_irq_status(uint8_t fifo)
 void danipc_disable_irq(struct danipc_fifo *fifo)
 {
 	const unsigned	base_addr = ipc_regs[fifo->node_id];
+	uint32_t int_val = IPC_INTR(IPC_INTR_FIFO_AF);
+
+	if (fifo->owner_type == DANIPC_FIFO_OWNER_TYPE_CDEV)
+		int_val |= IPC_INTR(IPC_INTR_FIFO_AF) << FIFO_SHIFT(2);
 
 	/* Clear, disable and mask all interrupts from this CDU */
-	__raw_writel_no_log(IPC_INTR(IPC_INTR_FIFO_AF),
-			    (void *)(base_addr + CDU_INT0_CLEAR_F0));
+	__raw_writel_no_log(int_val, (void *)(base_addr + CDU_INT0_CLEAR_F0));
 	__raw_writel_no_log(0, (void *)(base_addr + CDU_INT0_ENABLE_F0));
-	__raw_writel_no_log(IPC_INTR(IPC_INTR_FIFO_AF),
-			    (void *)(base_addr + CDU_INT0_MASK_F0));
+	__raw_writel_no_log(int_val, (void *)(base_addr + CDU_INT0_MASK_F0));
 
 	/* Route interrupts from TCSR to APPS (relevant to APPS-FIFO) */
 	/* TBD: makesure apps_ipc_mux is incremented by 4 bytes */

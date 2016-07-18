@@ -24,6 +24,7 @@
  */
 
 #include <linux/io.h>
+#include <linux/errno.h>
 
 #include "ipc_reg.h"
 #include "ipc_api.h"
@@ -34,47 +35,6 @@
  * MACRO (define) section
  * -----------------------------------------------------------
  */
-
-#define IPC_FIFO_EMPTY	1
-
-#define TCSR_IPC_IF_FIFO_RD_ACCESS_2_OFFSET		0x18
-#define TCSR_IPC_IF_FIFO_RD_ACCESS_0_OFFSET		0x8
-
-#define TCSR_IPC_IF_FIFO_0_STATS_OFFSET		0x24
-#define TCSR_IPC_IF_FIFO_2_STATS_OFFSET		0x2C
-
-#define TCSR_IPC_FIFO_RD_IN_LOW_ADDR(cpuid)				\
-	(ipc_regs[cpuid] + TCSR_IPC_IF_FIFO_RD_ACCESS_2_OFFSET)
-#define TCSR_IPC_FIFO_RD_IN_HIGH_ADDR(cpuid)				\
-	(ipc_regs[cpuid] + TCSR_IPC_IF_FIFO_RD_ACCESS_0_OFFSET)
-
-#define TCSR_IPC_FIFO_STATUS_LOW_ADDR(cpuid)				\
-	(ipc_regs[cpuid] + TCSR_IPC_IF_FIFO_2_STATS_OFFSET)
-#define TCSR_IPC_FIFO_STATUS_HIGH_ADDR(cpuid)				\
-	(ipc_regs[cpuid] + TCSR_IPC_IF_FIFO_0_STATS_OFFSET)
-
-#define IPC_FIFO_ACCESS(cpuid, odd, even)		({		\
-	const typeof(cpuid) __cpuid = cpuid;				\
-	ipc_regs[__cpuid] + ((__cpuid & 1) ? (odd) : (even)); })
-
-#define IPC_FIFO_RD_OUT_HIGH_ADDR(cpuid)				\
-	IPC_FIFO_ACCESS(cpuid, DAN_IPC_IF_FIFO_RD_5, DAN_IPC_IF_FIFO_RD_1)
-
-#define IPC_FIFO_RD_OUT_LOW_ADDR(cpuid)				\
-	IPC_FIFO_ACCESS(cpuid, DAN_IPC_IF_FIFO_RD_7, DAN_IPC_IF_FIFO_RD_3)
-
-#define IPC_FIFO_WR_IN_HIGH_ADDR(cpuid)				\
-	IPC_FIFO_ACCESS(cpuid, DAN_IPC_IF_FIFO_WR_4, DAN_IPC_IF_FIFO_WR_0)
-
-#define IPC_FIFO_WR_OUT_HIGH_ADDR(cpuid)			\
-	IPC_FIFO_ACCESS(cpuid, DAN_IPC_IF_FIFO_WR_5, DAN_IPC_IF_FIFO_WR_1)
-
-#define IPC_FIFO_WR_IN_LOW_ADDR(cpuid)				\
-	IPC_FIFO_ACCESS(cpuid, DAN_IPC_IF_FIFO_WR_6, DAN_IPC_IF_FIFO_WR_2)
-
-#define IPC_FIFO_WR_OUT_LOW_ADDR(cpuid)				\
-	IPC_FIFO_ACCESS(cpuid, DAN_IPC_IF_FIFO_WR_7, DAN_IPC_IF_FIFO_WR_3)
-
 uint32_t		ipc_regs_phys[PLATFORM_MAX_NUM_OF_NODES];
 unsigned		ipc_regs_len[PLATFORM_MAX_NUM_OF_NODES];
 uint32_t		ipc_shared_mem_sizes[PLATFORM_MAX_NUM_OF_NODES];
@@ -293,6 +253,32 @@ void ipc_trns_fifo_buf_init(uint8_t cpuid, uint8_t ifidx)
 		__raw_writel_no_log(buf_addr, (void *)fifo_addr);
 }
 
+void ipc_trns_fifo_buf_drain(uint8_t cpuid)
+{
+	uint32_t reg;
+	uint32_t val;
+
+	reg = IPC_FIFO_WR_OUT_HIGH_ADDR(cpuid);
+	do {
+		val = __raw_readl_no_log((void *)reg);
+	} while (val);
+
+	reg = TCSR_IPC_FIFO_RD_IN_HIGH_ADDR(cpuid);
+	do {
+		val = __raw_readl_no_log((void *)reg);
+	} while (val);
+
+	reg = IPC_FIFO_WR_OUT_LOW_ADDR(cpuid);
+	do {
+		val = __raw_readl_no_log((void *)reg);
+	} while (val);
+
+	reg = TCSR_IPC_FIFO_RD_IN_LOW_ADDR(cpuid);
+	do {
+		val = __raw_readl_no_log((void *)reg);
+	} while (val);
+}
+
 /* -----------------------------------------------------------
  * Function:	ipc_trns_fifo_buf_read
  * Description:	Get message from node associated FIFO
@@ -326,4 +312,92 @@ bool danipc_m_fifo_is_empty(uint8_t cpuid, enum ipc_trns_prio prio)
 
 	status = __raw_readl_no_log((void *)addr);
 	return (status & IPC_FIFO_EMPTY) ? true : false;
+}
+
+void danipc_m_fifo_push(phys_addr_t paddr,
+			int cpuid,
+			enum ipc_trns_prio prio)
+{
+	uint32_t fifo_addr;
+
+	if (!valid_cpu_id(cpuid))
+		return;
+
+	if (prio == ipc_trns_prio_0)
+		fifo_addr = IPC_FIFO_WR_IN_LOW_ADDR(cpuid);
+	else
+		fifo_addr = IPC_FIFO_WR_IN_HIGH_ADDR(cpuid);
+
+	__raw_writel_no_log(paddr, (void *)fifo_addr);
+}
+
+bool danipc_b_fifo_is_full(uint8_t cpuid, enum ipc_trns_prio prio)
+{
+	uint32_t addr;
+	uint32_t status;
+
+	if (prio == ipc_trns_prio_0)
+		addr = IPC_REMOTE_FIFO_STATUS_LOW_ADDR(cpuid);
+	else
+		addr = IPC_REMOTE_FIFO_STATUS_HIGH_ADDR(cpuid);
+
+	status = __raw_readl_no_log((void *)addr);
+	return (status & IPC_FIFO_FULL) ? true : false;
+}
+
+void danipc_b_fifo_push(phys_addr_t paddr,
+			int cpuid,
+			enum ipc_trns_prio prio)
+{
+	uint32_t fifo_addr;
+
+	if (!valid_cpu_id(cpuid))
+		return;
+
+	if (prio == ipc_trns_prio_0)
+		fifo_addr = IPC_FIFO_WR_OUT_LOW_ADDR(cpuid);
+	else
+		fifo_addr = IPC_FIFO_WR_OUT_HIGH_ADDR(cpuid);
+
+	__raw_writel_no_log(paddr, (void *)fifo_addr);
+}
+
+phys_addr_t danipc_b_fifo_pop(int cpuid, enum ipc_trns_prio prio)
+{
+	uint32_t fifo_addr;
+
+	if (!valid_cpu_id(cpuid))
+		return 0;
+
+	if (prio == ipc_trns_prio_0)
+		fifo_addr = IPC_FIFO_RD_OUT_LOW_ADDR(cpuid);
+	else
+		fifo_addr = IPC_FIFO_RD_OUT_HIGH_ADDR(cpuid);
+
+	return __raw_readl_no_log((void *)fifo_addr);
+}
+
+void danipc_fifo_drain(int cpuid, enum ipc_trns_prio prio)
+{
+	uint32_t regm, regb;
+	uint32_t val;
+
+	if (!valid_cpu_id(cpuid))
+		return;
+
+	if (prio == ipc_trns_prio_0) {
+		regb = IPC_FIFO_RD_OUT_LOW_ADDR(cpuid);
+		regm = TCSR_IPC_FIFO_RD_IN_LOW_ADDR(cpuid);
+	} else {
+		regb = IPC_FIFO_RD_OUT_HIGH_ADDR(cpuid);
+		regm = TCSR_IPC_FIFO_RD_IN_HIGH_ADDR(cpuid);
+	}
+
+	do {
+		val = __raw_readl_no_log((void *)regb);
+	} while (val);
+
+	do {
+		val = __raw_readl_no_log((void *)regm);
+	} while (val);
 }
