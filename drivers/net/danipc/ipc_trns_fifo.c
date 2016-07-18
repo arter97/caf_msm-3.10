@@ -35,13 +35,23 @@
  * -----------------------------------------------------------
  */
 
+#define IPC_FIFO_EMPTY	1
+
 #define TCSR_IPC_IF_FIFO_RD_ACCESS_2_OFFSET		0x18
 #define TCSR_IPC_IF_FIFO_RD_ACCESS_0_OFFSET		0x8
+
+#define TCSR_IPC_IF_FIFO_0_STATS_OFFSET		0x24
+#define TCSR_IPC_IF_FIFO_2_STATS_OFFSET		0x2C
 
 #define TCSR_IPC_FIFO_RD_IN_LOW_ADDR(cpuid)				\
 	(ipc_regs[cpuid] + TCSR_IPC_IF_FIFO_RD_ACCESS_2_OFFSET)
 #define TCSR_IPC_FIFO_RD_IN_HIGH_ADDR(cpuid)				\
 	(ipc_regs[cpuid] + TCSR_IPC_IF_FIFO_RD_ACCESS_0_OFFSET)
+
+#define TCSR_IPC_FIFO_STATUS_LOW_ADDR(cpuid)				\
+	(ipc_regs[cpuid] + TCSR_IPC_IF_FIFO_2_STATS_OFFSET)
+#define TCSR_IPC_FIFO_STATUS_HIGH_ADDR(cpuid)				\
+	(ipc_regs[cpuid] + TCSR_IPC_IF_FIFO_0_STATS_OFFSET)
 
 #define IPC_FIFO_ACCESS(cpuid, odd, even)		({		\
 	const typeof(cpuid) __cpuid = cpuid;				\
@@ -302,4 +312,18 @@ char *ipc_trns_fifo_buf_read(enum ipc_trns_prio prio, uint8_t cpuid)
 	buff_addr = __raw_readl_no_log((void *)fifo_addr);
 
 	return  (char *)((buff_addr) ? ipc_to_virt(cpuid, prio, buff_addr) : 0);
+}
+
+bool danipc_m_fifo_is_empty(uint8_t cpuid, enum ipc_trns_prio prio)
+{
+	uint32_t addr;
+	uint32_t status;
+
+	if (prio == ipc_trns_prio_0)
+		addr = TCSR_IPC_FIFO_STATUS_LOW_ADDR(cpuid);
+	else
+		addr = TCSR_IPC_FIFO_STATUS_HIGH_ADDR(cpuid);
+
+	status = __raw_readl_no_log((void *)addr);
+	return (status & IPC_FIFO_EMPTY) ? true : false;
 }

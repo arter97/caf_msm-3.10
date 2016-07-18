@@ -2,7 +2,7 @@
  *	All files except if stated otherwise in the beginning of the file
  *	are under the ISC license:
  *	----------------------------------------------------------------------
- *	Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ *	Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
  *	Copyright (c) 2010-2012 Design Art Networks Ltd.
  *
  *	Permission to use, copy, modify, and/or distribute this software for any
@@ -150,6 +150,11 @@ enum ipc_trns_prio {
 	max_ipc_prio,
 };
 
+static inline bool valid_ipc_prio(uint32_t prio)
+{
+	return ((prio < max_ipc_prio) ? true : false);
+}
+
 typedef char *(*ipc_trns_alloc_t)(uint8_t dest_aid, enum ipc_trns_prio pri);
 typedef void (*ipc_trns_free_t)(char *buf, uint8_t dest_aid,
 					enum ipc_trns_prio pri);
@@ -222,7 +227,7 @@ int32_t ipc_buf_free(char *buf_first, uint8_t dest_aid, enum ipc_trns_prio pri);
  *			msg_len		- Message length
  *			msg_type	- Message type
  *			pri		- Transport priority level
- *
+ *			from_user_space	- Message from user space
  *
  * Returns: Pointer to the message first buffer
  *
@@ -231,10 +236,11 @@ char *ipc_msg_alloc
 (
 	uint8_t			src_aid,
 	uint8_t			dest_aid,
-	char			*msg,
+	const char		*msg,
 	size_t			msg_len,
 	uint8_t			msg_type,
-	enum ipc_trns_prio	pri
+	enum ipc_trns_prio	pri,
+	bool			from_user_space
 );
 
 /* ===========================================================================

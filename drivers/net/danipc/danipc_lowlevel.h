@@ -39,12 +39,6 @@ extern struct agent_entry __iomem	*agent_table;
 extern const struct ipc_buf_desc	*ext_bufs;
 extern uint32_t				num_ext_bufs;
 
-enum apps_int_mux_mask {
-	apps_ipc_data_mux_mask,
-	apps_ipc_pcap_mux_mask,
-	apps_ipc_int_mux_max
-};
-
 struct ipc_to_virt_map {
 	/* Physical address of the FIFO data buffer *without* bit 31 set. */
 	uint32_t		paddr;
@@ -87,6 +81,7 @@ void ipc_trns_fifo2eth_buf_free(char *ptr, uint8_t dest_aid,
 int32_t ipc_trns_fifo2eth_buf_send(char *ptr, uint8_t dest_id,
 				   enum ipc_trns_prio pri);
 char *ipc_trns_fifo_buf_read(enum ipc_trns_prio pri, uint8_t cpuid);
+
 void ipc_agent_table_clean(uint8_t local_cpuid);
 uint8_t ipc_get_own_node(void);
 struct ipc_trns_func const *get_trns_funcs(uint8_t cpuid);
@@ -107,5 +102,7 @@ uint32_t danipc_read_fifo_irq_mask(uint8_t fifo);
 uint32_t danipc_read_fifo_irq_enable(uint8_t fifo);
 uint32_t danipc_read_fifo_irq_status(uint8_t fifo);
 uint32_t danipc_read_fifo_irq_status_raw(uint8_t fifo);
+
+bool danipc_m_fifo_is_empty(uint8_t cpuid, enum ipc_trns_prio pri);
 
 #endif /* __DANIPC_LOWLEVEL_H__ */

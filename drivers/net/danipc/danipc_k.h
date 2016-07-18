@@ -46,8 +46,6 @@ enum danipc_resources {
 #define DANIPC_IS_AGENT_DISCOVERED(aid, list) \
 	(((uint8_t *)(list))[(aid) >> 3] & (1 << ((aid)&(BITS_PER_BYTE - 1))))
 
-#define DANIPC_DBGDRV_ENTRY_MAX 23
-
 struct delayed_skb {
 	struct list_head	 list;
 	struct sk_buff		*skb;
@@ -122,16 +120,51 @@ struct dbgfs_hdlr {
 
 /* debugfs info */
 struct danipc_dbgfs {
-	struct dentry *ent;
-	const char fname[50];
+	const char *fname;
 	umode_t mode;
 	struct dbgfs_hdlr dbghdlr;
 };
 
+#define DBGFS_NODE(n, m, read_op, write_op) {	\
+	.fname = n,				\
+	.mode = m,				\
+	{					\
+		.display = read_op,		\
+		.write = write_op,		\
+	},					\
+}
+
+#define DBGFS_NODE_LAST	{	\
+	.fname = NULL,		\
+}
+
+struct danipc_probe_info {
+	const char	*res_name;
+	const char	*ifname;
+	const uint16_t	poolsz;
+};
+
+#define DANIPC_MAX_LFIFO	2
+#define DANIPC_FIFO_F_INIT	1
+#define DANIPC_FIFO_F_INUSE	2
+#define DANIPC_FIFO_F_IRQ_EN	4
+
+struct danipc_fifo {
+	struct mutex			lock;	/* lock for fifo */
+	struct ipc_to_virt_map		*map;
+	struct danipc_probe_info	*probe_info;
+	void				*owner;
+	uint32_t			irq;
+	uint8_t				node_id;
+	uint8_t				idx;
+	uint32_t			flag;
+};
+
 /* Danipc interface specific info */
 struct danipc_if {
-	struct danipc_drvr		*drvr;
+	struct danipc_drvr	*drvr;
 	struct net_device	*dev;
+	struct danipc_fifo	*fifo;
 	struct mutex		lock;
 
 	/* Packet processing information for
@@ -152,13 +185,9 @@ struct danipc_if {
 	/* Interrupt affinity */
 	uint8_t			affinity;
 
-	/* index to select interrupt mask that maps
-	 * interrupts from CDU to APPS IRQ.
-	 */
-	uint16_t			mux_mask;
-
-	/* Whether FIFOs were initialized in a prior device open */
-	uint8_t		fifos_initialized;
+	/* Debug fs node */
+	struct dentry		*dirent;
+	struct danipc_dbgfs	*dbgfs;
 };
 
 /* RX packet processing types */
@@ -188,7 +217,46 @@ struct packet_proc {
 	pktproc_init	stop;
 };
 
-#define DANIPC_MAX_IF		2
+#define DANIPC_MAX_IF		DANIPC_MAX_LFIFO
+
+/* Character device interface */
+#define DANIPC_MAJOR		100
+#define DANIPC_CDEV_NAME	"danipc"
+#define DANIPC_MAX_CDEV		DANIPC_MAX_IF
+
+struct danipc_cdev_status {
+	uint32_t	rx;
+	uint32_t	rx_bytes;
+	uint32_t	rx_drop;
+	uint32_t	rx_error;
+	uint32_t	rx_zlen_msg;
+	uint32_t	rx_oversize_msg;
+	uint32_t	rx_inval_msg;
+	uint32_t	rx_chained_msg;
+
+	uint32_t	tx;
+	uint32_t	tx_bytes;
+	uint32_t	tx_drop;
+	uint32_t	tx_error;
+	uint32_t	tx_no_buf;
+};
+
+struct danipc_cdev {
+	struct danipc_drvr	*drvr;
+	struct device		*dev;
+	struct danipc_fifo	*fifo;
+
+	int			minor;
+
+	/* Debug fs node */
+	struct dentry		*dirent;
+	struct danipc_dbgfs	*dbgfs;
+
+	spinlock_t		lock;	/* sync access to HW FIFO */
+	wait_queue_head_t	rq;
+
+	struct danipc_cdev_status	status;
+};
 
 /* Network device private data */
 struct danipc_drvr {
@@ -212,9 +280,16 @@ struct danipc_drvr {
 
 	/* driver debug fs information */
 	struct dentry		*dirent;
-	struct danipc_dbgfs		dbgfsinf[DANIPC_DBGDRV_ENTRY_MAX];
+
 	bool			support_mem_map;
 	uint32_t		mem_map_version;
+
+	/* char device driver interface */
+	struct danipc_cdev	cdev[DANIPC_MAX_CDEV];
+
+	/* local FIFO */
+	struct danipc_fifo	lfifo[DANIPC_MAX_LFIFO];
+	uint8_t			num_lfifo;
 };
 
 /* Connection information. */
@@ -237,21 +312,21 @@ struct danipc_pair {
 					  ((agentid) << PRIO_SHIFT) +	\
 					  (pri))
 
-void danipc_ll_init(struct danipc_drvr *drv);
-void danipc_ll_cleanup(struct danipc_drvr *drv);
-
 /* Describes an IPC buffer region, either ours or an extern one */
 struct ipc_buf_desc {
 	uint32_t phy_addr;
 	uint32_t sz;
 };
 
+void danipc_ll_init(struct danipc_drvr *drv);
+void danipc_ll_cleanup(struct danipc_drvr *drv);
 int danipc_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd);
 int danipc_hard_start_xmit(struct sk_buff *skb, struct net_device *dev);
 
-void danipc_init_irq(struct danipc_if *intf);
-void danipc_disable_irq(struct danipc_if *intf);
+void danipc_init_irq(struct danipc_fifo *fifo);
+void danipc_disable_irq(struct danipc_fifo *fifo);
 irqreturn_t danipc_interrupt(int irq, void *data);
+irqreturn_t danipc_cdev_interrupt(int irq, void *data);
 
 int	send_pkt(struct sk_buff *skb);
 
@@ -260,6 +335,8 @@ extern spinlock_t	skbs_lock;
 extern struct work_struct delayed_skbs_work;
 
 extern struct net_device	*danipc_dev;
+extern struct danipc_drvr	danipc_driver;
+
 int danipc_change_mtu(struct net_device *dev, int new_mtu);
 
 void danipc_default_rcv_init(struct packet_proc_info *prio);
@@ -287,6 +364,27 @@ void danipc_timer_stop(struct packet_proc_info *pproc);
 
 void alloc_pool_buffers(struct danipc_if *intf);
 
-int init_own_ipc_to_virt_map(struct danipc_if *intf);
+int init_own_ipc_to_virt_map(struct danipc_fifo *fifo);
+
+long danipc_cdev_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
+int danipc_cdev_tx(struct danipc_cdev *cdev,
+		   struct danipc_cdev_msghdr *hdr,
+		   const char __user *buf,
+		   size_t count);
+
+static inline bool local_fifo_owner(struct danipc_fifo *fifo, void *owner)
+{
+	return ((fifo->flag & DANIPC_FIFO_F_INUSE) && (fifo->owner == owner));
+}
+
+struct dentry *danipc_dbgfs_create_dir(struct dentry *parent_dent,
+				       const char *dir_name,
+				       struct danipc_dbgfs *nodes,
+				       void *private_data);
+
+int danipc_dbgfs_netdev_init(void);
+void danipc_dbgfs_netdev_remove(void);
+int danipc_dbgfs_cdev_init(void);
+void danipc_dbgfs_cdev_remove(void);
 
 #endif /* __DANIPC_H__ */

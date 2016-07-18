@@ -99,7 +99,7 @@ struct ipc_to_virt_map		ipc_to_virt_map[PLATFORM_MAX_NUM_OF_NODES][2];
 
 void __iomem		*apps_ipc_mux;
 
-static uint32_t apps_ipc_mux_val[apps_ipc_int_mux_max] = {
+static uint32_t apps_ipc_mux_val[DANIPC_MAX_LFIFO] = {
 	APPS_IPC_DATA_FIFO_INT,
 	APPS_IPC_PCAP_FIFO_INT
 };
@@ -166,21 +166,22 @@ static void free_ipc_buffers(void)
 	}
 }
 
-int init_own_ipc_to_virt_map(struct danipc_if *intf)
+int init_own_ipc_to_virt_map(struct danipc_fifo *fifo)
 {
-	uint8_t	idx = intf->ifidx;
+	uint8_t	idx = fifo->idx;
 	int	rc = 0;
+	struct danipc_drvr *drvr = &danipc_driver;
 	struct ipc_to_virt_map *high_map =
-		&ipc_to_virt_map[intf->rx_fifo_idx][ipc_trns_prio_1];
+		&ipc_to_virt_map[fifo->node_id][ipc_trns_prio_1];
 	struct ipc_to_virt_map *low_map =
-		&ipc_to_virt_map[intf->rx_fifo_idx][ipc_trns_prio_0];
+		&ipc_to_virt_map[fifo->node_id][ipc_trns_prio_0];
 	uint8_t __iomem *buf = (ipc_buffers == NULL) ?
-		map_ipc_buffers(intf->drvr) : &ipc_buffers[idx * IPC_BUF_SIZE];
+		map_ipc_buffers(drvr) : &ipc_buffers[idx * IPC_BUF_SIZE];
 
 	if (buf) {
 		/* This prevents remapping by remap_fifo_mem() */
 		high_map->vaddr = buf;
-		high_map->paddr = intf->drvr->res_start[IPC_BUFS_RES];
+		high_map->paddr = drvr->res_start[IPC_BUFS_RES];
 
 		high_map->paddr += (idx * IPC_BUF_SIZE);
 		low_map->vaddr	= &buf[IPC_BUF_SIZE / 2];
@@ -304,6 +305,28 @@ void *ipc_to_virt(const int cpuid, const unsigned prio, const uint32_t ipc_addr)
 	return NULL;
 }
 
+irqreturn_t danipc_cdev_interrupt(int irq, void *data)
+{
+	struct danipc_cdev *cdev = (struct danipc_cdev *)data;
+	struct danipc_fifo *fifo = cdev->fifo;
+	const unsigned	base_addr = ipc_regs[fifo->node_id];
+	unsigned long flags;
+
+	dev_dbg(cdev->dev, "%s: receive danipc IRQ, base_addr = 0x%x\n",
+		__func__, base_addr);
+
+	spin_lock_irqsave(&cdev->lock, flags);
+	/* Mask all IPC interrupts. */
+	__raw_writel_no_log(~0, (void *)(base_addr + CDU_INT0_MASK_F0));
+	fifo->flag &= ~DANIPC_FIFO_F_IRQ_EN;
+
+	wake_up(&cdev->rq);
+
+	spin_unlock_irqrestore(&cdev->lock, flags);
+
+	return IRQ_HANDLED;
+}
+
 irqreturn_t danipc_interrupt(int irq, void *data)
 {
 	/* By default we always pass packet_proc for low-prio
@@ -324,25 +347,19 @@ irqreturn_t danipc_interrupt(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-void danipc_init_irq(struct danipc_if *intf)
+void danipc_init_irq(struct danipc_fifo *fifo)
 {
-	struct danipc_drvr	*drvr	   = intf->drvr;
-	struct net_device	*dev	   = intf->dev;
-	const unsigned		 base_addr = ipc_regs[intf->rx_fifo_idx];
+	const unsigned		 base_addr = ipc_regs[fifo->node_id];
 
-	if (intf == drvr->if_list[0]) {
-		netdev_dbg(dev, "%s: dev->irq = %d Threshold = %x\n", __func__,
-			   dev->irq, AF_THRESHOLD);
+	if (fifo->idx == 0)
 		__raw_writel_no_log(AF_THRESHOLD,
 				    (void *)(base_addr + FIFO_THR_AF_CFG_F0));
-	} else if (intf == drvr->if_list[1]) {
-		netdev_dbg(dev, "%s: dev->irq = %d Threshold = %x\n", __func__,
-			   dev->irq, AF_PCAP_THRESHOLD);
+	else if (fifo->idx == 1)
 		__raw_writel_no_log(AF_PCAP_THRESHOLD,
 				    (void *)(base_addr + FIFO_THR_AF_CFG_F0));
-	} else {
-		netdev_err(dev, "%s: Unknown device passed %p\n",
-			   __func__ , intf);
+	else {
+		pr_err("%s: Unknown device passed %p\n", __func__ , fifo);
+		return;
 	}
 
 	__raw_writel_no_log(FIFO_POP_SET_ALL_FIFOS,
@@ -356,8 +373,8 @@ void danipc_init_irq(struct danipc_if *intf)
 
 	/* Route interrupts from TCSR to APPS (relevant to APPS-FIFO) */
 	/* TBD: makesure apps_ipc_mux is incremented by 4 bytes */
-	__raw_writel_no_log(apps_ipc_mux_val[intf->mux_mask],
-			    &((uint32_t *)apps_ipc_mux)[intf->ifidx]);
+	__raw_writel_no_log(apps_ipc_mux_val[fifo->idx],
+			    &((uint32_t *)apps_ipc_mux)[fifo->idx]);
 }
 
 uint32_t danipc_read_af_threshold(uint8_t fifo)
@@ -512,9 +529,9 @@ uint32_t danipc_read_fifo_irq_status(uint8_t fifo)
 	return irq_status;
 }
 
-void danipc_disable_irq(struct danipc_if *intf)
+void danipc_disable_irq(struct danipc_fifo *fifo)
 {
-	const unsigned	base_addr = ipc_regs[intf->rx_fifo_idx];
+	const unsigned	base_addr = ipc_regs[fifo->node_id];
 
 	/* Clear, disable and mask all interrupts from this CDU */
 	__raw_writel_no_log(IPC_INTR(IPC_INTR_FIFO_AF),
@@ -525,7 +542,7 @@ void danipc_disable_irq(struct danipc_if *intf)
 
 	/* Route interrupts from TCSR to APPS (relevant to APPS-FIFO) */
 	/* TBD: makesure apps_ipc_mux is incremented by 4 bytes */
-	__raw_writel_no_log(0, &((uint32_t *)apps_ipc_mux)[intf->ifidx]);
+	__raw_writel_no_log(0, &((uint32_t *)apps_ipc_mux)[fifo->idx]);
 }
 
 static void remap_agent_table(struct danipc_drvr *drv)
@@ -604,6 +621,7 @@ void danipc_ll_init(struct danipc_drvr *drv)
 	remap_agent_table(drv);
 	remap_apps_ipc_mux(drv);
 	memset(agent_table, 0, drv->res_len[AGENT_TABLE_RES]);
+	map_ipc_buffers(drv);
 }
 
 void danipc_ll_cleanup(struct danipc_drvr *drv)

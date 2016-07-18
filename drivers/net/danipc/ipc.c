@@ -19,6 +19,7 @@
  */
 
 #include <linux/string.h>
+#include <linux/uaccess.h>
 
 #include "ipc_reg.h"
 #include "ipc_api.h"
@@ -241,6 +242,21 @@ static int32_t ipc_msg_set_reply_ptr(
 	return IPC_SUCCESS;
 }
 
+static inline int ipc_buf_copy(
+	char		*dst,
+	const char	*src,
+	size_t		size,
+	bool		user_space)
+{
+	if (!user_space) {
+		memcpy(dst, src, size);
+		return 0;
+	}
+	if (copy_from_user(dst, src, size))
+		return -EFAULT;
+	return 0;
+}
+
 /* ===========================================================================
  * ipc_msg_alloc
  * ===========================================================================
@@ -254,6 +270,7 @@ static int32_t ipc_msg_set_reply_ptr(
  *			msg_len		- Message length
  *			msg_type	- Message type
  *			prio		- Transport priority level
+ *			from_user_space	- Message from user space
  *
  *
  * Returns: Pointer to the message first buffer
@@ -262,10 +279,11 @@ static int32_t ipc_msg_set_reply_ptr(
 char *ipc_msg_alloc(
 	uint8_t			src_aid,
 	uint8_t			dest_aid,
-	char			*msg,
+	const char		*msg,
 	size_t			msg_len,
 	uint8_t			msg_type,
-	enum ipc_trns_prio	prio
+	enum ipc_trns_prio	prio,
+	bool			from_user_space
 )
 {
 	char			*first_buf = NULL;
@@ -274,7 +292,8 @@ char *ipc_msg_alloc(
 	unsigned		buf;
 	unsigned		next_bufs_num = 0;
 	size_t			tmp_size, reminder;
-	char			*last_data;
+	const char		*last_data;
+	int			ret = 0;
 
 	if ((msg_len > IPC_MAX_MESSAGE_SIZE) || (msg_len == 0))
 		return NULL;
@@ -302,7 +321,7 @@ char *ipc_msg_alloc(
 
 	/* If buffer allocation failed free the entire buffers */
 	if ((prev_buf == NULL) && (first_buf != NULL)) {
-		ipc_buf_free(first_buf, dest_aid, prio);
+		ipc_buf_free(first_buf, ipc_get_node(dest_aid), prio);
 		first_buf = NULL;
 	} else if (first_buf) {
 		ipc_msg_set_type(first_buf, msg_type);
@@ -321,8 +340,13 @@ char *ipc_msg_alloc(
 			tmp_size = min_t(size_t, reminder,
 					 IPC_FIRST_BUF_DATA_SIZE_MAX);
 
-			memcpy(((struct ipc_first_buf *)first_buf)->body,
-			       last_data - reminder, tmp_size);
+			ret = ipc_buf_copy(
+				((struct ipc_first_buf *)first_buf)->body,
+				last_data - reminder,
+				tmp_size,
+				from_user_space);
+			if (ret)
+				goto err;
 
 			reminder -= tmp_size;
 			prev_buf = first_buf;
@@ -333,8 +357,13 @@ char *ipc_msg_alloc(
 				tmp_size = min_t(size_t, reminder,
 						 IPC_NEXT_BUF_DATA_SIZE_MAX);
 
-				memcpy(((struct ipc_next_buf *)next_buf)->body,
-				       last_data - reminder, tmp_size);
+				ret = ipc_buf_copy(
+					((struct ipc_next_buf *)next_buf)->body,
+					last_data - reminder,
+					tmp_size,
+					from_user_space);
+				if (ret)
+					goto err;
 
 				reminder -= tmp_size;
 				prev_buf = next_buf;
@@ -343,6 +372,9 @@ char *ipc_msg_alloc(
 	}
 
 	return first_buf;
+err:
+	ipc_buf_free(first_buf, ipc_get_node(dest_aid), prio);
+	return NULL;
 }
 
 /* ===========================================================================

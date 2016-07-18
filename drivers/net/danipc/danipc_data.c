@@ -24,6 +24,7 @@
 #include <linux/mutex.h>
 #include <linux/skbuff.h>
 #include <linux/netdevice.h>
+#include <linux/debugfs.h>
 
 #include "ipc_api.h"
 
@@ -53,7 +54,8 @@ int send_pkt(struct sk_buff *skb)
 				    skb->data,
 				    skb->len,
 				    0x12,
-				    pair->prio
+				    pair->prio,
+				    false
 			);
 
 		if (likely(msg)) {
@@ -164,8 +166,7 @@ read_ipc_message(char *const packet, char *buf,
 	ipc_buf_free(packet, cpuid, prio);
 }
 
-static void
-drop_ipc_message(char *const packet, enum ipc_trns_prio prio, u8 cpuid)
+void drop_ipc_message(char *const packet, enum ipc_trns_prio prio, u8 cpuid)
 {
 	ipc_buf_free(packet, cpuid, prio);
 }
@@ -255,7 +256,8 @@ static inline int check_errors(struct packet_proc_info *pproc, char *packet)
 {
 	struct ipc_msg_hdr *const first_hdr = (struct ipc_msg_hdr *)packet;
 
-	if (first_hdr->msg_len > IPC_FIRST_BUF_DATA_SIZE_MAX) {
+	if (first_hdr->msg_len > IPC_FIRST_BUF_DATA_SIZE_MAX ||
+	    !first_hdr->msg_len) {
 		pproc->pkt_hist.stats->rx_dropped++;
 		pproc->pkt_hist.stats->rx_errors++;
 		pproc->pkt_hist.rx_err_len++;
@@ -533,4 +535,549 @@ void danipc_rcv_timer(unsigned long data)
 	pproc->pkt_hist.rx_pkt_burst[cnt]++;
 
 	mod_timer(timer, jiffies + TIMER_INTERVAL);
+}
+
+/* DANIPC netdev debugfs interface */
+static void danipc_dump_fifo_info(struct seq_file *s)
+{
+	struct dbgfs_hdlr       *hdlr    = (struct dbgfs_hdlr *)s->private;
+	struct danipc_if        *intf   = (struct danipc_if *)hdlr->data;
+	struct danipc_pktq             *rx_pool = &intf->rx_pkt_pool;
+	struct packet_proc_info *pproc   = intf->pproc;
+	static const char  *format  = "%-20s: %-d\n";
+
+	seq_puts(s, "\n\nDanipc driver fifo info:\n\n");
+	seq_printf(s, format, "Irq", intf->irq);
+	seq_printf(s, format, "If Index", intf->ifidx);
+	seq_printf(s, format, "HW fifo Index", intf->rx_fifo_idx);
+	seq_printf(s, format, "Inter fifo prio", intf->rx_fifo_prio);
+	seq_printf(s, format, "Interrupt affinity", intf->affinity);
+	seq_printf(s, format, "Hiprio rxbound",
+		   pproc[ipc_trns_prio_1].rxbound);
+	seq_printf(s, format, "Lowprio rxbound",
+		   pproc[ipc_trns_prio_0].rxbound);
+	seq_printf(s, format, "Rxpool maxsize", rx_pool->max_size);
+	seq_printf(s, format, "Rxpool cursize", skb_queue_len(&rx_pool->q));
+	seq_printf(s, "%-20s: %-lu\n", "Rxpool usage", rx_pool->used);
+}
+
+static void danipc_dump_pkt_hist(struct seq_file *s, unsigned long *pkt_histo,
+				 unsigned long totpkts)
+{
+	uint32_t i;
+
+	if (totpkts) {
+		char buf[50];
+
+		for (i = 0; i < MAX_PACKET_SIZES; i++) {
+			if ((i%4) == 0)
+				seq_puts(s, "\n");
+			snprintf(buf, sizeof(buf), "<=%-6d:%-lu(%%%-lu)",
+				 (i == 0) ? 2048 : i*64, pkt_histo[i],
+			(pkt_histo[i] * 100)/totpkts);
+			seq_printf(s, "%-25s", buf);
+		}
+		seq_puts(s, "\n\n");
+	}
+}
+
+static void danipc_dump_fifo_hist(struct seq_file *s,
+				  struct danipc_pkt_histo *histo)
+{
+	struct net_device_stats *stats = histo->stats;
+	static const char *fmt_lu = "%-25s: %-lu\n";
+
+	seq_printf(s, fmt_lu, "Tx packets", stats->tx_packets);
+	seq_printf(s, fmt_lu, "Tx delayed packets", histo->tx_delayed);
+	seq_printf(s, fmt_lu, "Tx bytes", stats->tx_bytes);
+	seq_printf(s, fmt_lu, "Tx errors", stats->tx_errors);
+	seq_printf(s, fmt_lu, "Tx dropped", stats->tx_dropped);
+	seq_printf(s, fmt_lu, "Tx Remote bfifo empty",
+		   stats->tx_fifo_errors);
+	seq_printf(s, fmt_lu, "Tx no dst agent",
+		   stats->tx_heartbeat_errors);
+	seq_printf(s, fmt_lu, "Tx not danipc packet",
+		   stats->tx_carrier_errors);
+	seq_printf(s, fmt_lu, "Tx dskb alloc failed",
+		   stats->tx_aborted_errors);
+	seq_printf(s, fmt_lu, "Tx unknown drops",
+		   stats->tx_dropped -
+		   (stats->tx_fifo_errors +
+		    stats->tx_heartbeat_errors +
+		    stats->tx_carrier_errors +
+		    stats->tx_aborted_errors));
+	seq_printf(s, fmt_lu, "Rx pool used", histo->rx_pool_used);
+	seq_printf(s, fmt_lu, "Rx packets", stats->rx_packets);
+	seq_printf(s, fmt_lu, "Rx bytes", stats->rx_bytes);
+	seq_printf(s, fmt_lu, "Rx errors", stats->rx_errors);
+	seq_printf(s, fmt_lu, "Rx dropped", stats->rx_dropped);
+	seq_printf(s, fmt_lu, "Rx nobuf", stats->rx_missed_errors);
+	seq_printf(
+		s, fmt_lu, "Rx invalid dest aid",
+		histo->rx_err_dest_aid);
+	seq_printf(s, fmt_lu, "Rx chained_buffers", histo->rx_err_chained_buf);
+	seq_printf(s, fmt_lu, "Rx invalid length", histo->rx_err_len);
+	seq_printf(s, fmt_lu, "Rx unknown drops", stats->rx_dropped -
+		(stats->rx_missed_errors + histo->rx_err_dest_aid
+		+ histo->rx_err_chained_buf + histo->rx_err_len));
+}
+
+static void danipc_dump_pkt_burst(struct seq_file *s, unsigned long *pkt_bust)
+{
+	uint32_t i;
+	char buf[50];
+
+	for (i = 0; i <= IPC_BUF_COUNT_MAX; i++) {
+		if ((i%4) == 0)
+			seq_puts(s, "\n");
+		snprintf(buf, sizeof(buf), "%-5d:%-lu", i, pkt_bust[i]);
+		seq_printf(s, "%-25s", buf);
+	}
+	seq_puts(s, "\n");
+}
+
+static void danipc_dump_fifo_stats(struct seq_file *s)
+{
+	struct dbgfs_hdlr *hdlr = (struct dbgfs_hdlr *)s->private;
+	struct danipc_if *intf = (struct danipc_if *)hdlr->data;
+	struct packet_proc_info *pproc = intf->pproc;
+	struct danipc_pkt_histo *histo_hi = &pproc[ipc_trns_prio_1].pkt_hist;
+	struct danipc_pkt_histo *histo_lo = &pproc[ipc_trns_prio_0].pkt_hist;
+	struct net_device_stats *stats_hi = histo_hi->stats;
+	struct net_device_stats *stats_lo = histo_lo->stats;
+
+	if (!netif_running(intf->dev)) {
+		seq_puts(s, "\n\nDevice is not up!\n\n");
+		return;
+	}
+
+	seq_puts(s, "\n\nfifo TX/RX stats:\n\n");
+	danipc_dump_fifo_hist(s, histo_hi);
+	seq_puts(s, "\n\nTx HI packet histogram(<=pkt-size:count):\n\n");
+	danipc_dump_pkt_hist(s, histo_hi->tx_histo, stats_hi->tx_packets);
+	seq_puts(s, "\n\nRx HI packet histogram(<=pkt-size:count):\n\n");
+	danipc_dump_pkt_hist(s, histo_hi->rx_histo, stats_hi->rx_packets);
+	seq_puts(s, "\n\nTx LO packet histogram(<=pkt-size:count):\n\n");
+	danipc_dump_pkt_hist(s, histo_lo->tx_histo, stats_lo->tx_packets);
+	seq_puts(s, "\n\nRx LO packet histogram(<=pkt-size:count):\n\n");
+	danipc_dump_pkt_hist(s, histo_lo->rx_histo, stats_lo->rx_packets);
+	seq_puts(s, "\n\nRx HI packet burst:\n");
+	danipc_dump_pkt_burst(s, histo_hi->rx_pkt_burst);
+	seq_puts(s, "\n\nRx LO packet burst:\n");
+	danipc_dump_pkt_burst(s, histo_lo->rx_pkt_burst);
+}
+
+struct fifo_threshold {
+	uint32_t fifo_0: 7;
+	uint32_t reserved_0: 1;
+	uint32_t fifo_1: 7;
+	uint32_t reserved_1: 1;
+	uint32_t fifo_2: 7;
+	uint32_t reserved_2: 1;
+	uint32_t fifo_3: 7;
+	uint32_t reserved_3: 1;
+};
+
+static void danipc_dump_af_threshold(struct seq_file *s)
+{
+	struct dbgfs_hdlr	*hdlr = (struct dbgfs_hdlr *)s->private;
+	struct danipc_if	*intf = (struct danipc_if *)hdlr->data;
+	uint32_t	thr;
+	struct fifo_threshold *thr_s;
+
+	if (!netif_running(intf->dev)) {
+		seq_puts(s, "\n\nDevice is not up!\n\n");
+		return;
+	}
+
+	thr = danipc_read_af_threshold(intf->rx_fifo_idx);
+	thr_s = (struct fifo_threshold *)(&thr);
+
+	seq_printf(s, "%#06x:\nfifo0=%d\nfifo1=%d\nfifo2=%d\nfifo3=%d\n", thr,
+		   thr_s->fifo_0,
+		   thr_s->fifo_1,
+		   thr_s->fifo_2,
+		   thr_s->fifo_3);
+	seq_puts(s, "# to change threshold write line following format\n");
+	seq_puts(s, "# fifo<n>=<thr>\n");
+	seq_puts(s, "# where:\n");
+	seq_puts(s, "# - n is fifo number 0-3\n");
+	seq_puts(s, "# - thr is new threshold 0-127\n");
+}
+
+static void danipc_dump_ae_threshold(struct seq_file *s)
+{
+	struct dbgfs_hdlr	*hdlr = (struct dbgfs_hdlr *)s->private;
+	struct danipc_if	*intf = (struct danipc_if *)hdlr->data;
+	uint32_t	thr;
+	struct fifo_threshold *thr_s;
+
+	if (!netif_running(intf->dev)) {
+		seq_puts(s, "\n\nDevice is not up!\n\n");
+		return;
+	}
+	thr = danipc_read_ae_threshold(intf->rx_fifo_idx);
+	thr_s = (struct fifo_threshold *)(&thr);
+
+	seq_printf(s, "%#06x:\nfifo0=%d\nfifo1=%d\nfifo2=%d\nfifo3=%d\n", thr,
+		   thr_s->fifo_0,
+		   thr_s->fifo_1,
+		   thr_s->fifo_2,
+		   thr_s->fifo_3);
+	seq_puts(s, "# to change threshold write line following format\n");
+	seq_puts(s, "# fifo<n>=<thr>\n");
+	seq_puts(s, "# where:\n");
+	seq_puts(s, "# - n is fifo number 0-3\n");
+	seq_puts(s, "# - thr is new threshold 0-127\n");
+}
+
+#define STATUS_IS_EMPTY(s) (s & 1)
+#define STATUS_IS_AEMPTY(s) (s & (1 << 1))
+#define STATUS_IS_HALFULL(s) (s & (1 << 2))
+#define STATUS_IS_AFULL(s) (s & (1 << 3))
+#define STATUS_IS_FULL(s) (s & (1 << 4))
+#define STATUS_IS_ERR(s) (s & (1 << 5))
+
+static void danipc_dump_fifo_n_stat(struct seq_file *s, uint32_t stat)
+{
+	seq_printf(s, "REGISTER: %#06x (", stat);
+	if (STATUS_IS_EMPTY(stat))
+		seq_puts(s, " empty");
+	if (STATUS_IS_AEMPTY(stat))
+		seq_puts(s, " aempty");
+	if (STATUS_IS_HALFULL(stat))
+		seq_puts(s, " halfull");
+	if (STATUS_IS_AFULL(stat))
+		seq_puts(s, " afull");
+	if (STATUS_IS_FULL(stat))
+		seq_puts(s, " full");
+	if (STATUS_IS_ERR(stat))
+		seq_puts(s, " err");
+	seq_puts(s, " )\n");
+}
+
+static void danipc_dump_fifo_counters(struct seq_file *s)
+{
+	struct dbgfs_hdlr	*hdlr = (struct dbgfs_hdlr *)s->private;
+	struct danipc_if	*intf = (struct danipc_if *)hdlr->data;
+	uint32_t	status;
+	int		i;
+
+	if (!netif_running(intf->dev)) {
+		seq_puts(s, "\n\nDevice is not up!\n\n");
+		return;
+	}
+
+	for (i = 0 ; i < 4 ; i++) {
+		status = danipc_read_fifo_counter(intf->rx_fifo_idx, i);
+		seq_printf(s, "\n\nFIFO %d Counter: %d\n", i, status);
+	}
+}
+
+static void danipc_dump_fifo_status(struct seq_file *s)
+{
+	struct dbgfs_hdlr	*hdlr = (struct dbgfs_hdlr *)s->private;
+	struct danipc_if	*intf = (struct danipc_if *)hdlr->data;
+	uint32_t	status;
+	int		i;
+
+	if (!netif_running(intf->dev)) {
+		seq_puts(s, "\n\nDevice is not up!\n\n");
+		return;
+	}
+
+	for (i = 0 ; i < 4 ; i++) {
+		seq_printf(s, "\n\nFIFO %d STATUS:\n", i);
+		status = danipc_read_fifo_status(intf->rx_fifo_idx, i);
+		danipc_dump_fifo_n_stat(s, status);
+	}
+}
+
+#define FIFO_N_IRQ_STAT(s, n) ((uint8_t)((s >> (n*8)) & 0xFF))
+#define IS_EMPTY_IRQ(s, n) (FIFO_N_IRQ_STAT(s, n) & (1<<2))
+#define IS_AEMPTY_IRQ(s, n) (FIFO_N_IRQ_STAT(s, n) & (1<<3))
+#define IS_HALFULL_IRQ(s, n) (FIFO_N_IRQ_STAT(s, n) & (1<<4))
+#define IS_AFULL_IRQ(s, n) (FIFO_N_IRQ_STAT(s, n) & (1<<5))
+#define IS_FULL_IRQ(s, n) (FIFO_N_IRQ_STAT(s, n) & (1<<6))
+#define IS_ERR_IRQ(s, n) (FIFO_N_IRQ_STAT(s, n) & (1<<7))
+
+static void danipc_dump_fifo_n_status(struct seq_file *s, uint8_t n,
+				      uint32_t stat)
+{
+	seq_printf(s, "fifo %d %#02x (", n, FIFO_N_IRQ_STAT(stat, n));
+	if (IS_EMPTY_IRQ(stat, n))
+		seq_puts(s, " empty");
+	if (IS_AEMPTY_IRQ(stat, n))
+		seq_puts(s, " aempty");
+	if (IS_HALFULL_IRQ(stat, n))
+		seq_puts(s, " halfull");
+	if (IS_AFULL_IRQ(stat, n))
+		seq_puts(s, " afull");
+	if (IS_FULL_IRQ(stat, n))
+		seq_puts(s, " full");
+	if (IS_ERR_IRQ(stat, n))
+		seq_puts(s, " err");
+	seq_puts(s, " )\n");
+}
+
+static void danipc_dump_irq_raw_status(struct seq_file *s)
+{
+	struct dbgfs_hdlr	*hdlr = (struct dbgfs_hdlr *)s->private;
+	struct danipc_if	*intf = (struct danipc_if *)hdlr->data;
+	uint32_t	status;
+	int		i;
+
+	if (!netif_running(intf->dev)) {
+		seq_puts(s, "\n\nDevice is not up!\n\n");
+		return;
+	}
+
+	status = danipc_read_fifo_irq_status_raw(intf->rx_fifo_idx);
+	seq_printf(s, "# %#06x\n", status);
+	for (i = 0 ; i < 4 ; i++)
+		danipc_dump_fifo_n_status(s, i, status);
+}
+
+static void danipc_dump_irq_status(struct seq_file *s)
+{
+	struct dbgfs_hdlr	 *hdlr = (struct dbgfs_hdlr *)s->private;
+	struct danipc_if	*intf = (struct danipc_if *)hdlr->data;
+	uint32_t	  status;
+	int		  i;
+
+	if (!netif_running(intf->dev)) {
+		seq_puts(s, "\n\nDevice is not up!\n\n");
+		return;
+	}
+
+	status = danipc_read_fifo_irq_status(intf->rx_fifo_idx);
+	seq_printf(s, "# %#06x\n", status);
+	for (i = 0 ; i < 4 ; i++)
+		danipc_dump_fifo_n_status(s, i, status);
+}
+
+static void danipc_dump_irq_enable(struct seq_file *s)
+{
+	struct dbgfs_hdlr	*hdlr = (struct dbgfs_hdlr *)s->private;
+	struct danipc_if	*intf = (struct danipc_if *)hdlr->data;
+	uint32_t	enable;
+	int		i;
+
+	if (!netif_running(intf->dev)) {
+		seq_puts(s, "\n\nDevice is not up!\n\n");
+		return;
+	}
+
+	enable = danipc_read_fifo_irq_enable(intf->rx_fifo_idx);
+	seq_printf(s, "%#06x\n", enable);
+	for (i = 0 ; i < 4 ; i++)
+		danipc_dump_fifo_n_status(s, i, enable);
+}
+
+static void danipc_dump_irq_mask(struct seq_file *s)
+{
+	struct dbgfs_hdlr	*hdlr = (struct dbgfs_hdlr *)s->private;
+	struct danipc_if	*intf = (struct danipc_if *)hdlr->data;
+	uint32_t	mask;
+	int		i;
+
+	if (!netif_running(intf->dev)) {
+		seq_puts(s, "\n\nDevice is not up!\n\n");
+		return;
+	}
+
+	mask = danipc_read_fifo_irq_mask(intf->rx_fifo_idx);
+	for (i = 0 ; i < 4 ; i++)
+		danipc_dump_fifo_n_status(s, i, mask);
+}
+
+static int danipc_parse_fifo_threshold(struct net_device *dev,
+				       const char *buf, size_t len,
+				       u8 *fifo, u8 *threshold)
+{
+	char int_buf[20];
+	char *ibuf;
+	size_t skip;
+	int ret = 0;
+
+	ibuf = strnstr(buf, "fifo", len);
+	if (ibuf == 0)
+		return -EINVAL;
+	ibuf += 4;
+
+	/* look for fifo number */
+	skip = strspn(ibuf, " \t");
+	ibuf += skip;
+	skip = strcspn(ibuf, " \t=");
+	if (skip > sizeof(int_buf)) {
+		netdev_warn(dev, "%s: Fifo number too long %s\n",
+			    __func__, ibuf);
+		return -EINVAL;
+	}
+	strlcpy(int_buf, ibuf, skip+1);
+	ibuf += skip;
+	ret = kstrtou8(int_buf, 0, fifo);
+	if (ret != 0) {
+		netdev_warn(dev, "%s: Error(%d) parsing fifo number \"%s\"\n",
+			    __func__, ret, int_buf);
+		return ret;
+	}
+	if (*fifo > 3) {
+		netdev_warn(dev, "%s: fifo number(%d) out of range (0-3)\n",
+			    __func__, *fifo);
+		return -EINVAL;
+	}
+
+	/* look for threshold value */
+	skip = strspn(ibuf, " \t=");
+	ibuf += skip;
+	skip = strspn(ibuf, "0123456789ABCDEFabcdefXx");
+	if (skip > sizeof(int_buf)) {
+		netdev_warn(dev, "%s: Threshold too long %s\n", __func__, ibuf);
+		return -EINVAL;
+	}
+	strlcpy(int_buf, ibuf, skip+1);
+	ret = kstrtou8(int_buf, 0, threshold);
+	if (ret != 0) {
+		netdev_warn(dev, "%s: Error(%d) parsing threshold \"%s\"\n",
+			    __func__, ret, int_buf);
+		return ret;
+	}
+	if (*threshold > 127) {
+		netdev_warn(dev, "%s: threshold(%d) out of range (0-127)\n",
+			    __func__, *threshold);
+		return -EINVAL;
+	}
+	return ret;
+}
+
+static ssize_t
+danipc_write_af_threshold(struct file *filp, const char __user *ubuf,
+			  size_t cnt, loff_t *ppos)
+{
+	struct seq_file *m = filp->private_data;
+	struct dbgfs_hdlr *dbgfshdlr = (struct dbgfs_hdlr *)m->private;
+	struct danipc_if *intf = (struct danipc_if *)dbgfshdlr->data;
+	struct net_device *dev = intf->dev;
+	char buf[64];
+	int buf_size;
+	int ret;
+	u8 fifo;
+	u8 thr;
+
+	if (*ppos)
+		return -EINVAL;
+
+	buf_size = min(cnt, (sizeof(buf) - 1));
+	memset(buf, '\0', sizeof(buf));
+	if (strncpy_from_user(buf, ubuf, buf_size) < 0)
+		return -EFAULT;
+
+	ret = danipc_parse_fifo_threshold(dev, buf, buf_size, &fifo, &thr);
+	if (ret)
+		return ret;
+
+	danipc_set_af_threshold(intf->rx_fifo_idx, fifo, thr);
+	return cnt;
+}
+
+static ssize_t
+danipc_write_ae_threshold(struct file *filp, const char __user *ubuf,
+			  size_t cnt, loff_t *ppos)
+{
+	struct seq_file *m = filp->private_data;
+	struct dbgfs_hdlr *dbgfshdlr = (struct dbgfs_hdlr *)m->private;
+	struct danipc_if *intf = (struct danipc_if *)dbgfshdlr->data;
+	struct net_device *dev = intf->dev;
+	char buf[64];
+	int buf_size;
+	int ret;
+	u8 fifo;
+	u8 thr;
+
+	if (*ppos)
+		return -EINVAL;
+
+	buf_size = min(cnt, (sizeof(buf) - 1));
+	memset(buf, '\0', sizeof(buf));
+	if (strncpy_from_user(buf, ubuf, buf_size) < 0)
+		return -EFAULT;
+
+	ret = danipc_parse_fifo_threshold(dev, buf, buf_size, &fifo, &thr);
+	if (ret)
+		return ret;
+
+	danipc_set_ae_threshold(intf->rx_fifo_idx, fifo, thr);
+	return cnt;
+}
+
+static struct danipc_dbgfs netdev_dbgfs[] = {
+	DBGFS_NODE("fifo_info", 0444, danipc_dump_fifo_info, NULL),
+	DBGFS_NODE("fifo_stats", 0444, danipc_dump_fifo_stats, NULL),
+	DBGFS_NODE("af_threshold", 0644, danipc_dump_af_threshold,
+		   danipc_write_af_threshold),
+	DBGFS_NODE("ae_threshold", 0644, danipc_dump_ae_threshold,
+		   danipc_write_ae_threshold),
+	DBGFS_NODE("fifo_status", 0444, danipc_dump_fifo_status, NULL),
+	DBGFS_NODE("fifo_counters", 0444, danipc_dump_fifo_counters, NULL),
+	DBGFS_NODE("raw_irq_status", 0444, danipc_dump_irq_raw_status, NULL),
+	DBGFS_NODE("irq_enable", 0444, danipc_dump_irq_enable, NULL),
+	DBGFS_NODE("irq_mask", 0444, danipc_dump_irq_mask, NULL),
+	DBGFS_NODE("data_irq_status", 0444, danipc_dump_irq_status, NULL),
+
+	DBGFS_NODE_LAST
+};
+
+int danipc_dbgfs_netdev_init(void)
+{
+	struct danipc_drvr *drvr = &danipc_driver;
+	struct dentry *dent;
+	int ret = 0;
+	int i;
+
+	dent = debugfs_create_dir("intf_netdev", drvr->dirent);
+	if (IS_ERR(dent)) {
+		pr_err("%s: failed to create intf directory\n", __func__);
+		return PTR_ERR(dent);
+	}
+
+	for (i = 0; i < drvr->ndev; i++) {
+		struct danipc_if *intf = drvr->if_list[i];
+
+		intf->dbgfs = kzalloc(sizeof(netdev_dbgfs), GFP_KERNEL);
+		if (intf->dbgfs == NULL) {
+			ret = -ENOMEM;
+			pr_err("%s: failed to allocate dbgfs\n", __func__);
+			break;
+		}
+		memcpy(intf->dbgfs, &netdev_dbgfs[0], sizeof(netdev_dbgfs));
+		intf->dirent = danipc_dbgfs_create_dir(dent,
+						       intf->dev->name,
+						       intf->dbgfs,
+						       intf);
+		if (intf->dirent == NULL) {
+			kfree(intf->dbgfs);
+			intf->dbgfs = NULL;
+			ret = PTR_ERR(intf->dirent);
+			break;
+		}
+	}
+
+	return ret;
+}
+
+void danipc_dbgfs_netdev_remove(void)
+{
+	struct danipc_drvr *drvr = &danipc_driver;
+	int i;
+
+	for (i = 0; i < drvr->ndev; i++) {
+		struct danipc_if *intf = drvr->if_list[i];
+
+		debugfs_remove_recursive(intf->dirent);
+		intf->dirent = NULL;
+
+		kfree(intf->dbgfs);
+		intf->dbgfs = NULL;
+	}
 }
