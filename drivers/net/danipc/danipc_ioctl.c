@@ -334,14 +334,6 @@ long danipc_cdev_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			rc = -EFAULT;
 			break;
 		}
-		if (danipc_bufs.num_entry > DANIPC_BUFS_MAX_NUM_BUF) {
-			dev_dbg(cdev->dev,
-				"%s: DANIPC_IOCG_RECV invalid num_buf %u\n",
-				__func__, danipc_bufs.num_entry);
-			rc = -EINVAL;
-			break;
-		}
-
 		rc = danipc_cdev_mapped_recv(cdev, cdev->rx_vma, &danipc_bufs);
 		if (rc < 0)
 			break;

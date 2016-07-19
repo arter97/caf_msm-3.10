@@ -32,6 +32,7 @@
 #include <linux/ioctl.h>
 #include <linux/cpumask.h>
 #include <linux/poll.h>
+#include <linux/vmalloc.h>
 #include <net/arp.h>
 
 #include "danipc_k.h"
@@ -640,7 +641,7 @@ static int danipc_probe_lfifo(struct platform_device *pdev, const char *regs[])
 /* Character device interface */
 static inline void __shm_msg_free(struct danipc_cdev *cdev, struct shm_msg *msg)
 {
-	shm_bufpool_put_buf(&cdev->rx_queue[msg->prio].freeq, msg->shmbuf);
+	shm_bufpool_put_buf(&cdev->rx_queue[msg->prio].kmem_freeq, msg->shmbuf);
 }
 
 static void shm_msg_free(struct danipc_cdev *cdev, struct shm_msg *msg)
@@ -650,25 +651,23 @@ static void shm_msg_free(struct danipc_cdev *cdev, struct shm_msg *msg)
 	spin_lock_irqsave(&cdev->rx_lock, flags);
 
 	__shm_msg_free(cdev, msg);
-	danipc_cdev_refill_rx_b_fifo(cdev, msg->prio);
+	danipc_cdev_enqueue_kmem_recvq(cdev, msg->prio);
 
 	spin_unlock_irqrestore(&cdev->rx_lock, flags);
 }
 
 static int __shm_msg_get(struct danipc_cdev *cdev, struct shm_msg *msg)
 {
-	struct danipc_fifo *fifo = cdev->fifo;
 	struct shm_buf *buf;
 	int prio;
 	int ret = -EAGAIN;
 
 	for (prio = ipc_trns_prio_1; prio >= 0; prio--) {
-		buf = shm_bufpool_get_buf(&cdev->rx_queue[prio].recvq);
+		buf = shm_bufpool_get_buf(&cdev->rx_queue[prio].kmem_recvq);
 		if (buf) {
 			msg->prio = prio;
 			msg->shmbuf = buf;
-			msg->hdr = ipc_to_virt(fifo->node_id, prio,
-					       buf_paddr(buf));
+			msg->hdr = buf_vaddr(buf);
 
 			dev_dbg(cdev->dev, "get message at %p\n", msg->hdr);
 			ret = 0;
@@ -710,6 +709,8 @@ static void reset_rx_queue_status(struct rx_queue *rxque)
 	rxque->status.bq_lo = rxque->bq.count;
 	rxque->status.freeq_lo = rxque->freeq.count;
 	rxque->status.recvq_hi = rxque->recvq.count;
+	rxque->status.kmem_freeq_lo = rxque->kmem_freeq.count;
+	rxque->status.kmem_recvq_hi = rxque->kmem_recvq.count;
 }
 
 static int danipc_cdev_rx_buf_init(struct danipc_cdev *cdev)
@@ -720,8 +721,6 @@ static int danipc_cdev_rx_buf_init(struct danipc_cdev *cdev)
 	danipc_fifo_drain(fifo->node_id, ipc_trns_prio_0);
 	danipc_cdev_refill_rx_b_fifo(cdev, ipc_trns_prio_1);
 	danipc_cdev_refill_rx_b_fifo(cdev, ipc_trns_prio_0);
-	reset_rx_queue_status(&cdev->rx_queue[ipc_trns_prio_1]);
-	reset_rx_queue_status(&cdev->rx_queue[ipc_trns_prio_0]);
 
 	return 0;
 }
@@ -766,6 +765,73 @@ void danipc_cdev_refill_rx_b_fifo(struct danipc_cdev *cdev,
 	if (n)
 		pr_debug("%s: fill fifo(%u/%u) with %d buffers\n",
 			 __func__, fifo->idx, pri, n);
+}
+
+static int danipc_cdev_rx_kmem_region_init(struct danipc_cdev *cdev,
+					   uint32_t size,
+					   uint32_t buf_sz,
+					   uint32_t buf_headroom)
+{
+	struct rx_kmem_region *kmem_region = &cdev->rx_kmem_region;
+	uint32_t freeq_sz, offset = 0;
+	int ret = 0, i;
+
+	kmem_region->kmem = vmalloc(size);
+	if (kmem_region->kmem == NULL)
+		return -ENOMEM;
+
+	kmem_region->region = __shm_region_create(size,
+						  buf_sz,
+						  buf_headroom,
+						  size/(buf_sz+buf_headroom));
+	if (kmem_region->region == NULL) {
+		dev_err(cdev->dev, "%s: failed to create region\n",
+			__func__);
+		ret = -ENOMEM;
+		goto err;
+	}
+
+	kmem_region->kmem_sz = size;
+	kmem_region->region->start = (phys_addr_t)kmem_region->kmem;
+	kmem_region->region->end = (phys_addr_t)kmem_region->kmem + size;
+	kmem_region->region->vaddr = kmem_region->kmem;
+
+	freeq_sz = IPC_BUF_COUNT_MAX * (buf_sz+buf_headroom);
+	for (i = 0; i < ARRAY_SIZE(cdev->rx_queue); i++) {
+		ret = shm_bufpool_acquire_region(&cdev->rx_queue[i].kmem_freeq,
+						 kmem_region->region,
+						 offset,
+						 freeq_sz);
+		if (ret)
+			goto err_release;
+		offset += freeq_sz;
+		freeq_sz = size - freeq_sz;
+	}
+
+	return 0;
+
+err_release:
+	for (i = 0; i < ARRAY_SIZE(cdev->rx_queue); i++)
+		shm_bufpool_release(&cdev->rx_queue[i].kmem_freeq);
+	__shm_region_release(kmem_region->region);
+
+err:
+	vfree(kmem_region->kmem);
+	memset(kmem_region, 0, sizeof(*kmem_region));
+	return ret;
+}
+
+static void danipc_cdev_rx_kmem_region_release(struct danipc_cdev *cdev)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(cdev->rx_queue); i++) {
+		shm_bufpool_release(&cdev->rx_queue[i].kmem_freeq);
+		shm_bufpool_release(&cdev->rx_queue[i].kmem_recvq);
+	}
+	__shm_region_release(cdev->rx_kmem_region.region);
+	vfree(cdev->rx_kmem_region.kmem);
+	memset(&cdev->rx_kmem_region, 0, sizeof(cdev->rx_kmem_region));
 }
 
 static int danipc_cdev_init_tx_region(struct danipc_cdev *cdev,
@@ -850,12 +916,8 @@ static ssize_t danipc_cdev_read(struct file *file, char __user *buf,
 	}
 
 	ret = ipc_msg_copy_to_user(msg.hdr, msg.prio, buf, count);
-	if (ret < 0) {
+	if (ret < 0)
 		cdev->status.rx_error++;
-	} else {
-		cdev->status.rx++;
-		cdev->status.rx_bytes += msg.hdr->msg_len;
-	}
 
 	shm_msg_free(cdev, &msg);
 
@@ -886,14 +948,13 @@ int danipc_cdev_mmsg_rx(struct danipc_cdev *cdev,
 	shm_bufpool_init(&msgs);
 
 	spin_lock_irqsave(&cdev->rx_lock, flags);
-	list_for_each_entry_safe(buf, p, &rx_queue->recvq.head, list) {
-		struct ipc_msg_hdr *hdr = ipc_to_virt(cdev->fifo->node_id,
-						      mmsg->hdr.prio,
-						      buf_paddr(buf));
+	list_for_each_entry_safe(buf, p, &rx_queue->kmem_recvq.head, list) {
+		struct ipc_msg_hdr *hdr = buf_vaddr(buf);
+
 		if (hdr->dest_aid == mmsg->hdr.dst &&
 		    hdr->src_aid == mmsg->hdr.src &&
 		    hdr->msg_len <= mmsg->msgs.entry[msgs.count].data_len) {
-			shm_bufpool_del_buf(&rx_queue->recvq, buf);
+			shm_bufpool_del_buf(&rx_queue->kmem_recvq, buf);
 			shm_bufpool_put_buf(&msgs, buf);
 			if (msgs.count == mmsg->msgs.num_entry)
 				break;
@@ -905,9 +966,8 @@ int danipc_cdev_mmsg_rx(struct danipc_cdev *cdev,
 		return 0;
 
 	list_for_each_entry(buf, &msgs.head, list) {
-		struct ipc_msg_hdr *hdr = ipc_to_virt(cdev->fifo->node_id,
-						      mmsg->hdr.prio,
-						      buf_paddr(buf));
+		struct ipc_msg_hdr *hdr = buf_vaddr(buf);
+
 		if (copy_to_user(mmsg->msgs.entry[n].data,
 				 hdr+1,
 				 hdr->msg_len)) {
@@ -922,8 +982,8 @@ int danipc_cdev_mmsg_rx(struct danipc_cdev *cdev,
 
 	spin_lock_irqsave(&cdev->rx_lock, flags);
 	while ((buf = shm_bufpool_get_buf(&msgs)))
-		shm_bufpool_put_buf(&rx_queue->freeq, buf);
-	danipc_cdev_refill_rx_b_fifo(cdev, mmsg->hdr.prio);
+		shm_bufpool_put_buf(&rx_queue->kmem_freeq, buf);
+	danipc_cdev_enqueue_kmem_recvq(cdev, mmsg->hdr.prio);
 	spin_unlock_irqrestore(&cdev->rx_lock, flags);
 
 	return n;
@@ -1021,8 +1081,8 @@ static unsigned int danipc_cdev_poll(struct file *file,
 
 	poll_wait(file, &cdev->rx_wq, wait);
 	spin_lock_irqsave(&cdev->rx_lock, flags);
-	if (!list_empty(&cdev->rx_queue[ipc_trns_prio_1].recvq.head) ||
-	    !list_empty(&cdev->rx_queue[ipc_trns_prio_0].recvq.head))
+	if (!list_empty(&cdev->rx_queue[ipc_trns_prio_1].kmem_recvq.head) ||
+	    !list_empty(&cdev->rx_queue[ipc_trns_prio_0].kmem_recvq.head))
 		ret = POLLIN | POLLRDNORM;
 	spin_unlock_irqrestore(&cdev->rx_lock, flags);
 
@@ -1056,11 +1116,6 @@ static inline phys_addr_t vma_paddr(struct vm_area_struct *vma,
 	offset = (unsigned long)(addr) - vma->vm_start;
 
 	return ((region->start & PAGE_MASK)+offset);
-}
-
-static inline phys_addr_t vma_rx_paddr(struct danipc_cdev *cdev, void *addr)
-{
-	return vma_paddr(cdev->rx_vma, cdev->rx_region, addr);
 }
 
 static inline void *to_ipc_data(void *msg)
@@ -1133,13 +1188,14 @@ int danipc_cdev_mapped_recv(struct danipc_cdev *cdev,
 	spin_lock_irqsave(&cdev->rx_lock, flags);
 
 	for (i = ipc_trns_prio_1; (i >= ipc_trns_prio_0) && (n < num); i--) {
-		struct shm_bufpool *pq = &cdev->rx_queue[i].recvq;
+		struct shm_bufpool *pq = &cdev->rx_queue[i].kmem_recvq;
 		struct shm_bufpool *mmapq = &cdev->rx_queue[i].mmapq;
 
 		list_for_each_entry_safe(buf, p, &pq->head, list) {
 			void *vma_addr = buf_vma_vaddr(buf, cdev->rx_vma);
+			void *vaddr = buf_vaddr(buf);
 
-			if (vma_addr) {
+			if (vma_addr && vaddr) {
 				struct ipc_msg_hdr *ipchdr =
 					(struct ipc_msg_hdr *)vma_addr;
 
@@ -1150,7 +1206,8 @@ int danipc_cdev_mapped_recv(struct danipc_cdev *cdev,
 				shm_bufpool_del_buf(pq, buf);
 				shm_bufpool_put_buf(mmapq, buf);
 				bufs->entry[n].data = ipchdr+1;
-				bufs->entry[n].data_len = ipchdr->msg_len;
+				bufs->entry[n].data_len =
+					((struct ipc_msg_hdr *)vaddr)->msg_len;
 				cdev->status.mmap_rx++;
 				n++;
 				if (n >= num)
@@ -1181,7 +1238,9 @@ int danipc_cdev_mapped_recv_done(struct danipc_cdev *cdev,
 	spin_lock_irqsave(&cdev->rx_lock, flags);
 
 	for (i = 0; i < bufs->num_entry; i++) {
-		phys_addr_t paddr = vma_rx_paddr(cdev, bufs->entry[i].data);
+		phys_addr_t paddr = vma_paddr(cdev->rx_vma,
+					      cdev->rx_kmem_region.region,
+					      bufs->entry[i].data);
 		struct shm_buf *buf;
 		int pri;
 		bool found;
@@ -1194,7 +1253,8 @@ int danipc_cdev_mapped_recv_done(struct danipc_cdev *cdev,
 			continue;
 		}
 
-		buf = shm_region_find_buf_by_pa(cdev->rx_region, paddr);
+		buf = shm_region_find_buf_by_pa(cdev->rx_kmem_region.region,
+						paddr);
 		if (!buf) {
 			cdev->status.mmap_rx_error++;
 			dev_warn(cdev->dev,
@@ -1211,7 +1271,7 @@ int danipc_cdev_mapped_recv_done(struct danipc_cdev *cdev,
 					"%s: put mapped buf %p to freeq\n",
 					__func__, buf);
 				shm_bufpool_del_buf(&pq->mmapq, buf);
-				shm_bufpool_put_buf(&pq->freeq, buf);
+				shm_bufpool_put_buf(&pq->kmem_freeq, buf);
 				cdev->status.mmap_rx_done++;
 				found = true;
 				if (pri == ipc_trns_prio_1)
@@ -1230,9 +1290,9 @@ int danipc_cdev_mapped_recv_done(struct danipc_cdev *cdev,
 	}
 
 	if (refill_hi)
-		danipc_cdev_refill_rx_b_fifo(cdev, ipc_trns_prio_1);
+		danipc_cdev_enqueue_kmem_recvq(cdev, ipc_trns_prio_1);
 	if (refill_lo)
-		danipc_cdev_refill_rx_b_fifo(cdev, ipc_trns_prio_0);
+		danipc_cdev_enqueue_kmem_recvq(cdev, ipc_trns_prio_0);
 
 	spin_unlock_irqrestore(&cdev->rx_lock, flags);
 	return 0;
@@ -1274,15 +1334,36 @@ static void danipc_cdev_rx_vma_close(struct vm_area_struct *vma)
 	cdev->rx_vma = NULL;
 }
 
+static int danipc_cdev_rx_vma_fault(struct vm_area_struct *vma,
+				    struct vm_fault *vmf)
+{
+	struct danipc_cdev *cdev = vma->vm_private_data;
+	struct page *page;
+	unsigned long offset;
+
+	offset = (unsigned long)vmf->virtual_address - vma->vm_start;
+
+	dev_dbg(cdev->dev, "%s: vma %p, offset %lu\n", __func__, vma, offset);
+
+	page = vmalloc_to_page((char *)cdev->rx_kmem_region.kmem+offset);
+	if (page == NULL)
+		return VM_FAULT_SIGBUS;
+
+	get_page(page);
+	vmf->page = page;
+
+	return 0;
+}
+
 static struct vm_operations_struct danipc_cdev_rx_vma_ops = {
 	.open	= danipc_cdev_rx_vma_open,
 	.close	= danipc_cdev_rx_vma_close,
+	.fault	= danipc_cdev_rx_vma_fault,
 };
 
 static int danipc_rx_mmap(struct danipc_cdev *cdev, struct vm_area_struct *vma)
 {
-	struct shm_region *region = cdev->rx_region;
-	unsigned long size = vma->vm_end - vma->vm_start;
+	struct shm_region *region = cdev->rx_kmem_region.region;
 
 	if (cdev->rx_vma) {
 		dev_warn(cdev->dev, "%s: rx is already mmaped\n",
@@ -1295,20 +1376,6 @@ static int danipc_rx_mmap(struct danipc_cdev *cdev, struct vm_area_struct *vma)
 			"%s: vma area is too small, start=%lx end=%lx\n",
 			__func__, vma->vm_start, vma->vm_end);
 		return -EINVAL;
-	}
-
-	/* TODO: make it cachedable */
-	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
-
-	if (remap_pfn_range(vma,
-			    vma->vm_start,
-			    (region->start) >> PAGE_SHIFT,
-			    size,
-			    vma->vm_page_prot)) {
-		dev_warn(cdev->dev,
-			 "%s: remap_pfn_range(%lx/%lx/%lx) failed\n",
-			 __func__, vma->vm_start, size, vma->vm_pgoff);
-		return -EAGAIN;
 	}
 
 	vma->vm_private_data = cdev;
@@ -1756,6 +1823,8 @@ static int danipc_cdev_open(struct inode *inode, struct file *file)
 	}
 
 	for (i = 0; i < ARRAY_SIZE(cdev->rx_queue); i++) {
+		shm_bufpool_init(&cdev->rx_queue[i].kmem_freeq);
+		shm_bufpool_init(&cdev->rx_queue[i].kmem_recvq);
 		shm_bufpool_init(&cdev->rx_queue[i].freeq);
 		shm_bufpool_init(&cdev->rx_queue[i].recvq);
 		shm_bufpool_init(&cdev->rx_queue[i].bq);
@@ -1796,6 +1865,20 @@ static int danipc_cdev_open(struct inode *inode, struct file *file)
 
 	danipc_cdev_rx_buf_init(cdev);
 
+	ret = danipc_cdev_rx_kmem_region_init(cdev,
+					      SZ_16M,
+					      IPC_BUF_SIZE_MAX,
+					      DANIPC_MMAP_RX_BUF_HEADROOM);
+	if (ret) {
+		dev_err(cdev->dev,
+			"%s: init rx kmem region failed\n",
+			__func__);
+		goto err_release_ul_buf;
+	}
+
+	reset_rx_queue_status(&cdev->rx_queue[ipc_trns_prio_1]);
+	reset_rx_queue_status(&cdev->rx_queue[ipc_trns_prio_0]);
+
 	init_waitqueue_head(&cdev->rx_wq);
 
 	danipc_cdev_init_rx_work(cdev);
@@ -1808,7 +1891,7 @@ static int danipc_cdev_open(struct inode *inode, struct file *file)
 	if (ret) {
 		dev_err(cdev->dev, "%s: request irq(%d) failed, fifo(%s)\n",
 			__func__, fifo->irq, fifo->probe_info->res_name);
-		goto err_release_ul_buf;
+		goto err_release_rx_kmem;
 	}
 
 	danipc_init_irq(fifo);
@@ -1820,6 +1903,8 @@ static int danipc_cdev_open(struct inode *inode, struct file *file)
 out:
 	return ret;
 
+err_release_rx_kmem:
+	danipc_cdev_rx_kmem_region_release(cdev);
 err_release_ul_buf:
 	danipc_cdev_rx_buf_release(cdev);
 	for (i = 0; i < ARRAY_SIZE(cdev->rx_queue); i++)
@@ -1861,6 +1946,7 @@ static int danipc_cdev_release(struct inode *inode, struct file *file)
 	cdev->rx_region = NULL;
 	cdev->tx_region = NULL;
 
+	danipc_cdev_rx_kmem_region_release(cdev);
 	release_local_fifo(cdev->fifo, cdev);
 	file->private_data = NULL;
 	return ret;
@@ -1991,7 +2077,14 @@ static void danipc_cdev_show_queue_info(struct seq_file *s)
 	seq_puts(s, "\nReceiving:\n");
 	for (i = 0; i < max_ipc_prio; i++) {
 		seq_printf(s, "%s\n",
-			   (i == ipc_trns_prio_1) ? "high_prio" : "low_prio");
+			   (i == ipc_trns_prio_1) ? "HIGH_PRIO" : "LOW_PRIO");
+
+		seq_printf(s, "%-25s: %u\n",
+			   "kmem_recv_queue",
+			   cdev->rx_queue[i].kmem_recvq.count);
+		seq_printf(s, "%-25s: %u\n",
+			   "kmem_recv_queue_hi",
+			   cdev->rx_queue[i].status.kmem_recvq_hi);
 		seq_printf(s, "%-25s: %u\n",
 			   "recv_queue", cdev->rx_queue[i].recvq.count);
 		seq_printf(s, "%-25s: %u\n",
@@ -2000,6 +2093,12 @@ static void danipc_cdev_show_queue_info(struct seq_file *s)
 			   "fifo_b_queue", cdev->rx_queue[i].bq.count);
 		seq_printf(s, "%-25s: %u\n",
 			   "fifo_b_queue_lo", cdev->rx_queue[i].status.bq_lo);
+		seq_printf(s, "%-25s: %u\n",
+			   "kmem_free_queue",
+			   cdev->rx_queue[i].kmem_freeq.count);
+		seq_printf(s, "%-25s: %u\n",
+			   "kmem_free_queue_lo",
+			   cdev->rx_queue[i].status.kmem_freeq_lo);
 		seq_printf(s, "%-25s: %u\n",
 			   "free_queue", cdev->rx_queue[i].freeq.count);
 		seq_printf(s, "%-25s: %u\n",

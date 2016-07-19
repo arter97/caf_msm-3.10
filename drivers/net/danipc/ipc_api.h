@@ -293,6 +293,12 @@ struct shm_buf *shm_region_find_buf_by_pa(
 
 struct shm_buf *shm_find_buf_by_pa(phys_addr_t phy_addr);
 
+struct shm_region *__shm_region_create(
+	resource_size_t	size,
+	uint32_t	buf_sz,
+	uint32_t	buf_headroom,
+	uint32_t	buf_num);
+
 struct shm_region *shm_region_create(
 	phys_addr_t	start,
 	void		*vaddr,
@@ -300,6 +306,8 @@ struct shm_region *shm_region_create(
 	uint32_t	buf_sz,
 	uint32_t	buf_headroom,
 	uint32_t	buf_num);
+
+void __shm_region_release(struct shm_region *region);
 
 void shm_region_release(struct shm_region *region);
 

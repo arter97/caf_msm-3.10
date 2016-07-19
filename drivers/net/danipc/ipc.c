@@ -260,6 +260,27 @@ static inline int ipc_buf_copy(
 	return 0;
 }
 
+int ipc_msg_copy(void *dst, const void *src, size_t size, bool adj_offset)
+{
+	const struct ipc_msg_hdr *hdr = (const struct ipc_msg_hdr *)src;
+	struct ipc_msg_hdr *hdr_dst = (struct ipc_msg_hdr *)dst;
+	uint32_t offset = 0, extra_bytes = 0;
+
+	/* TODO: adjust the offset */
+	if ((hdr->msg_len + extra_bytes + sizeof(*hdr)) > size) {
+		pr_debug("%s: size(%u/%u/%u) too big\n",
+			 __func__, hdr->msg_len, size, extra_bytes);
+		return -EINVAL;
+	}
+
+	memcpy(hdr_dst, hdr, sizeof(*hdr));
+	memcpy((char *)(hdr_dst+1),
+	       (char *)(hdr+1)+offset,
+	       hdr->msg_len+extra_bytes);
+
+	return 0;
+}
+
 /* ===========================================================================
  * ipc_msg_alloc
  * ===========================================================================
@@ -492,6 +513,55 @@ struct shm_buf *shm_find_buf_by_pa(phys_addr_t phy_addr)
 	return buf;
 }
 
+struct shm_region *__shm_region_create(
+	resource_size_t	size,
+	uint32_t	buf_sz,
+	uint32_t	buf_headroom,
+	uint32_t	buf_num)
+{
+	struct shm_region *region;
+	struct shm_buf *buf;
+	uint32_t real_buf_sz = buf_sz + buf_headroom;
+	uint32_t n;
+	int i;
+	bool dir_map = true;
+
+	if (unlikely(!size || !buf_num || !buf_sz))
+		return NULL;
+
+	n = size/real_buf_sz;
+	if (buf_num < n) {
+		n = buf_num;
+		dir_map = false;
+	}
+
+	region = kzalloc((sizeof(struct shm_region) +
+			  sizeof(struct shm_buf) * n),
+			 GFP_KERNEL);
+	if (IS_ERR(region)) {
+		pr_err("%s: failed to alloc the region data\n", __func__);
+		return NULL;
+	}
+
+	region->buf_sz = buf_sz;
+	region->buf_num = n;
+	region->buf_headroom_sz = buf_headroom;
+	region->real_buf_sz = real_buf_sz;
+	region->dir_buf_map = dir_map;
+
+	buf = (struct shm_buf *)(region + 1);
+	for (i = 0; i < region->buf_num; i++, buf++) {
+		buf->region = region;
+		buf->head = NULL;
+		INIT_LIST_HEAD(&buf->list);
+
+		if (dir_map)
+			buf->offset = i * real_buf_sz + buf_headroom;
+	}
+
+	return region;
+}
+
 struct shm_region *shm_region_create(
 	phys_addr_t	start,
 	void		*vaddr,
@@ -502,15 +572,9 @@ struct shm_region *shm_region_create(
 {
 	struct shm_region_tbl *tbl = &region_tbl;
 	struct shm_region *region;
-	struct shm_buf *buf;
 	phys_addr_t end = start+size;
 	uint32_t real_buf_sz = buf_sz + buf_headroom;
-	uint32_t n;
 	int i, idx;
-	bool dir_map = true;
-
-	if (unlikely(!size || !buf_num || !buf_sz))
-		return NULL;
 
 	if (!CACHELINE_ALIGNED(start) || !CACHELINE_ALIGNED(real_buf_sz)) {
 		pr_err("%s: %x/%u not cacheline aligned\n",
@@ -543,42 +607,20 @@ struct shm_region *shm_region_create(
 	if (idx < 0)
 		return NULL;
 
-	n = size/real_buf_sz;
-	if (buf_num < n) {
-		n = buf_num;
-		dir_map = false;
+	region = __shm_region_create(size, buf_sz, buf_headroom, buf_num);
+	if (region) {
+		region->start = start;
+		region->vaddr = vaddr;
+		region->end = end;
+		tbl->region[idx] = region;
+		tbl->num_region++;
 	}
-
-	region = kzalloc((sizeof(struct shm_region) +
-			  sizeof(struct shm_buf) * n),
-			 GFP_KERNEL);
-	if (IS_ERR(region)) {
-		pr_err("%s: failed to alloc the region data\n", __func__);
-		return NULL;
-	}
-
-	region->start = start;
-	region->vaddr = vaddr;
-	region->end = end;
-	region->buf_sz = buf_sz;
-	region->buf_num = n;
-	region->buf_headroom_sz = buf_headroom;
-	region->real_buf_sz = real_buf_sz;
-	region->dir_buf_map = dir_map;
-
-	buf = (struct shm_buf *)(region + 1);
-	for (i = 0; i < region->buf_num; i++, buf++) {
-		buf->region = region;
-		buf->head = NULL;
-		INIT_LIST_HEAD(&buf->list);
-
-		if (dir_map)
-			buf->offset = i * real_buf_sz + buf_headroom;
-	}
-
-	tbl->region[idx] = region;
-	tbl->num_region++;
 	return region;
+}
+
+void __shm_region_release(struct shm_region *region)
+{
+	kfree(region);
 }
 
 void shm_region_release(struct shm_region *region)
@@ -591,7 +633,7 @@ void shm_region_release(struct shm_region *region)
 
 	for (i = 0; i < MAX_SHM_REGION_NUM; i++) {
 		if (tbl->region[i] == region) {
-			kfree(region);
+			__shm_region_release(region);
 			tbl->region[i] = NULL;
 			tbl->num_region--;
 			break;
