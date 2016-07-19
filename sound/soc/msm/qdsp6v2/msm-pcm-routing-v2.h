@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -264,4 +264,6 @@ void msm_pcm_routing_release_lock(void);
 
 void msm_pcm_routing_reg_stream_app_type_cfg(int fedai_id, int app_type,
 					int acdb_dev_id, int sample_rate);
+int msm_pcm_routing_get_stream_app_type_cfg(int fedai_id, int *app_type,
+					int *acdb_dev_id, int *sample_rate);
 #endif /*_MSM_PCM_H*/
