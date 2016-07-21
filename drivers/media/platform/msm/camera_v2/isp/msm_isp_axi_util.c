@@ -211,6 +211,9 @@ int msm_isp_validate_axi_request(struct msm_vfe_axi_shared_data *axi_data,
 	stream_info->runtime_output_format = stream_info->output_format;
 	stream_info->stream_src = stream_cfg_cmd->stream_src;
 	stream_info->frame_based = stream_cfg_cmd->frame_base;
+	axi_data->src_info[SRC_TO_INTF(stream_info->stream_src)].session_id =
+		stream_cfg_cmd->session_id;
+
 	return 0;
 }
 
@@ -662,8 +665,8 @@ void msm_isp_increment_frame_id(struct vfe_device *vfe_dev,
 	enum msm_vfe_dual_hw_type dual_hw_type;
 	enum msm_vfe_dual_hw_ms_type ms_type;
 	struct msm_vfe_sof_info *master_sof_info = NULL;
-	int32_t time, master_time, delta;
-	uint32_t sof_incr = 0;
+	int32_t time, master_time, delta, i;
+	uint32_t sof_incr = 0, temp_frame_id;
 	unsigned long flags;
 
 	if (vfe_dev->axi_data.src_info[frame_src].frame_id == 0)
@@ -672,9 +675,33 @@ void msm_isp_increment_frame_id(struct vfe_device *vfe_dev,
 	spin_lock_irqsave(&vfe_dev->common_data->common_dev_data_lock, flags);
 	dual_hw_type =
 		vfe_dev->axi_data.src_info[frame_src].dual_hw_type;
-	ms_type =
-		vfe_dev->axi_data.src_info[frame_src].
-		dual_hw_ms_info.dual_hw_ms_type;
+	ms_type = vfe_dev->axi_data.src_info[frame_src].
+			dual_hw_ms_info.dual_hw_ms_type;
+	src_info = vfe_dev->axi_data.src_info;
+
+	if (src_info[frame_src].frame_id == 0 &&
+		src_info[frame_src].sync_frame_id_src) {
+		for (i = VFE_PIX_0; i < VFE_SRC_MAX; i++) {
+			if (i == frame_src)
+				continue;
+
+			if (src_info[frame_src].session_id !=
+				src_info[i].session_id)
+				continue;
+
+			if (src_info[i].active == 0)
+				continue;
+
+			if (i == VFE_PIX_0)
+				temp_frame_id = src_info[i].frame_id - 1;
+			else
+				temp_frame_id = src_info[i].frame_id;
+
+			if (src_info[frame_src].frame_id < temp_frame_id)
+				src_info[frame_src].frame_id = temp_frame_id;
+		}
+	}
+
 	/*
 	 * Increment frame_id if
 	 *   1. Not Master Slave
@@ -2481,18 +2508,8 @@ static int msm_isp_start_axi_stream(struct vfe_device *vfe_dev,
 		}
 		src_state = axi_data->src_info[stream_src].active;
 
-		/* In case of PIX and RDI streams are part of same
-		 * session, this will ensure RDI stream will
-		 * have same frame id as of PIX stream.
-		 * Frame id must be set before frame drop calculations.
-		 */
-		if (stream_src >= VFE_RAW_0 && stream_src < VFE_SRC_MAX) {
-			if (stream_cfg_cmd->sync_frame_id_src)
-				axi_data->src_info[stream_src].frame_id =
-					axi_data->src_info[VFE_PIX_0].frame_id;
-			else
-				axi_data->src_info[stream_src].frame_id = 0;
-		}
+		axi_data->src_info[stream_src].sync_frame_id_src =
+			stream_cfg_cmd->sync_frame_id_src;
 
 		msm_isp_calculate_bandwidth(axi_data, stream_info);
 		msm_isp_reset_framedrop(vfe_dev, stream_info);
@@ -2527,8 +2544,11 @@ static int msm_isp_start_axi_stream(struct vfe_device *vfe_dev,
 			 * Active bit is set in enable_camif for PIX.
 			 * For RDI, set it here
 			 */
-			if (stream_src >= VFE_RAW_0 && stream_src < VFE_SRC_MAX)
+			if (stream_src >= VFE_RAW_0 &&
+				stream_src < VFE_SRC_MAX) {
+				axi_data->src_info[stream_src].frame_id = 0;
 				axi_data->src_info[stream_src].active = 1;
+			}
 		}
 	}
 	msm_isp_update_stream_bandwidth(vfe_dev);

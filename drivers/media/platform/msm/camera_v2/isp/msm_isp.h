@@ -401,6 +401,7 @@ enum msm_vfe_camif_state {
 
 struct msm_vfe_src_info {
 	uint32_t frame_id;
+	uint32_t session_id;
 	uint32_t reg_update_frame_id;
 	uint8_t active;
 	uint8_t pix_stream_count;
@@ -415,6 +416,7 @@ struct msm_vfe_src_info {
 	uint64_t stats_ib;
 	enum msm_vfe_dual_hw_type dual_hw_type;
 	struct msm_vfe_dual_hw_ms_info dual_hw_ms_info;
+	uint8_t sync_frame_id_src;
 };
 
 struct msm_vfe_fetch_engine_info {
