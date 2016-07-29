@@ -157,4 +157,8 @@ int adm_get_sound_focus(int port_id, int copp_idx,
 			struct sound_focus_param *soundFocusData);
 int adm_get_source_tracking(int port_id, int copp_idx,
 			    struct source_tracking_param *sourceTrackingData);
+int adm_set_custom_chmix_cfg(int port_id, int copp_idx,
+			     unsigned int session_id, char *params,
+			     uint32_t params_length, int direction,
+			     int stream_type);
 #endif /* __Q6_ADM_V2_H__ */

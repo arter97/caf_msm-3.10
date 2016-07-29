@@ -194,6 +194,9 @@ enum msm_pcm_routing_event {
 #define ADM_PP_PARAM_LATENCY_ID			1
 #define ADM_PP_PARAM_LATENCY_BIT		2
 
+#define STREAM_TYPE_ASM 0
+#define STREAM_TYPE_LSM 1
+
 struct msm_pcm_routing_evt {
 	void (*event_func)(enum msm_pcm_routing_event, void *);
 	void *priv_data;
@@ -266,4 +269,7 @@ void msm_pcm_routing_reg_stream_app_type_cfg(int fedai_id, int app_type,
 			int acdb_dev_id, int sample_rate, int session_type);
 int msm_pcm_routing_get_stream_app_type_cfg(int fedai_id, int session_type,
 			int *app_type, int *acdb_dev_id, int *sample_rate);
+int msm_pcm_routing_send_chmix_cfg(int fe_id, int ip_channel_cnt,
+				int op_channel_cnt, int *ch_wght_coeff,
+				int session_type, int stream_type);
 #endif /*_MSM_PCM_H*/

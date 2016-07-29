@@ -2360,6 +2360,75 @@ static int msm_lsm_add_app_type_controls(struct snd_soc_pcm_runtime *rtd)
 	return 0;
 }
 
+static int msm_lsm_chmix_cfg_ctl_put(struct snd_kcontrol *kcontrol,
+					struct snd_ctl_elem_value *ucontrol)
+{
+	u64 fe_id = kcontrol->private_value;
+	int ip_channel_cnt, op_channel_cnt, wght_coeff_index;
+	int i;
+	int ch_wght_coeff[LSM_MAX_NUM_CHANNELS * LSM_MAX_NUM_CHANNELS];
+
+	pr_debug("%s: fe_id- %llu\n", __func__, fe_id);
+	if ((fe_id < MSM_FRONTEND_DAI_LSM1) ||
+		(fe_id > MSM_FRONTEND_DAI_LSM8)) {
+		pr_err("%s: Received out of bounds fe_id %llu\n",
+			__func__, fe_id);
+		return -EINVAL;
+	}
+
+	ip_channel_cnt = ucontrol->value.integer.value[0];
+	op_channel_cnt = ucontrol->value.integer.value[1];
+	wght_coeff_index = 2;
+	/* wght coeff of first out channel corresponding to each in channel
+	 * are sent followed by second out channel for each in channel etc.
+	 */
+	memset(ch_wght_coeff, 0, sizeof(ch_wght_coeff));
+	for (i = 0; i < op_channel_cnt * ip_channel_cnt; i++) {
+		ch_wght_coeff[i] =
+			ucontrol->value.integer.value[wght_coeff_index++];
+	}
+
+	msm_pcm_routing_send_chmix_cfg(fe_id, ip_channel_cnt, op_channel_cnt,
+			ch_wght_coeff, SESSION_TYPE_TX, STREAM_TYPE_LSM);
+
+	return 0;
+}
+
+static int msm_lsm_chmix_cfg_ctl_get(struct snd_kcontrol *kcontrol,
+					struct snd_ctl_elem_value *ucontrol)
+{
+	return 0;
+}
+
+static int msm_lsm_add_chmix_cfg_controls(struct snd_soc_pcm_runtime *rtd)
+{
+	struct snd_pcm *pcm = rtd->pcm;
+	struct snd_pcm_usr *chmix_cfg_info;
+	struct snd_kcontrol *kctl;
+	const char *mixer_ctl_name	= "Listen Stream";
+	const char *deviceNo		= "NN";
+	const char *suffix		= "Channel Mix Cfg";
+	int ctl_len, ret = 0;
+
+	ctl_len = strlen(mixer_ctl_name) + 1 +
+			strlen(deviceNo) + 1 + strlen(suffix) + 1;
+	pr_debug("%s: Listen chmix cfg cntrl add\n", __func__);
+	ret = snd_pcm_add_usr_ctls(pcm, SNDRV_PCM_STREAM_CAPTURE,
+				NULL, 1, ctl_len, rtd->dai_link->be_id,
+				&chmix_cfg_info);
+	if (ret < 0) {
+		pr_err("%s: Listen chmix cfg cntrl add failed: %d\n",
+			__func__, ret);
+		return ret;
+	}
+	kctl = chmix_cfg_info->kctl;
+	snprintf(kctl->id.name, ctl_len, "%s %d %s",
+		mixer_ctl_name, rtd->pcm->device, suffix);
+	kctl->put = msm_lsm_chmix_cfg_ctl_put;
+	kctl->get = msm_lsm_chmix_cfg_ctl_get;
+	return 0;
+}
+
 static int msm_lsm_add_controls(struct snd_soc_pcm_runtime *rtd)
 {
 	int ret = 0;
@@ -2367,6 +2436,10 @@ static int msm_lsm_add_controls(struct snd_soc_pcm_runtime *rtd)
 	ret = msm_lsm_add_app_type_controls(rtd);
 	if (ret)
 		pr_err("%s, add  app type controls failed:%d\n", __func__, ret);
+
+	ret = msm_lsm_add_chmix_cfg_controls(rtd);
+	if (ret)
+		pr_err("%s: add chmix cfg controls failed:%d\n", __func__, ret);
 
 	return ret;
 }

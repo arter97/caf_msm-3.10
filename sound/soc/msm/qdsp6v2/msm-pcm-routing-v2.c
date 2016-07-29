@@ -492,6 +492,53 @@ static bool is_mm_lsm_fe_id(int fe_id)
 	return rc;
 }
 
+int msm_pcm_routing_send_chmix_cfg(int fe_id, int ip_channel_cnt,
+				int op_channel_cnt, int *ch_wght_coeff,
+				int session_type, int stream_type)
+{
+	int rc = 0, idx = 0;
+	int be_index = 0, port_id;
+	unsigned int session_id = 0;
+
+	pr_debug("%s:fe_id[%d] ip_ch[%d] op_ch[%d] sess_type [%d], stream_type[%d]",
+		 __func__, fe_id, ip_channel_cnt, op_channel_cnt, session_type,
+		 stream_type);
+	if (!is_mm_lsm_fe_id(fe_id)) {
+		/* bad ID assigned in machine driver */
+		pr_err("%s: bad MM ID %d\n", __func__, fe_id);
+		return -EINVAL;
+	}
+
+	if (ch_wght_coeff == NULL) {
+		pr_err("%s: Null channel weightage coefficients passed\n",
+			__func__);
+		return -EINVAL;
+	}
+
+	for (be_index = 0; be_index < MSM_BACKEND_DAI_MAX; be_index++) {
+		port_id = msm_bedais[be_index].port_id;
+		if (!msm_bedais[be_index].active ||
+			!test_bit(fe_id, &msm_bedais[be_index].fe_sessions))
+			continue;
+
+		session_id = fe_dai_map[fe_id][session_type].strm_id;
+
+		for (idx = 0; idx < MAX_COPPS_PER_PORT; idx++) {
+			unsigned long copp =
+				session_copp_map[fe_id][session_type][be_index];
+			if (!test_bit(idx, &copp))
+				continue;
+			msm_qti_pp_send_chmix_cfg_cmd(port_id, idx,
+						session_id, ip_channel_cnt,
+						op_channel_cnt, ch_wght_coeff,
+						session_type, stream_type);
+			if (rc < 0)
+				pr_err("%s: err setting channel mix config\n",
+					__func__);
+		}
+	}
+	return 0;
+}
 
 void msm_pcm_routing_reg_stream_app_type_cfg(int fedai_id, int app_type,
 	int acdb_dev_id, int sample_rate, int session_type)
