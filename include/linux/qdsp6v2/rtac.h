@@ -53,10 +53,12 @@ struct rtac_cal_block_data {
 struct rtac_popp_data {
 	uint32_t	popp;
 	uint32_t	popp_topology;
+    uint32_t    app_type;
 };
 
 struct rtac_adm_data {
 	uint32_t		topology_id;
+    uint32_t        afe_topology;
 	uint32_t		afe_port;
 	uint32_t		copp;
 	uint32_t		num_of_popp;
