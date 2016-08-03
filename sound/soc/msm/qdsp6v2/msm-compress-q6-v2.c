@@ -135,6 +135,8 @@ struct msm_compr_audio {
 	uint64_t bytes_read; /* from DSP */
 	uint32_t bytes_read_offset; /* bytes read offset*/
 
+	uint32_t ts_header_offset; /*holds the timestamp header size*/
+
 	int32_t first_buffer;
 	int32_t last_buffer;
 	int32_t partial_drain_delay;
@@ -423,26 +425,31 @@ static int msm_compr_read_buffer(struct msm_compr_audio *prtd)
 		return -EINVAL;
 	}
 
-	buffer_length = prtd->codec_param.buffer.fragment_size;
+	buffer_length = prtd->codec_param.buffer.fragment_size -
+						 prtd->ts_header_offset;
 	bytes_available = prtd->received_total - prtd->bytes_copied;
 	buffer_sent = prtd->bytes_read - prtd->bytes_copied;
-	if (buffer_sent + buffer_length > prtd->buffer_size) {
+	if (buffer_sent + buffer_length + prtd->ts_header_offset
+						> prtd->buffer_size) {
 		pr_debug(" %s : Buffer is Full bytes_available: %llu\n",
 				__func__, bytes_available);
 		return 0;
 	}
 
-	param.paddr = prtd->buffer_paddr + prtd->bytes_read_offset;
+	param.paddr = prtd->buffer_paddr + prtd->bytes_read_offset +
+						prtd->ts_header_offset;
 	param.len = buffer_length;
 	param.uid = buffer_length;
+	param.flags = prtd->codec_param.codec.flags;
 
 	pr_debug("%s: reading %d bytes from DSP byte_offset = %llu\n",
 			__func__, buffer_length, prtd->bytes_read);
 	if (q6asm_async_read(prtd->audio_client, &param) < 0) {
 		pr_err("%s:q6asm_async_read failed\n", __func__);
 	} else {
-		prtd->bytes_read += buffer_length;
-		prtd->bytes_read_offset += buffer_length;
+		prtd->bytes_read += buffer_length + prtd->ts_header_offset;
+		prtd->bytes_read_offset += buffer_length +
+							prtd->ts_header_offset;
 		if (prtd->bytes_read_offset >= prtd->buffer_size)
 			prtd->bytes_read_offset -= prtd->buffer_size;
 	}
@@ -463,6 +470,7 @@ static void compr_event_handler(uint32_t opcode,
 	uint32_t stream_index;
 	unsigned long flags;
 	uint64_t read_size;
+	uint32_t *buff_addr;
 
 	if (!prtd) {
 		pr_err("%s: prtd is NULL\n", __func__);
@@ -542,6 +550,23 @@ static void compr_event_handler(uint32_t opcode,
 
 		pr_debug("ASM_DATA_EVENT_READ_DONE_V2 offset %d, length %d\n",
 				 prtd->byte_offset, payload[4]);
+
+		if (prtd->ts_header_offset) {
+			/*Update the header for received buffer*/
+			buff_addr = prtd->buffer + prtd->byte_offset;
+			/* Write the length of the buffer*/
+			*buff_addr = prtd->codec_param.buffer.fragment_size
+						 - prtd->ts_header_offset;
+			buff_addr++;
+			/* Write the offset*/
+			*buff_addr = prtd->ts_header_offset;
+			buff_addr++;
+			/*Write the TS LSW*/
+			*buff_addr = payload[6];
+			buff_addr++;
+			/*Write the TS MSW*/
+			*buff_addr = payload[7];
+		}
 		/*Always assume read_size is same as fragment_size*/
 		read_size = prtd->codec_param.buffer.fragment_size;
 		prtd->byte_offset += read_size;
@@ -1201,7 +1226,7 @@ static int msm_compr_configure_dsp_for_capture(struct snd_compr_stream *cstream)
 	pr_debug("%s: stream_id %d bits_per_sample %d\n",
 			__func__, ac->stream_id, bits_per_sample);
 
-	ret = q6asm_open_read_v3(prtd->audio_client, FORMAT_LINEAR_PCM,
+	ret = q6asm_open_read_v4(prtd->audio_client, FORMAT_LINEAR_PCM,
 		bits_per_sample);
 	if (ret < 0)
 		pr_err("%s: q6asm_open_read failed\n", __func__);
@@ -1250,6 +1275,11 @@ static int msm_compr_configure_dsp_for_capture(struct snd_compr_stream *cstream)
 	prtd->buffer_paddr   = ac->port[dir].buf[0].phys;
 	prtd->buffer_size    = runtime->fragments * runtime->fragment_size;
 
+	/* Bit-0 of flags represent timestamp mode*/
+	if (prtd->codec_param.codec.flags & COMPRESSED_TIMESTAMP_FLAG)
+		prtd->ts_header_offset = sizeof(struct snd_codec_metadata);
+	else
+		prtd->ts_header_offset = 0;
 
 	pr_debug("sample_rate = %d num_channels = %d bits_per_sample = %dsample_word_size = %d\n",
 			prtd->sample_rate, prtd->num_channels, bits_per_sample,
