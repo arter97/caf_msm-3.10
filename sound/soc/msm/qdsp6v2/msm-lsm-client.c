@@ -35,7 +35,7 @@
 
 #define CAPTURE_MIN_NUM_PERIODS     2
 #define CAPTURE_MAX_NUM_PERIODS     8
-#define CAPTURE_MAX_PERIOD_SIZE     4096
+#define CAPTURE_MAX_PERIOD_SIZE     61440
 #define CAPTURE_MIN_PERIOD_SIZE     320
 #define LISTEN_MAX_STATUS_PAYLOAD_SIZE 256
 
@@ -47,12 +47,14 @@ static struct snd_pcm_hardware msm_pcm_hardware_capture = {
 				SNDRV_PCM_INFO_BLOCK_TRANSFER |
 				SNDRV_PCM_INFO_INTERLEAVED |
 				SNDRV_PCM_INFO_PAUSE | SNDRV_PCM_INFO_RESUME),
-	.formats =              SNDRV_PCM_FMTBIT_S16_LE,
-	.rates =                SNDRV_PCM_RATE_16000,
+	.formats =              (SNDRV_PCM_FMTBIT_S16_LE |
+				SNDRV_PCM_FMTBIT_S24_LE),
+	.rates =		(SNDRV_PCM_RATE_16000 |
+				SNDRV_PCM_RATE_48000),
 	.rate_min =             16000,
-	.rate_max =             16000,
+	.rate_max =             48000,
 	.channels_min =         1,
-	.channels_max =         1,
+	.channels_max =         4,
 	.buffer_bytes_max =     CAPTURE_MAX_NUM_PERIODS *
 				CAPTURE_MAX_PERIOD_SIZE,
 	.period_bytes_min =	CAPTURE_MIN_PERIOD_SIZE,
@@ -64,7 +66,7 @@ static struct snd_pcm_hardware msm_pcm_hardware_capture = {
 
 /* Conventional and unconventional sample rate supported */
 static unsigned int supported_sample_rates[] = {
-	16000,
+	16000, 48000,
 };
 
 static struct snd_pcm_hw_constraint_list constraints_sample_rates = {
@@ -2030,6 +2032,10 @@ static int msm_lsm_prepare(struct snd_pcm_substream *substream)
 		return -EINVAL;
 	}
 
+	if (q6lsm_set_media_fmt_params(prtd->lsm_client))
+		dev_dbg(rtd->dev,
+			"%s: failed to set lsm media fmt params\n", __func__);
+
 	if (prtd->lsm_client->session_state == IDLE) {
 		ret = msm_pcm_routing_reg_phy_compr_stream(
 				rtd->dai_link->be_id,
@@ -2121,7 +2127,7 @@ static int msm_lsm_hw_params(struct snd_pcm_substream *substream,
 {
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct lsm_priv *prtd = runtime->private_data;
-	struct lsm_lab_hw_params *hw_params = NULL;
+	struct lsm_hw_params *hw_params = NULL;
 	struct snd_soc_pcm_runtime *rtd;
 
 	if (!substream->private_data) {
@@ -2137,25 +2143,36 @@ static int msm_lsm_hw_params(struct snd_pcm_substream *substream,
 		return -EINVAL;
 	}
 	hw_params = &prtd->lsm_client->hw_params;
-	hw_params->sample_rate = params_rate(params);
-	hw_params->sample_size =
-	(params_format(params) == SNDRV_PCM_FORMAT_S16_LE) ? 16 : 0;
+	hw_params->num_chs = params_channels(params);
 	hw_params->period_count = params_periods(params);
-	if (hw_params->sample_rate != 16000 || hw_params->sample_size != 16 ||
-		hw_params->period_count == 0) {
+	hw_params->sample_rate = params_rate(params);
+	if (((hw_params->sample_rate != 16000) &&
+		(hw_params->sample_rate != 48000)) ||
+		(hw_params->period_count == 0)) {
 		dev_err(rtd->dev,
-			"%s: Invalid params sample rate %d sample size %d period count %d",
+			"%s: Invalid Params sample rate %d period count %d\n",
 			__func__, hw_params->sample_rate,
-			hw_params->sample_size,
-		hw_params->period_count);
+			hw_params->period_count);
 		return -EINVAL;
 	}
+
+	if (params_format(params) == SNDRV_PCM_FORMAT_S16_LE)
+		hw_params->sample_size = 16;
+	else if (params_format(params) == SNDRV_PCM_FORMAT_S24_LE)
+		hw_params->sample_size = 24;
+	else {
+		dev_err(rtd->dev, "%s: Invalid Format 0x%x\n",
+			__func__, params_format(params));
+		return -EINVAL;
+	}
+
 	hw_params->buf_sz = params_buffer_bytes(params) /
-	hw_params->period_count;
+			hw_params->period_count;
 	dev_dbg(rtd->dev,
-		"%s: sample rate %d sample size %d buffer size %d period count %d\n",
-		__func__, hw_params->sample_rate, hw_params->sample_size,
-		hw_params->buf_sz, hw_params->period_count);
+		"%s: channels %d sample rate %d sample size %d buffer size %d period count %d\n",
+		__func__, hw_params->num_chs, hw_params->sample_rate,
+		hw_params->sample_size, hw_params->buf_sz,
+		hw_params->period_count);
 	return 0;
 }
 
@@ -2251,6 +2268,182 @@ static int msm_lsm_pcm_copy(struct snd_pcm_substream *substream, int ch,
 	return 0;
 }
 
+static int msm_lsm_app_type_cfg_ctl_put(struct snd_kcontrol *kcontrol,
+					struct snd_ctl_elem_value *ucontrol)
+{
+	u64 fe_id = kcontrol->private_value;
+	int app_type;
+	int acdb_dev_id;
+	int sample_rate;
+
+	pr_debug("%s: fe_id- %llu\n", __func__, fe_id);
+	if ((fe_id < MSM_FRONTEND_DAI_LSM1) ||
+		(fe_id > MSM_FRONTEND_DAI_LSM8)) {
+		pr_err("%s: Received out of bounds fe_id %llu\n",
+			__func__, fe_id);
+		return -EINVAL;
+	}
+
+	app_type = ucontrol->value.integer.value[0];
+	acdb_dev_id = ucontrol->value.integer.value[1];
+	sample_rate = ucontrol->value.integer.value[2];
+
+	pr_debug("%s: app_type- %d acdb_dev_id- %d sample_rate- %d session_type- %d\n",
+		__func__, app_type, acdb_dev_id, sample_rate, SESSION_TYPE_TX);
+	msm_pcm_routing_reg_stream_app_type_cfg(fe_id, app_type,
+			acdb_dev_id, sample_rate, SESSION_TYPE_TX);
+
+	return 0;
+}
+
+static int msm_lsm_app_type_cfg_ctl_get(struct snd_kcontrol *kcontrol,
+					struct snd_ctl_elem_value *ucontrol)
+{
+	u64 fe_id = kcontrol->private_value;
+	int ret = 0;
+	int app_type;
+	int acdb_dev_id;
+	int sample_rate;
+
+	pr_debug("%s: fe_id- %llu\n", __func__, fe_id);
+	if ((fe_id < MSM_FRONTEND_DAI_LSM1) ||
+		(fe_id > MSM_FRONTEND_DAI_LSM8)) {
+		pr_err("%s: Received out of bounds fe_id %llu\n",
+			__func__, fe_id);
+		return -EINVAL;
+	}
+
+	ret = msm_pcm_routing_get_stream_app_type_cfg(fe_id, SESSION_TYPE_TX,
+		&app_type, &acdb_dev_id, &sample_rate);
+	if (ret < 0) {
+		pr_err("%s: msm_pcm_routing_get_stream_app_type_cfg failed returned %d\n",
+			__func__, ret);
+		goto done;
+	}
+
+	ucontrol->value.integer.value[0] = app_type;
+	ucontrol->value.integer.value[1] = acdb_dev_id;
+	ucontrol->value.integer.value[2] = sample_rate;
+	pr_debug("%s: fedai_id %llu, session_type %d, app_type %d, acdb_dev_id %d, sample_rate %d\n",
+		__func__, fe_id, SESSION_TYPE_TX,
+		app_type, acdb_dev_id, sample_rate);
+done:
+	return ret;
+}
+
+static int msm_lsm_add_app_type_controls(struct snd_soc_pcm_runtime *rtd)
+{
+	struct snd_pcm *pcm = rtd->pcm;
+	struct snd_pcm_usr *app_type_info;
+	struct snd_kcontrol *kctl;
+	const char *mixer_ctl_name	= "Listen Stream";
+	const char *deviceNo		= "NN";
+	const char *suffix		= "App Type Cfg";
+	int ctl_len, ret = 0;
+
+	ctl_len = strlen(mixer_ctl_name) + 1 +
+			strlen(deviceNo) + 1 + strlen(suffix) + 1;
+	pr_debug("%s: Listen app type cntrl add\n", __func__);
+	ret = snd_pcm_add_usr_ctls(pcm, SNDRV_PCM_STREAM_CAPTURE,
+				NULL, 1, ctl_len, rtd->dai_link->be_id,
+				&app_type_info);
+	if (ret < 0) {
+		pr_err("%s: Listen app type cntrl add failed: %d\n",
+			__func__, ret);
+		return ret;
+	}
+	kctl = app_type_info->kctl;
+	snprintf(kctl->id.name, ctl_len, "%s %d %s",
+		mixer_ctl_name, rtd->pcm->device, suffix);
+	kctl->put = msm_lsm_app_type_cfg_ctl_put;
+	kctl->get = msm_lsm_app_type_cfg_ctl_get;
+	return 0;
+}
+
+static int msm_lsm_chmix_cfg_ctl_put(struct snd_kcontrol *kcontrol,
+					struct snd_ctl_elem_value *ucontrol)
+{
+	u64 fe_id = kcontrol->private_value;
+	int ip_channel_cnt, op_channel_cnt, wght_coeff_index;
+	int i;
+	int ch_wght_coeff[LSM_MAX_NUM_CHANNELS * LSM_MAX_NUM_CHANNELS];
+
+	pr_debug("%s: fe_id- %llu\n", __func__, fe_id);
+	if ((fe_id < MSM_FRONTEND_DAI_LSM1) ||
+		(fe_id > MSM_FRONTEND_DAI_LSM8)) {
+		pr_err("%s: Received out of bounds fe_id %llu\n",
+			__func__, fe_id);
+		return -EINVAL;
+	}
+
+	ip_channel_cnt = ucontrol->value.integer.value[0];
+	op_channel_cnt = ucontrol->value.integer.value[1];
+	wght_coeff_index = 2;
+	/* wght coeff of first out channel corresponding to each in channel
+	 * are sent followed by second out channel for each in channel etc.
+	 */
+	memset(ch_wght_coeff, 0, sizeof(ch_wght_coeff));
+	for (i = 0; i < op_channel_cnt * ip_channel_cnt; i++) {
+		ch_wght_coeff[i] =
+			ucontrol->value.integer.value[wght_coeff_index++];
+	}
+
+	msm_pcm_routing_send_chmix_cfg(fe_id, ip_channel_cnt, op_channel_cnt,
+			ch_wght_coeff, SESSION_TYPE_TX, STREAM_TYPE_LSM);
+
+	return 0;
+}
+
+static int msm_lsm_chmix_cfg_ctl_get(struct snd_kcontrol *kcontrol,
+					struct snd_ctl_elem_value *ucontrol)
+{
+	return 0;
+}
+
+static int msm_lsm_add_chmix_cfg_controls(struct snd_soc_pcm_runtime *rtd)
+{
+	struct snd_pcm *pcm = rtd->pcm;
+	struct snd_pcm_usr *chmix_cfg_info;
+	struct snd_kcontrol *kctl;
+	const char *mixer_ctl_name	= "Listen Stream";
+	const char *deviceNo		= "NN";
+	const char *suffix		= "Channel Mix Cfg";
+	int ctl_len, ret = 0;
+
+	ctl_len = strlen(mixer_ctl_name) + 1 +
+			strlen(deviceNo) + 1 + strlen(suffix) + 1;
+	pr_debug("%s: Listen chmix cfg cntrl add\n", __func__);
+	ret = snd_pcm_add_usr_ctls(pcm, SNDRV_PCM_STREAM_CAPTURE,
+				NULL, 1, ctl_len, rtd->dai_link->be_id,
+				&chmix_cfg_info);
+	if (ret < 0) {
+		pr_err("%s: Listen chmix cfg cntrl add failed: %d\n",
+			__func__, ret);
+		return ret;
+	}
+	kctl = chmix_cfg_info->kctl;
+	snprintf(kctl->id.name, ctl_len, "%s %d %s",
+		mixer_ctl_name, rtd->pcm->device, suffix);
+	kctl->put = msm_lsm_chmix_cfg_ctl_put;
+	kctl->get = msm_lsm_chmix_cfg_ctl_get;
+	return 0;
+}
+
+static int msm_lsm_add_controls(struct snd_soc_pcm_runtime *rtd)
+{
+	int ret = 0;
+
+	ret = msm_lsm_add_app_type_controls(rtd);
+	if (ret)
+		pr_err("%s, add  app type controls failed:%d\n", __func__, ret);
+
+	ret = msm_lsm_add_chmix_cfg_controls(rtd);
+	if (ret)
+		pr_err("%s: add chmix cfg controls failed:%d\n", __func__, ret);
+
+	return ret;
+}
+
 static struct snd_pcm_ops msm_lsm_ops = {
 	.open           = msm_lsm_open,
 	.close          = msm_lsm_close,
@@ -2265,11 +2458,16 @@ static struct snd_pcm_ops msm_lsm_ops = {
 static int msm_asoc_lsm_new(struct snd_soc_pcm_runtime *rtd)
 {
 	struct snd_card *card = rtd->card->snd_card;
+	int ret = 0;
 
 	if (!card->dev->coherent_dma_mask)
 		card->dev->coherent_dma_mask = DMA_BIT_MASK(32);
 
-	return 0;
+	ret = msm_lsm_add_controls(rtd);
+	if (ret)
+		pr_err("%s, kctl add failed:%d\n", __func__, ret);
+
+	return ret;
 }
 
 static int msm_asoc_lsm_probe(struct snd_soc_platform *platform)

@@ -27,6 +27,10 @@ void msm_qti_pp_add_controls(struct snd_soc_platform *platform);
 
 int msm_qti_pp_asphere_init(int port_id, int copp_idx);
 void msm_qti_pp_asphere_deinit(int port_id);
+int msm_qti_pp_send_chmix_cfg_cmd(int port_id, int copp_idx,
+				unsigned int session_id, int ip_channel_count,
+				int out_channel_cnt, int *ch_wght_coeff,
+				int session_type, int stream_type);
 
 #else
 
@@ -48,6 +52,14 @@ int msm_qti_pp_asphere_init(int port_id, int copp_idx)
 	return 0;
 }
 void msm_qti_pp_asphere_deinit(int port_id) { }
+
+int msm_qti_pp_send_chmix_cfg_cmd(int port_id, int copp_idx,
+				unsigned int session_id, int ip_channel_cnt,
+				int out_channel_cnt, int *ch_wght_coeff,
+				int session_type, int stream_type)
+{
+	return 0;
+}
 
 #endif
 

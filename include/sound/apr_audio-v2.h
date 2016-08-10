@@ -462,6 +462,30 @@ struct adm_cmd_set_pspd_mtmx_strtr_params_v5 {
 	u16		reserved;
 } __packed;
 
+/* set customized mixing on matrix mixer.
+ * Updated to account for both LSM as well as ASM path.
+ */
+#define ADM_CMD_SET_PSPD_MTMX_STRTR_PARAMS_V6                        0x00010364
+struct adm_cmd_set_pspd_mtmx_strtr_params_v6 {
+	struct apr_hdr hdr;
+	/* LSW of parameter data payload address.*/
+	u32		payload_addr_lsw;
+	/* MSW of parameter data payload address.*/
+	u32		payload_addr_msw;
+	/* Memory map handle returned by ADM_CMD_SHARED_MEM_MAP_REGIONS */
+	/* command. If mem_map_handle is zero implies the message is in */
+	/* the payload */
+	u32		mem_map_handle;
+	/* Size in bytes of the variable payload accompanying this */
+	/* message or in shared memory. This is used for parsing the */
+	/* parameter payload. */
+	u32		payload_size;
+	u16		direction;
+	u16		sessionid;
+	u16		deviceid;
+	u16		stream_type;
+} __packed;
+
 /* Defined specifically for in-band use, includes params */
 struct adm_cmd_set_pp_params_inband_v5 {
 	struct apr_hdr hdr;
@@ -7644,6 +7668,7 @@ struct asm_dts_eagle_param_get {
 #define LSM_PARAM_ID_SWMAD_MODEL			(0x00012C19)
 #define LSM_PARAM_ID_SWMAD_ENABLE			(0x00012C1A)
 #define LSM_PARAM_ID_POLLING_ENABLE			(0x00012C1B)
+#define LSM_PARAM_ID_MEDIA_FMT				(0x00012C1E)
 #define LSM_PARAM_ID_FWK_MODE_CONFIG			(0x00012C27)
 
 /* HW MAD specific */

@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -103,7 +103,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 			.rates = (SNDRV_PCM_RATE_8000_192000|
 					SNDRV_PCM_RATE_KNOT),
 			.formats = (SNDRV_PCM_FMTBIT_S16_LE |
-				    SNDRV_PCM_FMTBIT_S24_LE|
+				    SNDRV_PCM_FMTBIT_S24_LE |
 				    SNDRV_PCM_FMTBIT_S24_3LE),
 			.channels_min = 1,
 			.channels_max = 4,
@@ -235,9 +235,9 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 			.rates = (SNDRV_PCM_RATE_8000_192000|
 					SNDRV_PCM_RATE_KNOT),
 			.formats = (SNDRV_PCM_FMTBIT_S16_LE |
-						SNDRV_PCM_FMTBIT_S24_LE |
-						SNDRV_PCM_FMTBIT_S24_3LE),
-			.channels_min = 1,
+				    SNDRV_PCM_FMTBIT_S24_LE |
+				    SNDRV_PCM_FMTBIT_S24_3LE),
+			.channels_min = 0,
 			.channels_max = 8,
 			.rate_min =     8000,
 			.rate_max =	48000,
@@ -267,7 +267,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 			.rates = (SNDRV_PCM_RATE_8000_48000|
 					SNDRV_PCM_RATE_KNOT),
 			.formats = (SNDRV_PCM_FMTBIT_S16_LE |
-				    SNDRV_PCM_FMTBIT_S24_LE|
+				    SNDRV_PCM_FMTBIT_S24_LE |
 				    SNDRV_PCM_FMTBIT_S24_3LE),
 			.channels_min = 1,
 			.channels_max = 8,
@@ -963,12 +963,14 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		.capture = {
 			.stream_name = "Listen 1 Audio Service Capture",
 			.aif_name = "LSM1_UL_HL",
-			.rates = SNDRV_PCM_RATE_16000,
-			.formats = SNDRV_PCM_FMTBIT_S16_LE,
+			.rates = (SNDRV_PCM_RATE_16000 |
+				  SNDRV_PCM_RATE_48000),
+			.formats = (SNDRV_PCM_FMTBIT_S16_LE |
+				    SNDRV_PCM_FMTBIT_S24_LE),
 			.channels_min = 1,
-			.channels_max = 1,
+			.channels_max = 4,
 			.rate_min = 16000,
-			.rate_max = 16000,
+			.rate_max = 48000,
 		},
 		.ops = &msm_fe_dai_ops,
 		.name = "LSM1",
@@ -978,12 +980,14 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		.capture = {
 			.stream_name = "Listen 2 Audio Service Capture",
 			.aif_name = "LSM2_UL_HL",
-			.rates = SNDRV_PCM_RATE_16000,
-			.formats = SNDRV_PCM_FMTBIT_S16_LE,
+			.rates = (SNDRV_PCM_RATE_16000 |
+				  SNDRV_PCM_RATE_48000),
+			.formats = (SNDRV_PCM_FMTBIT_S16_LE |
+				    SNDRV_PCM_FMTBIT_S24_LE),
 			.channels_min = 1,
-			.channels_max = 1,
+			.channels_max = 4,
 			.rate_min = 16000,
-			.rate_max = 16000,
+			.rate_max = 48000,
 		},
 		.ops = &msm_fe_dai_ops,
 		.name = "LSM2",
@@ -993,12 +997,14 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		.capture = {
 			.stream_name = "Listen 3 Audio Service Capture",
 			.aif_name = "LSM3_UL_HL",
-			.rates = SNDRV_PCM_RATE_16000,
-			.formats = SNDRV_PCM_FMTBIT_S16_LE,
+			.rates = (SNDRV_PCM_RATE_16000 |
+				  SNDRV_PCM_RATE_48000),
+			.formats = (SNDRV_PCM_FMTBIT_S16_LE |
+				    SNDRV_PCM_FMTBIT_S24_LE),
 			.channels_min = 1,
-			.channels_max = 1,
+			.channels_max = 4,
 			.rate_min = 16000,
-			.rate_max = 16000,
+			.rate_max = 48000,
 		},
 		.ops = &msm_fe_dai_ops,
 		.name = "LSM3",
@@ -1008,12 +1014,14 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		.capture = {
 			.stream_name = "Listen 4 Audio Service Capture",
 			.aif_name = "LSM4_UL_HL",
-			.rates = SNDRV_PCM_RATE_16000,
-			.formats = SNDRV_PCM_FMTBIT_S16_LE,
+			.rates = (SNDRV_PCM_RATE_16000 |
+				  SNDRV_PCM_RATE_48000),
+			.formats = (SNDRV_PCM_FMTBIT_S16_LE |
+				    SNDRV_PCM_FMTBIT_S24_LE),
 			.channels_min = 1,
-			.channels_max = 1,
+			.channels_max = 4,
 			.rate_min = 16000,
-			.rate_max = 16000,
+			.rate_max = 48000,
 		},
 		.ops = &msm_fe_dai_ops,
 		.name = "LSM4",
@@ -1023,12 +1031,14 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		.capture = {
 			.stream_name = "Listen 5 Audio Service Capture",
 			.aif_name = "LSM5_UL_HL",
-			.rates = SNDRV_PCM_RATE_16000,
-			.formats = SNDRV_PCM_FMTBIT_S16_LE,
+			.rates = (SNDRV_PCM_RATE_16000 |
+				  SNDRV_PCM_RATE_48000),
+			.formats = (SNDRV_PCM_FMTBIT_S16_LE |
+				    SNDRV_PCM_FMTBIT_S24_LE),
 			.channels_min = 1,
-			.channels_max = 1,
+			.channels_max = 4,
 			.rate_min = 16000,
-			.rate_max = 16000,
+			.rate_max = 48000,
 		},
 		.ops = &msm_fe_dai_ops,
 		.name = "LSM5",
@@ -1038,12 +1048,14 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		.capture = {
 			.stream_name = "Listen 6 Audio Service Capture",
 			.aif_name = "LSM6_UL_HL",
-			.rates = SNDRV_PCM_RATE_16000,
-			.formats = SNDRV_PCM_FMTBIT_S16_LE,
+			.rates = (SNDRV_PCM_RATE_16000 |
+				  SNDRV_PCM_RATE_48000),
+			.formats = (SNDRV_PCM_FMTBIT_S16_LE |
+				    SNDRV_PCM_FMTBIT_S24_LE),
 			.channels_min = 1,
-			.channels_max = 1,
+			.channels_max = 4,
 			.rate_min = 16000,
-			.rate_max = 16000,
+			.rate_max = 48000,
 		},
 		.ops = &msm_fe_dai_ops,
 		.name = "LSM6",
@@ -1053,12 +1065,14 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		.capture = {
 			.stream_name = "Listen 7 Audio Service Capture",
 			.aif_name = "LSM7_UL_HL",
-			.rates = SNDRV_PCM_RATE_16000,
-			.formats = SNDRV_PCM_FMTBIT_S16_LE,
+			.rates = (SNDRV_PCM_RATE_16000 |
+				  SNDRV_PCM_RATE_48000),
+			.formats = (SNDRV_PCM_FMTBIT_S16_LE |
+				    SNDRV_PCM_FMTBIT_S24_LE),
 			.channels_min = 1,
-			.channels_max = 1,
+			.channels_max = 4,
 			.rate_min = 16000,
-			.rate_max = 16000,
+			.rate_max = 48000,
 		},
 		.ops = &msm_fe_dai_ops,
 		.name = "LSM7",
@@ -1068,12 +1082,14 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		.capture = {
 			.stream_name = "Listen 8 Audio Service Capture",
 			.aif_name = "LSM8_UL_HL",
-			.rates = SNDRV_PCM_RATE_16000,
-			.formats = SNDRV_PCM_FMTBIT_S16_LE,
+			.rates = (SNDRV_PCM_RATE_16000 |
+				  SNDRV_PCM_RATE_48000),
+			.formats = (SNDRV_PCM_FMTBIT_S16_LE |
+				    SNDRV_PCM_FMTBIT_S24_LE),
 			.channels_min = 1,
-			.channels_max = 1,
+			.channels_max = 4,
 			.rate_min = 16000,
-			.rate_max = 16000,
+			.rate_max = 48000,
 		},
 		.ops = &msm_fe_dai_ops,
 		.name = "LSM8",
@@ -1286,6 +1302,63 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		},
 		.ops = &msm_fe_dai_ops,
 		.name = "VoiceMMode2",
+		.probe = fe_dai_probe,
+	},
+	{
+		.capture = {
+			.stream_name = "MultiMedia17 Capture",
+			.aif_name = "MM_UL17",
+			.rates = (SNDRV_PCM_RATE_8000_192000|
+					SNDRV_PCM_RATE_KNOT),
+			.formats = (SNDRV_PCM_FMTBIT_S16_LE |
+				    SNDRV_PCM_FMTBIT_S24_LE |
+				    SNDRV_PCM_FMTBIT_S24_3LE),
+			.channels_min = 1,
+			.channels_max = 8,
+			.rate_min =     8000,
+			.rate_max =     48000,
+		},
+		.ops = &msm_fe_Multimedia_dai_ops,
+		.compress_dai = 1,
+		.name = "MultiMedia17",
+		.probe = fe_dai_probe,
+	},
+	{
+		.capture = {
+			.stream_name = "MultiMedia18 Capture",
+			.aif_name = "MM_UL18",
+			.rates = (SNDRV_PCM_RATE_8000_192000|
+					SNDRV_PCM_RATE_KNOT),
+			.formats = (SNDRV_PCM_FMTBIT_S16_LE |
+				    SNDRV_PCM_FMTBIT_S24_LE |
+				    SNDRV_PCM_FMTBIT_S24_3LE),
+			.channels_min = 1,
+			.channels_max = 8,
+			.rate_min =     8000,
+			.rate_max =     48000,
+		},
+		.ops = &msm_fe_Multimedia_dai_ops,
+		.compress_dai = 1,
+		.name = "MultiMedia18",
+		.probe = fe_dai_probe,
+	},
+	{
+		.capture = {
+			.stream_name = "MultiMedia19 Capture",
+			.aif_name = "MM_UL19",
+			.rates = (SNDRV_PCM_RATE_8000_192000|
+					SNDRV_PCM_RATE_KNOT),
+			.formats = (SNDRV_PCM_FMTBIT_S16_LE |
+				    SNDRV_PCM_FMTBIT_S24_LE |
+				    SNDRV_PCM_FMTBIT_S24_3LE),
+			.channels_min = 1,
+			.channels_max = 8,
+			.rate_min =     8000,
+			.rate_max =     48000,
+		},
+		.ops = &msm_fe_Multimedia_dai_ops,
+		.compress_dai = 1,
+		.name = "MultiMedia19",
 		.probe = fe_dai_probe,
 	},
 };

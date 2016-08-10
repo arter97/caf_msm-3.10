@@ -29,6 +29,8 @@
 /* Equal to Frontend after last of the MULTIMEDIA SESSIONS */
 #define MAX_EQ_SESSIONS		MSM_FRONTEND_DAI_CS_VOICE
 
+#define CHMIX_CFG_CONST_PARAM_SIZE 4
+
 enum {
 	EQ_BAND1 = 0,
 	EQ_BAND2,
@@ -320,6 +322,129 @@ skip_send_cmd:
 			__func__);
 		kfree(params_value);
 		return -ENOMEM;
+}
+
+static int msm_qti_pp_arrange_mch_map(int16_t *update_params_value16,
+			 int channel_count)
+{
+	int rc = 0;
+
+	if (channel_count == 1)	{
+		*update_params_value16++ = PCM_CHANNEL_FC;
+	} else if (channel_count == 2) {
+		*update_params_value16++ = PCM_CHANNEL_FL;
+		*update_params_value16++ = PCM_CHANNEL_FR;
+	} else if (channel_count == 3)	{
+		*update_params_value16++ = PCM_CHANNEL_FL;
+		*update_params_value16++ = PCM_CHANNEL_FR;
+		*update_params_value16++ = PCM_CHANNEL_FC;
+	} else if (channel_count == 4) {
+		*update_params_value16++ = PCM_CHANNEL_FL;
+		*update_params_value16++ = PCM_CHANNEL_FR;
+		*update_params_value16++ = PCM_CHANNEL_LS;
+		*update_params_value16++ = PCM_CHANNEL_RS;
+	} else {
+		pr_err("%s: invalid num_chan %d\n", __func__,
+			channel_count);
+		rc = -EINVAL;
+	}
+
+	return rc;
+}
+
+static uint32_t msm_qti_pp_get_chmix_param_size(int ip_ch_cnt, int op_ch_cnt)
+{
+	uint32_t param_size;
+	/* Assign constant part of param length initially -
+	 * Index, Num out channels, Num in channels.
+	 */
+	param_size = CHMIX_CFG_CONST_PARAM_SIZE * sizeof(uint16_t);
+
+	/* Calculate variable part of param length using ip and op channels */
+
+	/* channel map for input and output channels */
+	param_size += op_ch_cnt * sizeof(uint16_t);
+	param_size += ip_ch_cnt * sizeof(uint16_t);
+
+	/* weightage coeff for each op ch corresponding to each ip ch */
+	param_size += (ip_ch_cnt * op_ch_cnt) * sizeof(uint16_t);
+
+	/* Params length should be multiple of 4 bytes i.e 32bit aligned*/
+	param_size = (param_size + 3) & 0xFFFFFFFC;
+
+	return param_size;
+}
+
+int msm_qti_pp_send_chmix_cfg_cmd(int port_id, int copp_idx,
+				unsigned int session_id, int ip_channel_cnt,
+				int op_channel_cnt, int *ch_wght_coeff,
+				int session_type, int stream_type)
+{
+	char *params_value;
+	int *update_params_value32, rc = 0, i, direction;
+	int16_t *update_params_value16 = 0;
+	uint32_t param_size = msm_qti_pp_get_chmix_param_size(ip_channel_cnt,
+				op_channel_cnt);
+	/* constant payload data size represents module_id, param_id,
+	 * param size, reserved field.
+	 */
+	uint32_t params_length = param_size +
+			sizeof(struct adm_param_data_v5);
+	pr_debug("%s: port_id - %d, session id - %d\n", __func__, port_id,
+		 session_id);
+
+	params_value = kzalloc(params_length, GFP_KERNEL);
+	if (!params_value)
+		return -ENOMEM;
+
+	update_params_value32 = (int *)params_value;
+	*update_params_value32++ = MTMX_MODULE_ID_DEFAULT_CHMIXER;
+	*update_params_value32++ = DEFAULT_CHMIXER_PARAM_ID_COEFF;
+
+	update_params_value16 = (int16_t *)update_params_value32;
+	*update_params_value16++ = param_size;
+	/*for alignment only*/
+	*update_params_value16++ = 0;
+	/*index is 32-bit param in little endian*/
+	*update_params_value16++ = CUSTOM_STEREO_INDEX_PARAM;
+	*update_params_value16++ = 0;
+	/*number of out ch*/
+	*update_params_value16++ = op_channel_cnt;
+	/*number of in ch*/
+	*update_params_value16++ = ip_channel_cnt;
+
+	/* Out ch map FL/FR*/
+	msm_qti_pp_arrange_mch_map(update_params_value16, op_channel_cnt);
+	update_params_value16 += op_channel_cnt;
+
+	/* In ch map FL/FR*/
+	msm_qti_pp_arrange_mch_map(update_params_value16, ip_channel_cnt);
+	update_params_value16 += ip_channel_cnt;
+
+	/* weighting coefficients as name suggests,
+	 * mixing will be done according to these coefficients.
+	 */
+	for (i = 0; i < ip_channel_cnt * op_channel_cnt; i++)
+		*update_params_value16++ =
+					ch_wght_coeff[i] ? Q14_GAIN_UNITY : 0;
+	if (params_length) {
+		direction = (session_type == SESSION_TYPE_RX) ?
+			ADM_MATRIX_ID_AUDIO_RX : ADM_MATRIX_ID_AUDIO_TX;
+		rc = adm_set_custom_chmix_cfg(port_id,
+					      copp_idx,
+					      session_id,
+					      params_value,
+					      params_length,
+					      direction,
+					      stream_type);
+		if (rc) {
+			pr_err("%s: send params failed rc=%d\n", __func__, rc);
+			kfree(params_value);
+			return -EINVAL;
+		}
+	}
+	kfree(params_value);
+	return 0;
 }
 
 /* RMS */
