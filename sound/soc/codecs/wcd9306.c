@@ -3604,7 +3604,9 @@ static int tapan_volatile(struct snd_soc_codec *ssc, unsigned int reg)
 
 #define TAPAN_FORMATS (SNDRV_PCM_FMTBIT_S16_LE)
 #define TAPAN_FORMATS_S16_S24_LE (SNDRV_PCM_FMTBIT_S16_LE | \
-				  SNDRV_PCM_FORMAT_S24_LE)
+				SNDRV_PCM_FORMAT_S24_LE | \
+				SNDRV_PCM_FORMAT_S24_3LE)
+
 static int tapan_write(struct snd_soc_codec *codec, unsigned int reg,
 	unsigned int value)
 {
@@ -4028,6 +4030,7 @@ static void tapan_set_rxsb_port_format(struct snd_pcm_hw_params *params,
 		tapan_p->dai[dai->id].bit_width = 16;
 		break;
 	case SNDRV_PCM_FORMAT_S24_LE:
+	case SNDRV_PCM_FORMAT_S24_3LE:
 		bit_sel = 0x0;
 		tapan_p->dai[dai->id].bit_width = 24;
 		break;
@@ -4089,6 +4092,7 @@ static void tapan_set_tx_sb_port_format(struct snd_pcm_hw_params *params,
 		tapan_p->dai[dai->id].bit_width = 16;
 		break;
 	case SNDRV_PCM_FORMAT_S24_LE:
+	case SNDRV_PCM_FORMAT_S24_3LE:
 		bit_sel = 0x0;
 		tapan_p->dai[dai->id].bit_width = 24;
 		break;
@@ -4201,6 +4205,7 @@ static int tapan_hw_params(struct snd_pcm_substream *substream,
                         tapan->dai[dai->id].bit_width = 16;
                         break;
                 case SNDRV_PCM_FORMAT_S24_LE:
+		case SNDRV_PCM_FORMAT_S24_3LE:
                         tapan->dai[dai->id].bit_width = 24;
                         i2s_bit_mode = 0x00;
                         break;
@@ -4433,7 +4438,7 @@ static struct snd_soc_dai_driver tapan_dai[] = {
 		.capture = {
 			.stream_name = "AIF1 Capture",
 			.rates = WCD9306_RATES,
-			.formats = TAPAN_FORMATS,
+			.formats = TAPAN_FORMATS_S16_S24_LE,
 			.rate_max = 192000,
 			.rate_min = 8000,
 			.channels_min = 1,
@@ -4461,7 +4466,7 @@ static struct snd_soc_dai_driver tapan_dai[] = {
 		.capture = {
 			.stream_name = "AIF2 Capture",
 			.rates = WCD9306_RATES,
-			.formats = TAPAN_FORMATS,
+			.formats = TAPAN_FORMATS_S16_S24_LE,
 			.rate_max = 192000,
 			.rate_min = 8000,
 			.channels_min = 1,
@@ -4489,7 +4494,7 @@ static struct snd_soc_dai_driver tapan_dai[] = {
 		.capture = {
 			.stream_name = "AIF3 Capture",
 			.rates = WCD9306_RATES,
-			.formats = TAPAN_FORMATS,
+			.formats = TAPAN_FORMATS_S16_S24_LE,
 			.rate_max = 48000,
 			.rate_min = 8000,
 			.channels_min = 1,
@@ -4506,7 +4511,7 @@ static struct snd_soc_dai_driver tapan_i2s_dai[] = {
 		.playback = {
 			.stream_name = "AIF1 Playback",
 			.rates = WCD9306_RATES,
-			.formats = TAPAN_FORMATS,
+			.formats = TAPAN_FORMATS_S16_S24_LE,
 			.rate_max = 192000,
 			.rate_min = 8000,
 			.channels_min = 1,
@@ -4520,7 +4525,7 @@ static struct snd_soc_dai_driver tapan_i2s_dai[] = {
 		.capture = {
 			.stream_name = "AIF1 Capture",
 			.rates = WCD9306_RATES,
-			.formats = TAPAN_FORMATS,
+			.formats = TAPAN_FORMATS_S16_S24_LE,
 			.rate_max = 192000,
 			.rate_min = 8000,
 			.channels_min = 1,
