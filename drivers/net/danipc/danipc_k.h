@@ -254,6 +254,7 @@ struct danipc_cdev_status {
 	uint32_t	rx;
 	uint32_t	rx_bytes;
 	uint32_t	rx_drop;
+	uint32_t	rx_no_buf;
 	uint32_t	rx_error;
 	uint32_t	rx_zlen_msg;
 	uint32_t	rx_oversize_msg;

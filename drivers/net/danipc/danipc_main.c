@@ -649,10 +649,7 @@ static void shm_msg_free(struct danipc_cdev *cdev, struct shm_msg *msg)
 	unsigned long flags;
 
 	spin_lock_irqsave(&cdev->rx_lock, flags);
-
 	__shm_msg_free(cdev, msg);
-	danipc_cdev_enqueue_kmem_recvq(cdev, msg->prio);
-
 	spin_unlock_irqrestore(&cdev->rx_lock, flags);
 }
 
@@ -983,7 +980,6 @@ int danipc_cdev_mmsg_rx(struct danipc_cdev *cdev,
 	spin_lock_irqsave(&cdev->rx_lock, flags);
 	while ((buf = shm_bufpool_get_buf(&msgs)))
 		shm_bufpool_put_buf(&rx_queue->kmem_freeq, buf);
-	danipc_cdev_enqueue_kmem_recvq(cdev, mmsg->hdr.prio);
 	spin_unlock_irqrestore(&cdev->rx_lock, flags);
 
 	return n;
@@ -1227,7 +1223,6 @@ int danipc_cdev_mapped_recv_done(struct danipc_cdev *cdev,
 {
 	unsigned long flags;
 	int i;
-	bool refill_hi = false, refill_lo = false;
 
 	if (unlikely(!bufs || !vma || !cdev))
 		return -EINVAL;
@@ -1274,10 +1269,6 @@ int danipc_cdev_mapped_recv_done(struct danipc_cdev *cdev,
 				shm_bufpool_put_buf(&pq->kmem_freeq, buf);
 				cdev->status.mmap_rx_done++;
 				found = true;
-				if (pri == ipc_trns_prio_1)
-					refill_hi = true;
-				else
-					refill_lo = true;
 				break;
 			}
 		}
@@ -1289,12 +1280,8 @@ int danipc_cdev_mapped_recv_done(struct danipc_cdev *cdev,
 		}
 	}
 
-	if (refill_hi)
-		danipc_cdev_enqueue_kmem_recvq(cdev, ipc_trns_prio_1);
-	if (refill_lo)
-		danipc_cdev_enqueue_kmem_recvq(cdev, ipc_trns_prio_0);
-
 	spin_unlock_irqrestore(&cdev->rx_lock, flags);
+
 	return 0;
 }
 
@@ -1325,7 +1312,7 @@ static void danipc_cdev_rx_vma_close(struct vm_area_struct *vma)
 		struct shm_buf *buf;
 
 		while ((buf = shm_bufpool_get_buf(&pq->mmapq)))
-			shm_bufpool_put_buf(&pq->freeq,  buf);
+			shm_bufpool_put_buf(&pq->kmem_freeq,  buf);
 		danipc_cdev_refill_rx_b_fifo(cdev, i);
 	}
 
@@ -2042,6 +2029,7 @@ static void danipc_cdev_show_status(struct seq_file *s)
 	seq_printf(s, "%-25s: %u\n", "rx", stats->rx);
 	seq_printf(s, "%-25s: %u\n", "rx_bytes", stats->rx_bytes);
 	seq_printf(s, "%-25s: %u\n", "rx_drop", stats->rx_drop);
+	seq_printf(s, "%-25s: %u\n", "rx_no_buf", stats->rx_no_buf);
 	seq_printf(s, "%-25s: %u\n", "rx_error", stats->rx_error);
 	seq_printf(s, "%-25s: %u\n", "rx_zero_len_msg", stats->rx_zlen_msg);
 	seq_printf(s, "%-25s: %u\n", "rx_oversize_msg", stats->rx_oversize_msg);
