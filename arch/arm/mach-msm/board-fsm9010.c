@@ -42,7 +42,7 @@
 #define FSM9010_SCLTE_RF_CAL_PHYS	0x29000000
 #define FSM9010_SCLTE_GEN_DBG_PHYS	0xf5000000
 #define FSM9010_QDSP6_0_DEBUG_DUMP_PHYS	0x18900000
-#define FSM9010_QDSP6_1_DEBUG_DUMP_PHYS	0x18980000
+#define FSM9010_QDSP6_1_DEBUG_DUMP_PHYS	0x18a80000
 #define FSM9010_NSS_CORE_DUMP_PHYS	0x28000000
 #define FSM9010_NSS_TCM_PHYS		0xe4000000
 
@@ -146,13 +146,13 @@ static struct platform_device fsm9010_uio1_device = {
 static struct resource fsm9010_uio2_resources[] = {
 	{
 		.start = FSM9010_QDSP6_0_DEBUG_DUMP_PHYS,
-		.end   = FSM9010_QDSP6_0_DEBUG_DUMP_PHYS + SZ_512K - 1,
+		.end   = FSM9010_QDSP6_0_DEBUG_DUMP_PHYS + SZ_1M + SZ_512K - 1,
 		.name  = "qdsp6_0_debug_dump",
 		.flags = IORESOURCE_MEM,
 	},
 	{
 		.start = FSM9010_QDSP6_1_DEBUG_DUMP_PHYS,
-		.end   = FSM9010_QDSP6_1_DEBUG_DUMP_PHYS + SZ_512K - 1,
+		.end   = FSM9010_QDSP6_1_DEBUG_DUMP_PHYS + SZ_1M + SZ_512K - 1,
 		.name  = "qdsp6_1_debug_dump",
 		.flags = IORESOURCE_MEM,
 	},
