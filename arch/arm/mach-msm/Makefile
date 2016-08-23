@@ -52,7 +52,6 @@ CFLAGS_msm_vibrator.o += -Idrivers/staging/android
 
 obj-$(CONFIG_MSM_LPM_TEST) += test-lpm.o
 
-
 obj-$(CONFIG_ARCH_MSM8974) += gpiomux-v2.o gpiomux.o
 obj-$(CONFIG_ARCH_MDM9630) += gpiomux-v2.o gpiomux.o
 obj-$(CONFIG_ARCH_MSM8226) += gpiomux-v2.o gpiomux.o
