@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -297,6 +297,7 @@ struct wcd9xxx {
 	const struct wcd9xxx_codec_type *codec_type;
 	bool prev_pg_valid;
 	u8 prev_pg;
+	u8 avoid_cdc_rstlow;
 	struct wcd9xxx_power_region *wcd9xxx_pwr[WCD9XXX_MAX_PWR_REGIONS];
 };
 

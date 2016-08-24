@@ -25,6 +25,7 @@ struct wcd_gpio_pinctrl_info {
 	struct pinctrl *pinctrl;
 	struct pinctrl_state *pinctrl_active;
 	struct pinctrl_state *pinctrl_sleep;
+	int gpio;
 };
 
 static struct wcd_gpio_pinctrl_info *wcd_gpio_get_gpiodata(
@@ -51,6 +52,28 @@ static struct wcd_gpio_pinctrl_info *wcd_gpio_get_gpiodata(
 
 	return gpio_data;
 }
+
+/*
+ * msm_cdc_get_gpio_state: select pinctrl sleep state
+ * @np: pointer to struct device_node
+ *
+ * Returns error code for failure and GPIO value on success
+ */
+int wcd_gpio_get_gpiostate(struct device_node *np)
+{
+	struct wcd_gpio_pinctrl_info *gpio_data;
+	int value = -EINVAL;
+
+	gpio_data = wcd_gpio_get_gpiodata(np);
+	if (!gpio_data)
+		return value;
+
+	if (gpio_is_valid(gpio_data->gpio))
+		value = gpio_get_value_cansleep(gpio_data->gpio);
+
+	return value;
+}
+EXPORT_SYMBOL(wcd_gpio_get_gpiostate);
 
 /*
  * wcd_gpio_ctrl_select_sleep_state: select pinctrl sleep state
@@ -143,6 +166,17 @@ static int wcd_gpio_ctrl_probe(struct platform_device *pdev)
 	if (ret)
 		dev_err(&pdev->dev, "%s: set cdc gpio sleep state fail: %d\n",
 			__func__, ret);
+
+	gpio_data->gpio = of_get_named_gpio(pdev->dev.of_node,
+					    "qcom,cdc-rst-n-gpio", 0);
+	if (gpio_is_valid(gpio_data->gpio)) {
+		ret = gpio_request(gpio_data->gpio, "CDC_RESET");
+		if (ret) {
+			dev_err(&pdev->dev, "%s: Failed to request gpio %d\n",
+				__func__, gpio_data->gpio);
+			goto err_lookup_state;
+		}
+	}
 
 	dev_set_drvdata(&pdev->dev, gpio_data);
 	return 0;
