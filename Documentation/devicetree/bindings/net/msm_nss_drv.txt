@@ -37,6 +37,7 @@ Optional properties:
 - qcom,ipv4-reasm-enabled: Enables IPv4 fragmentation and re-assembly.
 - qcom,ipv6-enabled: Enables registeration of IPV6 packet handlers, to receive stat sync
                      IPV6 packets from UBI32.
+- qcom,ipv6-reasm-enabled: Enables stats for IPv6 re-assembly.
 - qcom,crypto-enabled: Enables the cryptography feature for the platform.
 - qcom,ipsec-enabled: Enables the ipsec feature for the platform.
 - qcom,gmac0-enabled: Enables GMAC0 port.
@@ -57,6 +58,7 @@ nss: nss@e6000000 {
 	qcom,ipv4-enabled;
 	qcom,ipv4-reasm-enabled;
 	qcom,ipv6-enabled;
+	qcom,ipv6-reasm-enabled;
 	qcom,crypto-enabled;
 	qcom,ipsec-enabled;
 	qcom,gmac0-enabled;
