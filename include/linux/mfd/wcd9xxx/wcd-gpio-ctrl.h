@@ -19,13 +19,17 @@
 #ifdef CONFIG_WCD9335_CODEC
 extern int wcd_gpio_ctrl_select_sleep_state(struct device_node *);
 extern int wcd_gpio_ctrl_select_active_state(struct device_node *);
-
+extern int wcd_gpio_get_gpiostate(struct device_node *);
 #else
 int wcd_gpio_ctrl_select_sleep_state(struct device_node *np)
 {
 	return 0;
 }
 int wcd_gpio_ctrl_select_active_state(struct device_node *np)
+{
+	return 0;
+}
+int wcd_gpio_get_gpiostate(struct device_node *np)
 {
 	return 0;
 }

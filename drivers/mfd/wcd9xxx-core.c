@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -1133,9 +1133,15 @@ static int wcd9xxx_reset(struct wcd9xxx *wcd9xxx)
 {
 	int ret;
 	struct wcd9xxx_pdata *pdata = wcd9xxx->dev->platform_data;
+	int value;
 
 
 	if (wcd9xxx->wcd_rst_np) {
+		value = wcd_gpio_get_gpiostate(wcd9xxx->wcd_rst_np);
+		if (value > 0) {
+			wcd9xxx->avoid_cdc_rstlow = 1;
+			return 0;
+		}
 		/* use pinctrl and call into wcd-rst-gpio driver */
 		ret = wcd_gpio_ctrl_select_sleep_state(wcd9xxx->wcd_rst_np);
 		if (ret) {
@@ -1198,6 +1204,12 @@ static int wcd9xxx_reset(struct wcd9xxx *wcd9xxx)
 static void wcd9xxx_free_reset(struct wcd9xxx *wcd9xxx)
 {
 	struct wcd9xxx_pdata *pdata = wcd9xxx->dev->platform_data;
+
+	if (wcd9xxx->avoid_cdc_rstlow) {
+		wcd9xxx->avoid_cdc_rstlow = 0;
+		pr_debug("%s: avoid pull down of reset GPIO\n", __func__);
+		return;
+	}
 
 	if (wcd9xxx->wcd_rst_np) {
 		wcd_gpio_ctrl_select_sleep_state(wcd9xxx->wcd_rst_np);
@@ -2930,7 +2942,7 @@ static int wcd9xxx_slim_probe(struct slim_device *slim)
 	if (ret) {
 		pr_err("%s: failed to get slimbus %s logical address: %d\n",
 		       __func__, wcd9xxx->slim->name, ret);
-		ret = -EPROBE_DEFER;
+		ret = -EINVAL;
 		goto err_reset;
 	}
 	wcd9xxx->read_dev = wcd9xxx_slim_read_device;
@@ -2954,7 +2966,7 @@ static int wcd9xxx_slim_probe(struct slim_device *slim)
 	if (ret) {
 		pr_err("%s: failed to get slimbus %s logical address: %d\n",
 		       __func__, wcd9xxx->slim->name, ret);
-		ret = -EPROBE_DEFER;
+		ret = -EINVAL;
 		goto err_slim_add;
 	}
 	wcd9xxx_inf_la = wcd9xxx->slim_slave->laddr;
@@ -3085,6 +3097,7 @@ static int wcd9xxx_slim_device_down(struct slim_device *sldev)
 	if (wcd9xxx->dev_down)
 		wcd9xxx->dev_down(wcd9xxx);
 	dev_dbg(wcd9xxx->dev, "%s: device down\n", __func__);
+	wcd9xxx_free_reset(wcd9xxx);
 	return 0;
 }
 
