@@ -552,6 +552,7 @@
 		qcom,bark-time = <11000>;
 		qcom,pet-time = <10000>;
 		qcom,ipi-ping;
+		qcom,userspace-watchdog;
 	};
 
 	dma_blsp1: qcom,sps-dma@f9904000 { /* BLSP1 */
