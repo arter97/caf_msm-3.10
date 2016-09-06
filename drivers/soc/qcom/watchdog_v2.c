@@ -108,6 +108,15 @@ module_param(WDT_HZ, long, 0);
 static int ipi_opt_en;
 module_param(ipi_opt_en, int, 0);
 
+/*
+ * On the kernel command line specify
+ * watchdog_v2.suspendWdt=0 to not suspend Wdt hardware
+ * watchdog circuit. By default hardware watchdog is suspended.
+ */
+static int suspendWdt = 1;
+module_param(suspendWdt, int, 0);
+
+
 static void pet_watchdog_work(struct work_struct *work);
 static void init_watchdog_work(struct work_struct *work);
 
@@ -338,6 +347,54 @@ static ssize_t wdog_pet_time_get(struct device *dev,
 }
 
 static DEVICE_ATTR(pet_time, S_IRUSR, wdog_pet_time_get, NULL);
+
+static ssize_t wdog_suspend_set(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	int ret;
+	u8 suspend;
+	struct msm_watchdog_data *wdog_dd = dev_get_drvdata(dev);
+
+	ret = kstrtou8(buf, 10, &suspend);
+	if (ret) {
+		dev_err(wdog_dd->dev, "invalid user input\n");
+		return ret;
+	}
+	if (suspend == 1) {
+		msm_watchdog_suspend(dev);
+	} else {
+		pr_err("invalid operation, only suspend = 1 supported\n");
+		return -EINVAL;
+	}
+	return count;
+}
+
+static DEVICE_ATTR(suspend, S_IWUSR | S_IRUSR, NULL, wdog_suspend_set);
+
+static ssize_t wdog_resume_set(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	int ret;
+	u8 resume;
+	struct msm_watchdog_data *wdog_dd = dev_get_drvdata(dev);
+
+	ret = kstrtou8(buf, 10, &resume);
+	if (ret) {
+		dev_err(wdog_dd->dev, "invalid user input\n");
+		return ret;
+	}
+	if (resume == 1) {
+		msm_watchdog_resume(dev);
+	} else {
+		pr_err("invalid operation, only resume = 1 supported\n");
+		return -EINVAL;
+	}
+	return count;
+}
+
+static DEVICE_ATTR(resume, S_IWUSR | S_IRUSR, NULL, wdog_resume_set);
 
 static void pet_watchdog(struct msm_watchdog_data *wdog_dd)
 {
@@ -609,6 +666,8 @@ static int init_watchdog_sysfs(struct msm_watchdog_data *wdog_dd)
 	int error = 0;
 
 	error |= device_create_file(wdog_dd->dev, &dev_attr_disable);
+	error |= device_create_file(wdog_dd->dev, &dev_attr_suspend);
+	error |= device_create_file(wdog_dd->dev, &dev_attr_resume);
 
 	if (of_property_read_bool(wdog_dd->dev->of_node,
 					"qcom,userspace-watchdog")) {
@@ -681,9 +740,14 @@ static void init_watchdog_work(struct work_struct *work)
 	init_waitqueue_head(&wdog_dd->pet_complete);
 	queue_delayed_work(wdog_wq, &wdog_dd->dogwork_struct,
 			delay_time);
-	val = BIT(EN);
-	if (wdog_dd->wakeup_irq_enable)
-		val |= BIT(UNMASKED_INT_EN);
+
+	if (suspendWdt)
+		val = 0;
+	else {
+		val = BIT(EN);
+		if (wdog_dd->wakeup_irq_enable)
+			val |= BIT(UNMASKED_INT_EN);
+	}
 	__raw_writel(val, wdog_dd->base + WDT0_EN);
 	__raw_writel(1, wdog_dd->base + WDT0_RST);
 	wdog_dd->last_pet = sched_clock();
