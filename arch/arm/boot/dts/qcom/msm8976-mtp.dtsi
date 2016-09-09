@@ -18,6 +18,7 @@
 
 &i2c_4 { /* BLSP1 QUP4 */
 	synaptics@20 {
+		status = "disabled";
 		compatible = "synaptics,dsx";
 		reg = <0x20>;
 		interrupt-parent = <&msm_gpio>;
