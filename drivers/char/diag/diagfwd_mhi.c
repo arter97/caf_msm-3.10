@@ -1,4 +1,4 @@
-/* Copyright (c) 2014-2015, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2014-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -130,11 +130,9 @@ static int mhi_buf_tbl_add(struct diag_mhi_info *mhi_info, int type,
 	}
 
 	item = kzalloc(sizeof(struct diag_mhi_buf_tbl_t), GFP_KERNEL);
-	if (!item) {
-		pr_err_ratelimited("diag: In %s, unable to allocate new item for buf tbl, ch: %p, type: %d, buf: %p, len: %d\n",
-				   __func__, ch, ch->type, buf, len);
+	if (!item)
 		return -ENOMEM;
-	}
+
 	kmemleak_not_leak(item);
 
 	spin_lock_irqsave(&ch->lock, flags);
@@ -186,7 +184,7 @@ static void mhi_buf_tbl_remove(struct diag_mhi_info *mhi_info, int type,
 	spin_unlock_irqrestore(&ch->lock, flags);
 
 	if (!found) {
-		pr_err_ratelimited("diag: In %s, unable to find buffer, ch: %p, type: %d, buf: %p\n",
+		pr_err_ratelimited("diag: In %s, unable to find buffer, ch: %pK, type: %d, buf: %pK\n",
 				   __func__, ch, ch->type, buf);
 	}
 }
@@ -407,7 +405,7 @@ static void mhi_read_done_work_fn(struct work_struct *work)
 				 DMA_FROM_DEVICE);
 		buf = dma_to_virt(NULL, result.payload_buf);
 		DIAG_LOG(DIAG_DEBUG_BRIDGE,
-			 "read from mhi port %d buf %p unmapped from %u\n",
+			 "read from mhi port %d buf %pK unmapped from %u\n",
 			 mhi_info->id, buf, result.payload_buf);
 		/*
 		 * The read buffers can come after the MHI channels are closed.
@@ -459,7 +457,7 @@ static void mhi_read_work_fn(struct work_struct *work)
 			goto fail;
 
 		DIAG_LOG(DIAG_DEBUG_BRIDGE,
-			 "queueing a read buf %p mapped to 0x%x, ch: %s\n",
+			 "queueing a read buf %pK mapped to 0x%x, ch: %s\n",
 			 buf, dma_addr, mhi_info->name);
 		spin_lock_irqsave(&read_ch->lock, flags);
 		err = mhi_queue_xfer(read_ch->hdl, dma_addr, DIAG_MDM_BUF_SIZE,
@@ -507,7 +505,7 @@ static int mhi_write(int id, unsigned char *buf, int len, int ctxt)
 	}
 
 	if (!buf || len <= 0) {
-		pr_err("diag: In %s, ch %d, invalid buf %p len %d\n",
+		pr_err("diag: In %s, ch %d, invalid buf %pK len %d\n",
 			__func__, id, buf, len);
 		return -EINVAL;
 	}
@@ -534,12 +532,12 @@ static int mhi_write(int id, unsigned char *buf, int len, int ctxt)
 	if (err)
 		goto fail;
 
-	DIAG_LOG(DIAG_DEBUG_BRIDGE, "buf %p mapped to %u\n", buf, dma_addr);
+	DIAG_LOG(DIAG_DEBUG_BRIDGE, "buf %pK mapped to %u\n", buf, dma_addr);
 	spin_lock_irqsave(&ch->lock, flags);
 	err = mhi_queue_xfer(ch->hdl, dma_addr, len, mhi_flags);
 	spin_unlock_irqrestore(&ch->lock, flags);
 	if (err) {
-		pr_err_ratelimited("diag: In %s, cannot write to MHI channel %p, len %d, err: %d\n",
+		pr_err_ratelimited("diag: In %s, cannot write to MHI channel %pK, len %d, err: %d\n",
 				   __func__, diag_mhi[id].name, len, err);
 		mhi_buf_tbl_remove(&diag_mhi[id], TYPE_MHI_WRITE_CH, buf, len);
 		goto fail;
