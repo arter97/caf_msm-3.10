@@ -53,7 +53,7 @@
 #define STREAM_ID	((uint64_t)AUDIO_ADSP_STREAM_ID << 32)
 #define RPC_TIMEOUT	(5 * HZ)
 #define BALIGN		32
-#define NUM_CHANNELS    1 /*8 compute 2 cpz 1 modem*/
+#define NUM_CHANNELS    2 /*8 compute 2 cpz 1 modem*/
 
 #define IS_CACHE_ALIGNED(x) (((x) & ((L1_CACHE_BYTES)-1)) == 0)
 
@@ -172,6 +172,7 @@ struct fastrpc_apps {
 	spinlock_t hlock;
 	int32_t domain_id;
 	struct device *adsp_mem_device;
+	struct device *mdsp_mem_device;
 };
 
 struct fastrpc_mmap {
@@ -224,12 +225,18 @@ static const struct fastrpc_channel_info gcinfo[NUM_CHANNELS] = {
 		.subsys = "adsp",
 		.channel = SMD_APPS_QDSP,
 	},
+	{
+		.name = "mdsprpc-smd",
+		.subsys = "mdsp",
+		.channel = SMD_APPS_MODEM,
+	},
 };
 
 static void fastrpc_buf_free(struct fastrpc_buf *buf, int cache)
 {
 	int err = 0;
 	struct fastrpc_file *fl = buf == 0 ? 0 : buf->fl;
+	struct fastrpc_apps *me = &gfa;
 	if (!fl)
 		return;
 	if (cache) {
@@ -239,10 +246,16 @@ static void fastrpc_buf_free(struct fastrpc_buf *buf, int cache)
 		return;
 	}
 	if (!IS_ERR_OR_NULL(buf->virt)) {
-		VERIFY(err, !msm_audio_ion_free(buf->client, buf->handle));
-		if (err) {
-			pr_err("error freeing audio ion buffer\n");
-			goto bail;
+		if (fl && fl->chan->smmu.enabled) {
+			VERIFY(err,
+			      !msm_audio_ion_free(buf->client, buf->handle));
+			if (err) {
+				pr_err("error freeing audio ion buffer\n");
+				goto bail;
+			}
+		} else {
+			dma_free_coherent(me->mdsp_mem_device, buf->size,
+						 buf->virt, buf->phys);
 		}
 	}
 bail:
@@ -351,10 +364,12 @@ static void fastrpc_mmap_free(struct fastrpc_mmap *map)
 		dma_free_attrs(me->adsp_mem_device, map->size,
 				&(map->va), map->phys,	&attrs);
 	} else {
-		ion_unmap_iommu(map->client, map->handle,
-				me->domain_id, 0);
-		ion_unmap_kernel(map->client, map->handle);
-		msm_audio_ion_client_destroy(map->client);
+		if (fl && fl->chan->smmu.enabled) {
+			ion_unmap_iommu(map->client, map->handle,
+						me->domain_id, 0);
+			ion_unmap_kernel(map->client, map->handle);
+			msm_audio_ion_client_destroy(map->client);
+		}
 	}
 	kfree(map);
 }
@@ -366,6 +381,7 @@ static int fastrpc_buf_alloc(struct fastrpc_file *fl, ssize_t size,
 	struct fastrpc_buf *buf = 0, *fr = 0;
 	struct hlist_node *n;
 	size_t len = 0;
+	struct fastrpc_apps *me = &gfa;
 
 	VERIFY(err, size > 0);
 	if (err)
@@ -396,19 +412,27 @@ static int fastrpc_buf_alloc(struct fastrpc_file *fl, ssize_t size,
 	buf->phys = 0;
 	buf->size = size;
 
-	VERIFY(err, !msm_audio_ion_alloc(DEVICE_NAME, &(buf->client),
-				&(buf->handle), buf->size,
-				&(buf->phys), &len, &(buf->virt)));
-	if (err) {
-		pr_err("%s: Error allocating audio ion buf size: %zd\n",
+	if (fl->chan->smmu.enabled) {
+		VERIFY(err,
+			!msm_audio_ion_alloc(DEVICE_NAME, &(buf->client),
+				&(buf->handle), buf->size, &(buf->phys), &len,
+				&(buf->virt)));
+		if (err) {
+			pr_err("%s: Error allocating audio ion buf size: %zd\n",
 				__func__, buf->size);
-		goto bail;
-	}
-	if (len != buf->size)
-		pr_info("allocating memory from audio ion size is %zd\n",
-				len);
+			goto bail;
+		}
+		if (len != buf->size)
+			pr_info("allocating from audio ion size is %zd\n", len);
 
-	buf->size = len;
+		buf->size = len;
+	} else {
+		buf->virt = dma_alloc_coherent(me->mdsp_mem_device, buf->size,
+					(void *)&buf->phys, GFP_KERNEL);
+		VERIFY(err, !IS_ERR_OR_NULL(buf->virt));
+		if (err)
+			goto bail;
+	}
 
 	*obuf = buf;
  bail:
@@ -787,7 +811,8 @@ static int get_args(uint32_t kernel, struct smq_invoke_ctx *ctx)
 				goto bail;
 			offset = buf_page_start(buf) - vma->vm_start;
 			pages[idx].addr = map->phys + offset;
-			if (msm_audio_ion_is_smmu_available())
+			if (msm_audio_ion_is_smmu_available() &&
+					ctx->fl->chan->smmu.enabled)
 				pages[idx].addr |= STREAM_ID;
 			pages[idx].size = num << PAGE_SHIFT;
 		}
@@ -816,7 +841,8 @@ static int get_args(uint32_t kernel, struct smq_invoke_ctx *ctx)
 		pages[list[i].pgidx].addr = ctx->buf->phys -
 					    ctx->overps[oix]->offset +
 					    (copylen - rlen);
-		if (msm_audio_ion_is_smmu_available())
+		if (msm_audio_ion_is_smmu_available() &&
+					ctx->fl->chan->smmu.enabled)
 			pages[list[i].pgidx].addr |= STREAM_ID;
 		pages[list[i].pgidx].addr =
 			buf_page_start(pages[list[i].pgidx].addr);
@@ -1444,6 +1470,8 @@ static int fastrpc_mmap_create(struct fastrpc_file *fl, int fd, uintptr_t va,
 	ion_phys_addr_t paddr = 0;
 	void *virtual_addr = NULL;
 	phys_addr_t region_start = 0;
+	struct vm_area_struct *vma;
+	unsigned long pfn;
 
 	if (!fastrpc_mmap_find(fl, fd, va, len, mflags, ppmap))
 		return 0;
@@ -1464,16 +1492,28 @@ static int fastrpc_mmap_create(struct fastrpc_file *fl, int fd, uintptr_t va,
 		map->phys = (uintptr_t)region_start;
 		map->size = len;
 	} else {
-		VERIFY(err, !msm_audio_ion_import(DEVICE_NAME, &(map->client),
-						&(map->handle), fd,
-						&ionflag, len,
-					&paddr, &pa_len, &virtual_addr));
+		if (fl->chan->smmu.enabled) {
+			VERIFY(err,
+				!msm_audio_ion_import(DEVICE_NAME,
+				&(map->client),	&(map->handle), fd,
+				&ionflag, len, &paddr, &pa_len,
+				&virtual_addr));
 		if (err) {
 			pr_err("msm_audio_ion_import failed\n");
 			goto bail;
 		}
 		map->phys = paddr;
 		map->size = pa_len;
+		} else {
+			VERIFY(err, 0 != (vma = find_vma(current->mm, va)));
+			if (err)
+				goto bail;
+			VERIFY(err, 0 == follow_pfn(vma, va , &pfn));
+			if (err)
+				goto bail;
+			map->phys = __pfn_to_phys(pfn);
+			map->size = len;
+		}
 	}
 	map->va = va;
 	map->refs = 1;
@@ -1730,7 +1770,7 @@ static const struct file_operations fops = {
 	.compat_ioctl = compat_fastrpc_device_ioctl,
 };
 
-static int adsp_mem_driver_probe(struct platform_device *pdev)
+static int fastrpc_probe(struct platform_device *pdev)
 {
 	struct fastrpc_apps *me = &gfa;
 	struct device *dev = &pdev->dev;
@@ -1740,19 +1780,25 @@ static int adsp_mem_driver_probe(struct platform_device *pdev)
 		me->adsp_mem_device = dev;
 		return 0;
 	}
+	if (of_device_is_compatible(dev->of_node,
+					"qcom,msm-mdsprpc-mem-region")) {
+		me->mdsp_mem_device = dev;
+		return 0;
+	}
 	return -EINVAL;
 }
 
-static struct of_device_id adsp_mem_match_table[] = {
+static struct of_device_id fastrpc_match_table[] = {
 	{ .compatible = "qcom,msm-adsprpc-mem-region" },
+	{ .compatible = "qcom,msm-mdsprpc-mem-region" },
 	{}
 };
 
-static struct platform_driver adsp_memory_driver = {
-	.probe = adsp_mem_driver_probe,
+static struct platform_driver fastrpc_driver = {
+	.probe = fastrpc_probe,
 	.driver = {
-		.name = "msm-adsprpc-mem-region",
-		.of_match_table = adsp_mem_match_table,
+		.name = "fastrpc",
+		.of_match_table = fastrpc_match_table,
 		.owner = THIS_MODULE,
 	},
 };
@@ -1832,7 +1878,7 @@ static int __init fastrpc_device_init(void)
 	}
 	pr_debug("domain=%p, domain_id=%d, group=%p\n", domain,
 			me->domain_id, group);
-	err = platform_driver_register(&adsp_memory_driver);
+	err = platform_driver_register(&fastrpc_driver);
 	if (err) {
 		pr_err("ADSPRPC: Failed to register adsp memory driver");
 		goto register_bail;
