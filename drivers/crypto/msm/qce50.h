@@ -221,7 +221,8 @@ struct ce_request_info {
 	qce_comp_func_ptr_t qce_cb;	/* qce callback function pointer */
 	void *user;
 	void *areq;
-	int assoc_nents;
+	dma_addr_t phy_assoc;
+	size_t assoclen;
 	int src_nents;
 	int dst_nents;
 	dma_addr_t phy_iv_in;
