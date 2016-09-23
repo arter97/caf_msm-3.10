@@ -4301,7 +4301,7 @@ int tapan_digital_mute(struct snd_soc_dai *dai, int mute)
 		 * that was arrived by checking the pop level
 		 * to be inaudible
 		 */
-		usleep_range(5000, 5010);
+		usleep_range(15000, 15010);
 	}
 
 	for (i = 0; i < NUM_DECIMATORS; i++) {
