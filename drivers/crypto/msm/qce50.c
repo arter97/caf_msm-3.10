@@ -2067,8 +2067,9 @@ static int _aead_complete(struct qce_device *pce_dev, int req_info)
 	qce_dma_unmap_sg(pce_dev->pdev, areq->src, preq_info->src_nents,
 			(areq->src == areq->dst) ? DMA_BIDIRECTIONAL :
 							DMA_TO_DEVICE);
-	qce_dma_unmap_sg(pce_dev->pdev, areq->assoc, preq_info->assoc_nents,
-			DMA_TO_DEVICE);
+	if (preq_info->phy_assoc)
+		dma_unmap_single(pce_dev->pdev, preq_info->phy_assoc,
+					preq_info->assoclen, DMA_TO_DEVICE);
 	/* check MAC */
 	memcpy(mac, (char *)(&pce_sps_data->result->auth_iv[0]),
 						SHA256_DIGEST_SIZE);
@@ -2123,7 +2124,7 @@ static int _aead_complete(struct qce_device *pce_dev, int req_info)
 		unsigned char iv[NUM_OF_CRYPTO_CNTR_IV_REG * CRYPTO_REG_SIZE];
 		aead = crypto_aead_reqtfm(areq);
 		ivsize = crypto_aead_ivsize(aead);
-		if (pce_dev->ce_bam_info.minor_version != 0)
+		if (preq_info->phy_iv_in)
 			dma_unmap_single(pce_dev->pdev, preq_info->phy_iv_in,
 							ivsize, DMA_TO_DEVICE);
 		memcpy(iv, (char *)(pce_sps_data->result->encr_cntr_iv),
@@ -4608,7 +4609,7 @@ static int _qce_aead_ccm_req(void *handle, struct qce_req *q_req)
 	pce_sps_data = &preq_info->ce_sps;
 
 	ce_burst_size = pce_dev->ce_bam_info.ce_burst_size;
-	totallen_in = areq->cryptlen + areq->assoclen;
+	totallen_in = areq->cryptlen + q_req->assoclen;
 	if (q_req->dir == QCE_ENCRYPT) {
 		q_req->cryptlen = areq->cryptlen;
 		out_len = areq->cryptlen + authsize;
@@ -4633,11 +4634,13 @@ static int _qce_aead_ccm_req(void *handle, struct qce_req *q_req)
 	else
 		preq_info->src_nents = count_sg(areq->src, areq->cryptlen);
 
-	preq_info->assoc_nents = count_sg(areq->assoc, areq->assoclen);
 
 	/* associated data input */
-	qce_dma_map_sg(pce_dev->pdev, areq->assoc, preq_info->assoc_nents,
-					 DMA_TO_DEVICE);
+	preq_info->phy_assoc = 0;
+	preq_info->assoclen = q_req->assoclen;
+	if (pce_dev->ce_bam_info.minor_version != 0 && preq_info->assoclen)
+		preq_info->phy_assoc = dma_map_single(pce_dev->pdev,
+			q_req->assoc, preq_info->assoclen, DMA_TO_DEVICE);
 	/* cipher input */
 	qce_dma_map_sg(pce_dev->pdev, areq->src, preq_info->src_nents,
 			(areq->src == areq->dst) ? DMA_BIDIRECTIONAL :
@@ -4652,7 +4655,7 @@ static int _qce_aead_ccm_req(void *handle, struct qce_req *q_req)
 			 * at the begining of destination area.
 			 */
 			preq_info->dst_nents = count_sg(areq->dst,
-						out_len + areq->assoclen);
+						out_len + q_req->assoclen);
 		else
 			preq_info->dst_nents = count_sg(areq->dst, out_len);
 
@@ -4668,16 +4671,16 @@ static int _qce_aead_ccm_req(void *handle, struct qce_req *q_req)
 		if (cmdlistinfo == NULL) {
 			pr_err("Unsupported cipher algorithm %d, mode %d\n",
 						q_req->alg, q_req->mode);
-			qce_free_req_info(pce_dev, req_info, false);
-			return -EINVAL;
+			rc = -EINVAL;
+			goto bad;
 		}
 		/* set up crypto device */
 		rc = _ce_setup_cipher(pce_dev, q_req, totallen_in,
-					areq->assoclen, cmdlistinfo);
+					q_req->assoclen, cmdlistinfo);
 	} else {
 		/* set up crypto device */
 		rc = _ce_setup_cipher_direct(pce_dev, q_req, totallen_in,
-					areq->assoclen);
+					q_req->assoclen);
 	}
 
 	if (rc < 0)
@@ -4713,7 +4716,7 @@ static int _qce_aead_ccm_req(void *handle, struct qce_req *q_req)
 		 * include  CCM padding.
 		 */
 		if (_qce_sps_add_sg_data(pce_dev, areq->dst, out_len +
-					areq->assoclen + hw_pad_out,
+					q_req->assoclen + hw_pad_out,
 				&pce_sps_data->out_transfer))
 			goto bad;
 		if (totallen_in > SPS_MAX_PKT_SIZE) {
@@ -4732,8 +4735,10 @@ static int _qce_aead_ccm_req(void *handle, struct qce_req *q_req)
 		}
 		rc = _qce_sps_transfer(pce_dev, req_info);
 	} else {
-		if (_qce_sps_add_sg_data(pce_dev, areq->assoc, areq->assoclen,
-					 &pce_sps_data->in_transfer))
+		if (q_req->assoclen &&
+			_qce_sps_add_data(preq_info->phy_assoc,
+						q_req->assoclen,
+						&pce_sps_data->in_transfer))
 			goto bad;
 		if (_qce_sps_add_sg_data(pce_dev, areq->src, areq->cryptlen,
 					&pce_sps_data->in_transfer))
@@ -4751,7 +4756,7 @@ static int _qce_aead_ccm_req(void *handle, struct qce_req *q_req)
 		/* Pass through to ignore associated  data*/
 		if (_qce_sps_add_data(
 				GET_PHYS_ADDR(pce_sps_data->ignore_buffer),
-				areq->assoclen,
+				q_req->assoclen,
 				&pce_sps_data->out_transfer))
 			goto bad;
 		if (_qce_sps_add_sg_data(pce_dev, areq->dst, out_len,
@@ -4785,10 +4790,9 @@ static int _qce_aead_ccm_req(void *handle, struct qce_req *q_req)
 	return 0;
 
 bad:
-	if (preq_info->assoc_nents) {
-		qce_dma_unmap_sg(pce_dev->pdev, areq->assoc,
-				preq_info->assoc_nents, DMA_TO_DEVICE);
-	}
+	if (preq_info->phy_assoc)
+		dma_unmap_single(pce_dev->pdev, preq_info->phy_assoc,
+					preq_info->assoclen, DMA_TO_DEVICE);
 	if (preq_info->src_nents) {
 		qce_dma_unmap_sg(pce_dev->pdev, areq->src, preq_info->src_nents,
 				(areq->src == areq->dst) ? DMA_BIDIRECTIONAL :
@@ -4872,6 +4876,7 @@ int qce_aead_req(void *handle, struct qce_req *q_req)
 	struct crypto_aead *aead;
 	uint32_t ivsize;
 	uint32_t totallen;
+	uint32_t assoc_1_len = 0;
 	int rc = 0;
 	struct qce_cmdlist_info *cmdlistinfo = NULL;
 	int req_info = -1;
@@ -4891,6 +4896,10 @@ int qce_aead_req(void *handle, struct qce_req *q_req)
 	ivsize = crypto_aead_ivsize(aead);
 	q_req->ivsize = ivsize;
 	authsize = q_req->authsize;
+	if (q_req->assoclen)
+		assoc_1_len = q_req->assoclen - q_req->trail_assoclen;
+	else
+		assoc_1_len = 0;
 	if (q_req->dir == QCE_ENCRYPT)
 		q_req->cryptlen = areq->cryptlen;
 	else
@@ -4910,15 +4919,18 @@ int qce_aead_req(void *handle, struct qce_req *q_req)
 		}
 		/* set up crypto device */
 		rc = _ce_setup_aead(pce_dev, q_req, totallen,
-					areq->assoclen + ivsize, cmdlistinfo);
+					assoc_1_len + ivsize, cmdlistinfo);
 		if (rc < 0) {
 			qce_free_req_info(pce_dev, req_info, false);
 			return -EINVAL;
 		}
 	}
 
-	preq_info->assoc_nents = count_sg(areq->assoc, areq->assoclen);
-
+	preq_info->phy_assoc = 0;
+	preq_info->assoclen = q_req->assoclen;
+	if (pce_dev->ce_bam_info.minor_version != 0 && preq_info->assoclen)
+		preq_info->phy_assoc = dma_map_single(pce_dev->pdev,
+			q_req->assoc, preq_info->assoclen, DMA_TO_DEVICE);
 	/*
 	 * For crypto 5.0 that has burst size alignment requirement
 	 * for data descritpor,
@@ -4933,9 +4945,6 @@ int qce_aead_req(void *handle, struct qce_req *q_req)
 
 	preq_info->phy_iv_in = 0;
 
-	/* associated data input */
-	qce_dma_map_sg(pce_dev->pdev, areq->assoc, preq_info->assoc_nents,
-					 DMA_TO_DEVICE);
 	/* cipher input */
 	qce_dma_map_sg(pce_dev->pdev, areq->src, preq_info->src_nents,
 			(areq->src == areq->dst) ? DMA_BIDIRECTIONAL :
@@ -4978,7 +4987,7 @@ int qce_aead_req(void *handle, struct qce_req *q_req)
 					&pce_sps_data->in_transfer);
 	} else {
 		rc = _ce_setup_aead_direct(pce_dev, q_req, totallen,
-					areq->assoclen + ivsize);
+					assoc_1_len + ivsize);
 		if (rc)
 			goto bad;
 	}
@@ -5010,15 +5019,23 @@ int qce_aead_req(void *handle, struct qce_req *q_req)
 							SPS_IOVEC_FLAG_INT);
 			pce_sps_data->producer_state = QCE_PIPE_STATE_COMP;
 		}
-	rc = _qce_sps_transfer(pce_dev, req_info);
+		rc = _qce_sps_transfer(pce_dev, req_info);
 	} else {
-		if (_qce_sps_add_sg_data(pce_dev, areq->assoc, areq->assoclen,
-					 &pce_sps_data->in_transfer))
+		if (assoc_1_len &&
+			_qce_sps_add_data(preq_info->phy_assoc,
+					assoc_1_len,
+					&pce_sps_data->in_transfer))
 			goto bad;
 		if (_qce_sps_add_data((uint32_t)preq_info->phy_iv_in, ivsize,
 					&pce_sps_data->in_transfer))
 			goto bad;
 		if (_qce_sps_add_sg_data(pce_dev, areq->src, q_req->cryptlen,
+					&pce_sps_data->in_transfer))
+			goto bad;
+		if ((preq_info->assoclen - assoc_1_len) &&
+				_qce_sps_add_data(
+					preq_info->phy_assoc + assoc_1_len,
+					preq_info->assoclen - assoc_1_len,
 					&pce_sps_data->in_transfer))
 			goto bad;
 		_qce_set_flag(&pce_sps_data->in_transfer,
@@ -5032,13 +5049,18 @@ int qce_aead_req(void *handle, struct qce_req *q_req)
 		/* Pass through to ignore associated + iv data*/
 		if (_qce_sps_add_data(
 				GET_PHYS_ADDR(pce_sps_data->ignore_buffer),
-				(ivsize + areq->assoclen),
+				(ivsize + assoc_1_len),
 				&pce_sps_data->out_transfer))
 			goto bad;
 		if (_qce_sps_add_sg_data(pce_dev, areq->dst, q_req->cryptlen,
 					&pce_sps_data->out_transfer))
 			goto bad;
-
+		if ((preq_info->assoclen - assoc_1_len) &&
+			_qce_sps_add_data(
+				GET_PHYS_ADDR(pce_sps_data->ignore_buffer),
+				preq_info->assoclen - assoc_1_len,
+				&pce_sps_data->out_transfer))
+			goto bad;
 		if (pce_dev->no_get_around || totallen <= SPS_MAX_PKT_SIZE) {
 			if (_qce_sps_add_data(
 				GET_PHYS_ADDR(pce_sps_data->result_dump),
@@ -5058,9 +5080,9 @@ int qce_aead_req(void *handle, struct qce_req *q_req)
 	return 0;
 
 bad:
-	if (preq_info->assoc_nents)
-		qce_dma_unmap_sg(pce_dev->pdev, areq->assoc,
-				preq_info->assoc_nents, DMA_TO_DEVICE);
+	if (preq_info->phy_assoc)
+		dma_unmap_single(pce_dev->pdev, preq_info->phy_assoc,
+					preq_info->assoclen, DMA_TO_DEVICE);
 	if (preq_info->src_nents)
 		qce_dma_unmap_sg(pce_dev->pdev, areq->src, preq_info->src_nents,
 				(areq->src == areq->dst) ? DMA_BIDIRECTIONAL :
