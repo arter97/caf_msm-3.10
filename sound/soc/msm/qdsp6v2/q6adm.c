@@ -1819,7 +1819,7 @@ fail_cmd:
 	return ret;
 }
 
-static void remap_cal_data(struct cal_block_data *cal_block, int cal_index)
+static int remap_cal_data(struct cal_block_data *cal_block, int cal_index)
 {
 	int ret = 0;
 
@@ -1842,7 +1842,7 @@ static void remap_cal_data(struct cal_block_data *cal_block, int cal_index)
 			mem_map_handles[cal_index]);
 	}
 done:
-	return;
+	return ret;
 }
 
 static void send_adm_custom_topology(void)
@@ -1866,7 +1866,12 @@ static void send_adm_custom_topology(void)
 
 	pr_debug("%s: Sending cal_index %d\n", __func__, cal_index);
 
-	remap_cal_data(cal_block, cal_index);
+	result = remap_cal_data(cal_block, cal_index);
+	if (result) {
+		pr_err("%s: Remap_cal_data failed for cal %d!\n",
+			__func__, cal_index);
+		goto unlock;
+	}
 	atomic_set(&this_adm.mem_map_index, cal_index);
 	atomic_set(&this_adm.mem_map_handles[cal_index],
 		cal_block->map_data.q6map_handle);
@@ -2135,7 +2140,12 @@ static int adm_remap_and_send_cal_block(int cal_index, int port_id,
 	int ret = 0;
 
 	pr_debug("%s: Sending cal_index cal %d\n", __func__, cal_index);
-	remap_cal_data(cal_block, cal_index);
+	ret = remap_cal_data(cal_block, cal_index);
+	if (ret) {
+		pr_err("%s: Remap_cal_data failed for cal %d!\n",
+			__func__, cal_index);
+		return ret;
+	}
 	ret = send_adm_cal_block(port_id, copp_idx, cal_block, perf_mode,
 				app_type, acdb_id, sample_rate);
 	if (ret < 0)
