@@ -367,9 +367,10 @@ static int danipc_open(struct net_device *dev)
 	int			rc = -ENOMEM;
 
 	if (rxptype_hi >= rx_max_proc || rxptype_lo >= rx_max_proc) {
-		pr_err("Invalid rxtype. hi: %u, lo: %u\n", rxptype_hi, rxptype_lo);
+		pr_err("Invalid rxtype. hi: %u, lo: %u\n",
+		       rxptype_hi, rxptype_lo);
 		BUG();
-		return EINVAL;
+		return -EINVAL;
 	}
 
 	/* Low-level is initialized only for first interface */
@@ -428,9 +429,10 @@ static int danipc_close(struct net_device *dev)
 	uint8_t			rxptype_lo = pproc_lo->rxproc_type;
 
 	if (rxptype_hi >= rx_max_proc || rxptype_lo >= rx_max_proc) {
-		pr_err("Invalid rxtype. hi: %u, lo: %u\n", rxptype_hi, rxptype_lo);
+		pr_err("Invalid rxtype. hi: %u, lo: %u\n",
+		       rxptype_hi, rxptype_lo);
 		BUG();
-		return EINVAL;
+		return -EINVAL;
 	}
 
 	netif_stop_queue(dev);
