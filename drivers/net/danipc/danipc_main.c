@@ -256,6 +256,13 @@ static int danipc_open(struct net_device *dev)
 	uint8_t		rxptype_lo = pproc_lo->rxproc_type;
 	int			rc;
 
+	if (rxptype_hi >= rx_max_proc || rxptype_lo >= rx_max_proc) {
+		pr_err("Invalid rxtype. hi: %u, lo: %u\n",
+		       rxptype_hi, rxptype_lo);
+		BUG();
+		return -EINVAL;
+	}
+
 	rc = acquire_local_fifo(fifo, intf, DANIPC_FIFO_OWNER_TYPE_NETDEV);
 	if (rc) {
 		netdev_err(dev, "local fifo(%s) is in used\n",
@@ -306,6 +313,13 @@ static int danipc_close(struct net_device *dev)
 		 &intf->pproc[ipc_trns_prio_0];
 	uint8_t			rxptype_hi = pproc_hi->rxproc_type;
 	uint8_t			rxptype_lo = pproc_lo->rxproc_type;
+
+	if (rxptype_hi >= rx_max_proc || rxptype_lo >= rx_max_proc) {
+		pr_err("Invalid rxtype. hi: %u, lo: %u\n",
+		       rxptype_hi, rxptype_lo);
+		BUG();
+		return -EINVAL;
+	}
 
 	netif_stop_queue(dev);
 
