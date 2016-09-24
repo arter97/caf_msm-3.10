@@ -1,4 +1,4 @@
-/* Copyright (c) 2010-2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2010-2016, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -246,7 +246,7 @@ static void req_done(unsigned long data)
 			new_req->err = 0;
 			/* start a new request */
 			ret = start_req(pqce, new_req);
-			if (unlikely(new_req && ret)) {
+			if (unlikely(ret)) {
 				new_req->err = ret;
 				complete(&new_req->complete);
 				ret = 0;
