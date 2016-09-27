@@ -47,5 +47,12 @@
 			linux,contiguous-region = <&audio_mem>;
 			qcom,ion-heap-type = "DMA";
 		};
+
+		qcom,ion-heap@22 { /* MODEM HEAP */
+			compatible = "qcom,msm-ion-reserve";
+			reg = <22>;
+			linux,contiguous-region = <&mdsp_mem>;
+			qcom,ion-heap-type = "DMA";
+		};
 	};
 };
