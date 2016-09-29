@@ -1133,6 +1133,7 @@ static int msm_vfe40_start_fetch_engine(struct vfe_device *vfe_dev,
 
 	msm_camera_io_w_mb(0x10000, vfe_dev->vfe_base + 0x4C);
 	msm_camera_io_w_mb(0x20000, vfe_dev->vfe_base + 0x4C);
+	vfe_dev->axi_data.src_info[VFE_PIX_0].active = 1;
 
 	ISP_DBG("%s:VFE%d Fetch Engine ready\n", __func__, vfe_dev->pdev->id);
 	return 0;
@@ -1834,6 +1835,7 @@ static int msm_vfe40_axi_restart(struct vfe_device *vfe_dev,
 	} else if (enable_ext_read) {
 		msm_camera_io_w_mb(0x10000, vfe_dev->vfe_base + 0x4C);
 		msm_camera_io_w_mb(0x20000, vfe_dev->vfe_base + 0x4C);
+		vfe_dev->axi_data.src_info[VFE_PIX_0].active = 1;
 	}
 
 	return 0;

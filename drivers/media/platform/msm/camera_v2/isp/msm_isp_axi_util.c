@@ -1998,6 +1998,36 @@ static int msm_isp_update_stream_bandwidth(struct vfe_device *vfe_dev)
 	return rc;
 }
 
+static int msm_isp_axi_wait_for_fe_done(struct vfe_device *vfe_dev)
+{
+	int rc;
+	unsigned long flags;
+
+	spin_lock_irqsave(&vfe_dev->shared_data_lock, flags);
+	if (!vfe_dev->fetch_engine_info.is_busy) {
+		spin_unlock_irqrestore(&vfe_dev->shared_data_lock, flags);
+		return 0;
+	}
+
+	init_completion(&vfe_dev->stream_config_complete);
+	vfe_dev->axi_data.pipeline_update = NO_UPDATE;
+	vfe_dev->axi_data.wait_for_ext_read_done = 1;
+	spin_unlock_irqrestore(&vfe_dev->shared_data_lock, flags);
+
+	rc = wait_for_completion_timeout(
+		&vfe_dev->stream_config_complete,
+		msecs_to_jiffies(VFE_MAX_CFG_TIMEOUT));
+	if (rc == 0) {
+		vfe_dev->axi_data.wait_for_ext_read_done = 0;
+		pr_err("%s: wait timeout\n", __func__);
+		rc = -EBUSY;
+	} else {
+		rc = 0;
+	}
+
+	return rc;
+}
+
 static int msm_isp_axi_wait_for_cfg_done(struct vfe_device *vfe_dev,
 	enum msm_isp_camif_update_state camif_update,
 	uint32_t src_mask, int regUpdateCnt)
@@ -2675,7 +2705,9 @@ static int msm_isp_stop_axi_stream(struct vfe_device *vfe_dev,
 
 	}
 
-	if (src_mask) {
+	if (ext_read && src_mask == (1 << VFE_PIX_0)) {
+		rc = msm_isp_axi_wait_for_fe_done(vfe_dev);
+	} else if (src_mask) {
 		rc = msm_isp_axi_wait_for_cfg_done(vfe_dev, camif_update,
 			src_mask, 2);
 		if (rc < 0) {
@@ -2735,6 +2767,8 @@ static int msm_isp_stop_axi_stream(struct vfe_device *vfe_dev,
 		vfe_dev->hw_info->vfe_ops.core_ops.reset_hw(vfe_dev, 0, 1);
 		vfe_dev->hw_info->vfe_ops.core_ops.init_hw_reg(vfe_dev);
 		vfe_dev->ignore_error = 0;
+	} else if (halt || ext_read) {
+		vfe_dev->axi_data.src_info[VFE_PIX_0].active = 0;
 	}
 	msm_isp_update_camif_output_count(vfe_dev, stream_cfg_cmd);
 	msm_isp_update_stream_bandwidth(vfe_dev);
