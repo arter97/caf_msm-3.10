@@ -2548,11 +2548,12 @@ static int msm_compr_capture_copy(struct snd_compr_stream *cstream,
 	source = prtd->buffer + prtd->app_pointer;
 	/* check if we have requested amount of data to copy to user*/
 	if (count <= prtd->received_total - prtd->bytes_copied)	{
+		spin_unlock_irqrestore(&prtd->lock, flags);
 		if (copy_to_user(buf, source, count)) {
 			pr_err("copy_to_user failed");
-			spin_unlock_irqrestore(&prtd->lock, flags);
 			return -EFAULT;
 		}
+		spin_lock_irqsave(&prtd->lock, flags);
 		prtd->app_pointer += count;
 		if (prtd->app_pointer >= prtd->buffer_size)
 			prtd->app_pointer -= prtd->buffer_size;
