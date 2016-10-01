@@ -457,6 +457,7 @@ struct msm_vfe_axi_shared_data {
 	uint32_t event_mask;
 	uint8_t enable_frameid_recovery;
 	enum msm_vfe_camif_state camif_state;
+	uint8_t wait_for_ext_read_done;
 };
 
 struct msm_vfe_stats_hardware_info {

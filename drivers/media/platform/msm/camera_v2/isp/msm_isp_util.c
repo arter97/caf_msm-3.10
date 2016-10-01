@@ -644,6 +644,11 @@ void msm_isp_fetch_engine_irq(struct vfe_device *vfe_dev,
 	vfe_dev->fe_curr_mask = 0;
 	fetch_engine_info->is_busy = 0;
 
+	if (vfe_dev->axi_data.wait_for_ext_read_done) {
+		complete(&vfe_dev->stream_config_complete);
+		vfe_dev->axi_data.wait_for_ext_read_done = 0;
+	}
+
 	memset(&fe_rd_done_event, 0, sizeof(struct msm_isp_event_data));
 	fe_rd_done_event.frame_id =
 		vfe_dev->axi_data.src_info[VFE_PIX_0].frame_id;
