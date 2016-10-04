@@ -170,8 +170,14 @@ static int ftr_i2c_read(
 			.buf = (void *)i_buf,
 		},
 	};
+	struct i2c_adapter *adapter;
 
-	ret = i2c_transfer(i2c_get_adapter(1), msgs, ARRAY_SIZE(msgs));
+	adapter = i2c_get_adapter(1);
+
+	if (adapter == NULL)
+		return -EFAULT;
+
+	ret = i2c_transfer(adapter, msgs, ARRAY_SIZE(msgs));
 
 	return (ret == 2) ? 0 : ret;
 }
