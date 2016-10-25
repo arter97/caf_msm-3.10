@@ -2707,9 +2707,32 @@ static int msm_isp_stop_axi_stream(struct vfe_device *vfe_dev,
 
 	if (ext_read && src_mask == (1 << VFE_PIX_0)) {
 		rc = msm_isp_axi_wait_for_fe_done(vfe_dev);
+		for (i = 0; i < stream_cfg_cmd->num_streams; i++) {
+			stream_info = &axi_data->stream_info[
+			HANDLE_TO_IDX(
+				stream_cfg_cmd->stream_handle[i])];
+			stream_info->state = INACTIVE;
+		}
 	} else if (src_mask) {
+		if (ext_read)
+			src_mask &= ~(1 << VFE_PIX_0);
 		rc = msm_isp_axi_wait_for_cfg_done(vfe_dev, camif_update,
 			src_mask, 2);
+		if (!(rc < 0) && ext_read) {
+			rc = msm_isp_axi_wait_for_fe_done(vfe_dev);
+			for (i = 0; i < stream_cfg_cmd->num_streams; i++) {
+				stream_info = &axi_data->stream_info[
+				HANDLE_TO_IDX(
+					stream_cfg_cmd->stream_handle[i])];
+				if (SRC_TO_INTF(stream_info->stream_src) ==
+						VFE_PIX_0) {
+					msm_isp_axi_stream_enable_cfg(vfe_dev,
+						stream_info);
+					stream_info->state = INACTIVE;
+
+				}
+			}
+		}
 		if (rc < 0) {
 			for (i = 0; i < stream_cfg_cmd->num_streams; i++) {
 				stream_info = &axi_data->stream_info[
