@@ -610,6 +610,9 @@ static int msm_isp_start_fetch_engine(struct vfe_device *vfe_dev,
 	struct msm_vfe_fetch_eng_start *fe_cfg = arg;
 	int rc = 0;
 
+	if (!vfe_dev->axi_data.src_info[VFE_PIX_0].pix_stream_count)
+		return 0;
+
 	/*
 	 * For Offline VFE, HAL expects same frame id
 	 * for offline output which it requested in do_reprocess.
