@@ -672,7 +672,7 @@ static uint16_t msm_ispif_get_cids_mask_from_cfg(
 
 	BUG_ON(!entry);
 
-	for (i = 0; i < entry->num_cids; i++)
+	for (i = 0; i < entry->num_cids && i < MAX_CID_CH; i++)
 		cids_mask |= (1 << entry->cids[i]);
 
 	return cids_mask;
