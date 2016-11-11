@@ -610,8 +610,13 @@ static int msm_isp_start_fetch_engine(struct vfe_device *vfe_dev,
 	struct msm_vfe_fetch_eng_start *fe_cfg = arg;
 	int rc = 0;
 
-	if (!vfe_dev->axi_data.src_info[VFE_PIX_0].pix_stream_count)
-		return 0;
+	if (!vfe_dev->axi_data.src_info[VFE_PIX_0].pix_stream_count ||
+		!vfe_dev->axi_data.src_info[VFE_PIX_0].active) {
+		pr_err("%s: Drop FE start! pix_cnt %d active %d \n", __func__,
+			vfe_dev->axi_data.src_info[VFE_PIX_0].pix_stream_count,
+			vfe_dev->axi_data.src_info[VFE_PIX_0].active);
+		return -EINVAL;
+	}
 
 	/*
 	 * For Offline VFE, HAL expects same frame id
@@ -647,10 +652,8 @@ void msm_isp_fetch_engine_irq(struct vfe_device *vfe_dev,
 	vfe_dev->fe_curr_mask = 0;
 	fetch_engine_info->is_busy = 0;
 
-	if (vfe_dev->axi_data.wait_for_ext_read_done) {
-		complete(&vfe_dev->stream_config_complete);
-		vfe_dev->axi_data.wait_for_ext_read_done = 0;
-	}
+	if (vfe_dev->axi_data.wait_for_ext_read_done)
+		msm_isp_axi_stream_update(vfe_dev, VFE_PIX_0);
 
 	memset(&fe_rd_done_event, 0, sizeof(struct msm_isp_event_data));
 	fe_rd_done_event.frame_id =
@@ -1121,9 +1124,9 @@ static long msm_isp_ioctl_unlocked(struct v4l2_subdev *sd,
 		break;
 	case VIDIOC_MSM_ISP_FETCH_ENG_START:
 	case VIDIOC_MSM_ISP_MAP_BUF_START_FE:
-		mutex_lock(&vfe_dev->buf_mgr_mutex);
+		mutex_lock(&vfe_dev->core_mutex);
 		rc = msm_isp_start_fetch_engine(vfe_dev, arg);
-		mutex_unlock(&vfe_dev->buf_mgr_mutex);
+		mutex_unlock(&vfe_dev->core_mutex);
 		break;
 	case VIDIOC_MSM_ISP_REG_UPDATE_CMD:
 		if (arg) {
