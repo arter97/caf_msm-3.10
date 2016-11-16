@@ -685,6 +685,10 @@ void msm_isp_increment_frame_id(struct vfe_device *vfe_dev,
 			if (i == frame_src)
 				continue;
 
+			if (vfe_dev->axi_data.src_info[VFE_PIX_0].input_mux ==
+				EXTERNAL_READ && i == VFE_PIX_0)
+				continue;
+
 			if (src_info[frame_src].session_id !=
 				src_info[i].session_id)
 				continue;
@@ -1210,6 +1214,7 @@ void msm_isp_axi_stream_update(struct vfe_device *vfe_dev,
 {
 	int i;
 	unsigned long flags;
+	int send_complete = 0;
 	struct msm_vfe_axi_shared_data *axi_data = &vfe_dev->axi_data;
 
 	for (i = 0; i < VFE_AXI_SRC_MAX; i++) {
@@ -1221,15 +1226,22 @@ void msm_isp_axi_stream_update(struct vfe_device *vfe_dev,
 				frame_src);
 			continue;
 		}
+
 		if (axi_data->stream_info[i].state == UPDATING)
 			axi_data->stream_info[i].state = ACTIVE;
 		else if (axi_data->stream_info[i].state == START_PENDING ||
 			axi_data->stream_info[i].state == STOP_PENDING) {
 			msm_isp_axi_stream_enable_cfg(
 				vfe_dev, &axi_data->stream_info[i]);
-			axi_data->stream_info[i].state =
-				axi_data->stream_info[i].state ==
-				START_PENDING ? STARTING : STOPPING;
+			if (axi_data->src_info[VFE_PIX_0].input_mux ==
+				EXTERNAL_READ)
+				axi_data->stream_info[i].state =
+					axi_data->stream_info[i].state ==
+					START_PENDING ? ACTIVE : INACTIVE;
+			else
+				axi_data->stream_info[i].state =
+					axi_data->stream_info[i].state ==
+					START_PENDING ? STARTING : STOPPING;
 		} else if (axi_data->stream_info[i].state == STARTING ||
 			axi_data->stream_info[i].state == STOPPING) {
 			axi_data->stream_info[i].state =
@@ -1241,6 +1253,11 @@ void msm_isp_axi_stream_update(struct vfe_device *vfe_dev,
 	spin_lock_irqsave(&vfe_dev->shared_data_lock, flags);
 	if (vfe_dev->axi_data.stream_update[frame_src]) {
 		vfe_dev->axi_data.stream_update[frame_src]--;
+		if (!vfe_dev->axi_data.stream_update[frame_src])
+			send_complete = 1;
+	} else if (vfe_dev->axi_data.wait_for_ext_read_done) {
+		vfe_dev->axi_data.wait_for_ext_read_done = 0;
+		send_complete = 1;
 	}
 	spin_unlock_irqrestore(&vfe_dev->shared_data_lock, flags);
 
@@ -1252,7 +1269,7 @@ void msm_isp_axi_stream_update(struct vfe_device *vfe_dev,
 		vfe_dev->axi_data.pipeline_update = NO_UPDATE;
 	}
 
-	if (vfe_dev->axi_data.stream_update[frame_src] == 0)
+	if (send_complete)
 		complete(&vfe_dev->stream_config_complete);
 }
 
@@ -2006,6 +2023,7 @@ static int msm_isp_axi_wait_for_fe_done(struct vfe_device *vfe_dev)
 	spin_lock_irqsave(&vfe_dev->shared_data_lock, flags);
 	if (!vfe_dev->fetch_engine_info.is_busy) {
 		spin_unlock_irqrestore(&vfe_dev->shared_data_lock, flags);
+		msm_isp_axi_stream_update(vfe_dev, VFE_PIX_0);
 		return 0;
 	}
 
@@ -2574,10 +2592,11 @@ static int msm_isp_start_axi_stream(struct vfe_device *vfe_dev,
 
 			/*
 			 * Active bit is set in enable_camif for PIX.
-			 * For RDI, set it here
+			 * For RDI and FE, set it here
 			 */
-			if (stream_src >= VFE_RAW_0 &&
-				stream_src < VFE_SRC_MAX) {
+			if ((stream_src >= VFE_RAW_0 &&
+				stream_src < VFE_SRC_MAX) ||
+				(ext_read && stream_src == VFE_PIX_0)) {
 				axi_data->src_info[stream_src].frame_id = 0;
 				axi_data->src_info[stream_src].active = 1;
 			}
@@ -2616,8 +2635,7 @@ static int msm_isp_start_axi_stream(struct vfe_device *vfe_dev,
 					stream_cfg_cmd);
 			}
 		}
-	} else if (wait_for_complete && ext_read &&
-			vfe_dev->fetch_engine_info.is_busy) {
+	} else if (wait_for_complete && ext_read) {
 		rc = msm_isp_axi_wait_for_fe_done(vfe_dev);
 		if (rc < 0)
 			pr_err("%s: wait for config done failed\n", __func__);
@@ -2714,11 +2732,13 @@ static int msm_isp_stop_axi_stream(struct vfe_device *vfe_dev,
 
 	if (ext_read && src_mask == (1 << VFE_PIX_0)) {
 		rc = msm_isp_axi_wait_for_fe_done(vfe_dev);
-		for (i = 0; i < stream_cfg_cmd->num_streams; i++) {
-			stream_info = &axi_data->stream_info[
-			HANDLE_TO_IDX(
-				stream_cfg_cmd->stream_handle[i])];
-			stream_info->state = INACTIVE;
+		if (rc < 0) {
+			for (i = 0; i < stream_cfg_cmd->num_streams; i++) {
+				stream_info = &axi_data->stream_info[
+				HANDLE_TO_IDX(
+					stream_cfg_cmd->stream_handle[i])];
+				stream_info->state = INACTIVE;
+			}
 		}
 	} else if (src_mask) {
 		if (ext_read)
@@ -2797,8 +2817,9 @@ static int msm_isp_stop_axi_stream(struct vfe_device *vfe_dev,
 		vfe_dev->hw_info->vfe_ops.core_ops.reset_hw(vfe_dev, 0, 1);
 		vfe_dev->hw_info->vfe_ops.core_ops.init_hw_reg(vfe_dev);
 		vfe_dev->ignore_error = 0;
-	} else if (halt || ext_read) {
+	} else if (halt && ext_read) {
 		vfe_dev->axi_data.src_info[VFE_PIX_0].active = 0;
+		vfe_dev->fetch_engine_info.is_busy = 0;
 	}
 	msm_isp_update_camif_output_count(vfe_dev, stream_cfg_cmd);
 	msm_isp_update_stream_bandwidth(vfe_dev);
