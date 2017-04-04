@@ -2183,6 +2183,48 @@ static void msm_isp_enqueue_tasklet_cmd(struct vfe_device *vfe_dev,
 	tasklet_schedule(&vfe_dev->vfe_tasklet);
 }
 
+static void msm_isp_set_scratch_buf(struct vfe_device *vfe_dev,
+	uint32_t irq_status0, uint32_t irq_status1)
+{
+	int i;
+	uint32_t comp_mask = 0;
+	uint32_t wm_mask = 0;
+	uint32_t pingpong_status = 0;
+	uint32_t pingpong_bit = 0;
+	struct msm_vfe_axi_composite_info *comp_info;
+
+	if (!vfe_dev->axi_data.controllable_output_comp_mask)
+		return;
+
+	comp_mask = vfe_dev->hw_info->vfe_ops.axi_ops.
+		get_comp_mask(irq_status0, irq_status1);
+	wm_mask = vfe_dev->hw_info->vfe_ops.axi_ops.
+		get_wm_mask(irq_status0, irq_status1);
+	if (!(comp_mask || wm_mask))
+		return;
+
+	pingpong_status =
+		vfe_dev->hw_info->vfe_ops.axi_ops.get_pingpong_status(vfe_dev);
+
+	for (i = 0; i < vfe_dev->axi_data.hw_info->num_comp_mask; i++)
+		if (comp_mask & (1 << i)) {
+			comp_info = &vfe_dev->axi_data.composite_info[i];
+			wm_mask |= comp_info->stream_composite_mask;
+		}
+
+	wm_mask &= vfe_dev->axi_data.controllable_output_comp_mask;
+	if (!wm_mask)
+		return;
+
+	for (i = 0; i < vfe_dev->axi_data.hw_info->num_wm; i++)
+		if (wm_mask & (1 << i)) {
+			pingpong_bit = (pingpong_status >> i) & 0x1;
+			vfe_dev->hw_info->vfe_ops.axi_ops.update_ping_pong_addr(
+				vfe_dev->vfe_base, i, pingpong_bit,
+				vfe_dev->buf_mgr->scratch_buf_addr);
+		}
+}
+
 irqreturn_t msm_isp_process_irq(int irq_num, void *data)
 {
 	struct vfe_device *vfe_dev = (struct vfe_device *) data;
@@ -2210,6 +2252,8 @@ irqreturn_t msm_isp_process_irq(int irq_num, void *data)
 	if (!vfe_dev->ignore_error &&
 		((error_mask0 != 0) || (error_mask1 != 0)))
 		msm_isp_update_error_info(vfe_dev, error_mask0, error_mask1);
+
+	msm_isp_set_scratch_buf(vfe_dev, irq_status0, irq_status1);
 
 	if ((irq_status0 == 0) && (irq_status1 == 0) &&
 		(!(((error_mask0 != 0) || (error_mask1 != 0)) &&
