@@ -795,12 +795,22 @@ void msm_isp_notify(struct vfe_device *vfe_dev, uint32_t event_type,
 	struct msm_isp_event_data event_data;
 	struct msm_vfe_sof_info *sof_info = NULL, *self_sof = NULL;
 	enum msm_vfe_dual_hw_ms_type ms_type;
+	struct msm_vfe_axi_shared_data *axi_data = &vfe_dev->axi_data;
 	int i, j;
 
 	memset(&event_data, 0, sizeof(event_data));
 
 	switch (event_type) {
 	case ISP_EVENT_SOF:
+		for (i = 0; i < VFE_AXI_SRC_MAX; i++) {
+			if (SRC_TO_INTF(axi_data->stream_info[i].stream_src) ==
+				frame_src) {
+				/* update ping pong bit for controllable */
+				/* output */
+				axi_data->stream_info[i].sw_sof_ping_pong_bit =
+				      axi_data->stream_info[i].sw_ping_pong_bit;
+			}
+		}
 		if (frame_src == VFE_PIX_0) {
 			if (vfe_dev->isp_sof_debug < ISP_SOF_DEBUG_COUNT)
 				pr_err("%s: PIX0 frame id: %u\n", __func__,
@@ -3142,9 +3152,12 @@ int msm_isp_request_frame(struct vfe_device *vfe_dev, void *arg)
 				dual_vfe_res->wm_reload_mask[vfe_id] = 0;
 			}
 			stream_info->sw_ping_pong_bit = 0;
+			stream_info->sw_sof_ping_pong_bit = 0;
 		} else if (stream_info->undelivered_request_cnt == 2) {
-			pingpong_status = vfe_dev->hw_info->vfe_ops.axi_ops.
-				get_pingpong_status(vfe_dev);
+			if (stream_info->sw_sof_ping_pong_bit)
+				pingpong_status = VFE_PING_FLAG;
+			else
+				pingpong_status = VFE_PONG_FLAG;
 
 			rc = msm_isp_cfg_ping_pong_address(vfe_dev, stream_info,
 				pingpong_status, 1, 1, 0);
