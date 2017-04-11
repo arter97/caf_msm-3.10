@@ -362,6 +362,7 @@ struct msm_vfe_axi_frame_request_info {
   uint32_t stream_handle;
   uint32_t user_stream_id;
   uint32_t frame_id;
+  uint32_t drop_frame;
 };
 
 struct msm_vfe_axi_frame_request_cmd {

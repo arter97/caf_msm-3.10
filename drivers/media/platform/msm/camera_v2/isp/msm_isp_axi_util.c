@@ -3043,11 +3043,20 @@ int msm_isp_request_frame(struct vfe_device *vfe_dev, void *arg)
 		}
 
 		frame_src = SRC_TO_INTF(stream_info->stream_src);
-
+		if (fr_info->drop_frame) {
+			rc = msm_isp_return_empty_buffer(vfe_dev, stream_info,
+				fr_info->user_stream_id, fr_info->frame_id,
+				frame_src);
+			if (rc < 0)
+				pr_err("%s:%d failed: return_empty_buffer src %d\n",
+					__func__, __LINE__, frame_src);
+			spin_unlock_irqrestore(&stream_info->lock, flags);
+			continue;
+		}
 		if (((frame_src == VFE_PIX_0) && (fr_info->frame_id <=
 			axi_data->src_info[frame_src].frame_id)) ||
 			stream_info->undelivered_request_cnt >= 2) {
-			pr_debug("%s:%d invalid request_frame %d cur frame id %d\n",
+			pr_err("%s:%d invalid request_frame %d cur frame id %d\n",
 				__func__, __LINE__, fr_info->frame_id,
 				vfe_dev->axi_data.src_info[frame_src].frame_id);
 			rc = msm_isp_return_empty_buffer(vfe_dev, stream_info,
