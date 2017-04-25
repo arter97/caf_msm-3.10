@@ -705,17 +705,17 @@ static void msm_vfe40_process_reg_update(struct vfe_device *vfe_dev,
 					EXTERNAL_READ)
 					break;
 
-				msm_isp_notify(vfe_dev, ISP_EVENT_SOF, i, ts);
 				msm_isp_update_framedrop_reg(vfe_dev, i);
+				msm_isp_notify(vfe_dev, ISP_EVENT_SOF, i, ts);
 				msm_isp_update_stats_framedrop_reg(vfe_dev);
 				msm_isp_update_error_frame_count(vfe_dev);
 				break;
 			case VFE_RAW_0:
 			case VFE_RAW_1:
 			case VFE_RAW_2:
+				msm_isp_update_framedrop_reg(vfe_dev, i);
 				msm_isp_increment_frame_id(vfe_dev, i, ts);
 				msm_isp_notify(vfe_dev, ISP_EVENT_SOF, i, ts);
-				msm_isp_update_framedrop_reg(vfe_dev, i);
 				/*
 				 * Reg Update is pseudo SOF for RDI,
 				 * so request every frame
@@ -795,9 +795,9 @@ static void msm_vfe40_process_epoch_irq(struct vfe_device *vfe_dev,
 		return;
 
 	if (irq_status0 & BIT(2)) {
-		msm_isp_notify(vfe_dev, ISP_EVENT_SOF, VFE_PIX_0, ts);
 		ISP_DBG("%s: EPOCH0 IRQ\n", __func__);
 		msm_isp_update_framedrop_reg(vfe_dev, VFE_PIX_0);
+		msm_isp_notify(vfe_dev, ISP_EVENT_SOF, VFE_PIX_0, ts);
 		msm_isp_update_stats_framedrop_reg(vfe_dev);
 		msm_isp_update_error_frame_count(vfe_dev);
 		if (vfe_dev->axi_data.src_info[VFE_PIX_0].raw_stream_count > 0
