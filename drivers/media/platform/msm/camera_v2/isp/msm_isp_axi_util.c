@@ -1125,6 +1125,12 @@ int msm_isp_request_axi_stream(struct vfe_device *vfe_dev, void *arg)
 		vfe_dev->hw_info->vfe_ops.axi_ops.
 			cfg_wm_xbar_reg(vfe_dev, stream_info, i);
 	}
+
+	if (stream_info->controllable_output)
+		for (i = 0; i < stream_info->num_planes; i++)
+			vfe_dev->axi_data.controllable_output_comp_mask |=
+				1 << stream_info->wm[i];
+
 	return rc;
 }
 
@@ -1153,6 +1159,11 @@ int msm_isp_release_axi_stream(struct vfe_device *vfe_dev, void *arg)
 		stream_cfg.stream_handle[0] = stream_release_cmd->stream_handle;
 		msm_isp_cfg_axi_stream(vfe_dev, (void *) &stream_cfg);
 	}
+
+	if (stream_info->controllable_output)
+		for (i = 0; i < stream_info->num_planes; i++)
+			vfe_dev->axi_data.controllable_output_comp_mask &=
+				~(1 << stream_info->wm[i]);
 
 	for (i = 0; i < stream_info->num_planes; i++) {
 		vfe_dev->hw_info->vfe_ops.axi_ops.

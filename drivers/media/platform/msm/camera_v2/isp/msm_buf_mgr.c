@@ -1244,6 +1244,73 @@ static void msm_isp_release_all_bufq(
 	}
 }
 
+
+/**
+ * msm_isp_buf_put_scratch() - Release scratch buffers
+ * @buf_mgr: The buffer structure for h/w
+ *
+ * Returns 0 on success else error code
+ */
+static int msm_isp_buf_put_scratch(struct msm_isp_buf_mgr *buf_mgr)
+{
+	int iommu_hdl;
+	int rc = 0;
+
+	if (buf_mgr->secure_enable == NON_SECURE_MODE)
+		iommu_hdl = buf_mgr->ns_iommu_hdl;
+	else
+		iommu_hdl = buf_mgr->sec_iommu_hdl;
+
+	if (!buf_mgr->scratch_buf_addr)
+		return 0;
+
+	rc = cam_smmu_put_phy_addr_scratch(iommu_hdl,
+		buf_mgr->scratch_buf_addr);
+	if (rc)
+		pr_err("%s: failed to put scratch buffer to img iommu: %d\n",
+			__func__, rc);
+	else
+		buf_mgr->scratch_buf_addr = 0;
+
+	return rc;
+}
+
+/**
+ * msm_isp_buf_get_scratch() - Create scratch buffers
+ * @buf_mgr: The buffer structure for h/w
+ *
+ * Create and map scratch buffers for all IOMMU's under the buffer
+ * manager.
+ *
+ * Returns 0 on success else error code
+ */
+static int msm_isp_buf_get_scratch(struct msm_isp_buf_mgr *buf_mgr)
+{
+	int iommu_hdl;
+	int rc = 0;
+
+	if (buf_mgr->secure_enable == NON_SECURE_MODE)
+		iommu_hdl = buf_mgr->ns_iommu_hdl;
+	else
+		iommu_hdl = buf_mgr->sec_iommu_hdl;
+
+	if (buf_mgr->scratch_buf_addr || !buf_mgr->scratch_buf_range)
+		/* already mapped or not supported */
+		return 0;
+
+	rc = cam_smmu_get_phy_addr_scratch(
+				iommu_hdl,//buf_mgr->img_iommu_hdl,
+				CAM_SMMU_MAP_RW,
+				&buf_mgr->scratch_buf_addr,
+				buf_mgr->scratch_buf_range,
+				SZ_4K);
+	if (rc)
+		pr_err("%s: failed to map scratch buffer to img iommu: %d\n",
+			__func__, rc);
+
+	return rc;
+}
+
 int msm_isp_smmu_attach(struct msm_isp_buf_mgr *buf_mgr,
 	void *arg)
 {
@@ -1266,29 +1333,42 @@ int msm_isp_smmu_attach(struct msm_isp_buf_mgr *buf_mgr,
 			pr_err("%s: Error! Invalid request for secure ctx\n",
 				__func__);
 			rc = -1;
-			goto iommu_error;
+			goto exit;
 		}
 		if (buf_mgr->attach_ref_cnt == 0) {
 			rc = cam_smmu_ops(iommu_hdl, CAM_SMMU_ATTACH);
 			if (rc < 0) {
 				pr_err("%s: smmu attach error, rc :%d\n",
 					__func__, rc);
-				goto iommu_error;
+				goto exit;
+			}
+			rc = msm_isp_buf_get_scratch(buf_mgr);
+			if (rc) {
+				pr_err("%s: error get scratch buffer, rc :%d\n",
+					__func__, rc);
+				goto err;
 			}
 		}
 		buf_mgr->attach_ref_cnt++;
 	} else {
-		if (buf_mgr->secure_enable == NON_SECURE_MODE)
-			iommu_hdl = buf_mgr->ns_iommu_hdl;
-		else
-			iommu_hdl = buf_mgr->sec_iommu_hdl;
-
 		if (buf_mgr->attach_ref_cnt == 1) {
+			rc = msm_isp_buf_put_scratch(buf_mgr);
+			if (rc) {
+				pr_err("%s: error put scratch buffer, rc :%d\n",
+					__func__, rc);
+				goto exit;
+			}
+
+			if (buf_mgr->secure_enable == NON_SECURE_MODE)
+				iommu_hdl = buf_mgr->ns_iommu_hdl;
+			else
+				iommu_hdl = buf_mgr->sec_iommu_hdl;
+
 			rc = cam_smmu_ops(iommu_hdl, CAM_SMMU_DETACH);
 			if (rc < 0) {
 				pr_err("%s: smmu detach error, rc :%d\n",
 					__func__, rc);
-				goto iommu_error;
+				goto exit;
 			}
 		}
 		if (buf_mgr->attach_ref_cnt > 0)
@@ -1297,7 +1377,12 @@ int msm_isp_smmu_attach(struct msm_isp_buf_mgr *buf_mgr,
 			pr_err("%s: Error! Invalid ref_cnt\n", __func__);
 	}
 
-iommu_error:
+exit:
+	mutex_unlock(&buf_mgr->lock);
+	return rc;
+err:
+	if (cam_smmu_ops(iommu_hdl, CAM_SMMU_DETACH))
+		pr_err("%s: img smmu detach error\n", __func__);
 	mutex_unlock(&buf_mgr->lock);
 	return rc;
 }
@@ -1370,6 +1455,8 @@ static int msm_isp_deinit_isp_buf_mgr(
 	kfree(buf_mgr->bufq);
 	buf_mgr->num_buf_q = 0;
 	buf_mgr->pagefault_debug = 0;
+
+	msm_isp_buf_put_scratch(buf_mgr);
 	mutex_unlock(&buf_mgr->lock);
 	cam_smmu_destroy_handle(buf_mgr->ns_iommu_hdl);
 	cam_smmu_destroy_handle(buf_mgr->sec_iommu_hdl);
@@ -1496,7 +1583,8 @@ static struct msm_isp_buf_ops isp_buf_ops = {
 int msm_isp_create_isp_buf_mgr(
 	struct msm_isp_buf_mgr *buf_mgr,
 	struct msm_sd_req_vb2_q *vb2_ops,
-	struct device *dev)
+	struct device *dev,
+	uint32_t scratch_buf_range)
 {
 	int rc = 0;
 	if (buf_mgr->init_done)
@@ -1508,6 +1596,7 @@ int msm_isp_create_isp_buf_mgr(
 	buf_mgr->pagefault_debug = 0;
 	buf_mgr->secure_enable = NON_SECURE_MODE;
 	buf_mgr->attach_state = MSM_ISP_BUF_MGR_DETACH;
+	buf_mgr->scratch_buf_range = scratch_buf_range;
 	mutex_init(&buf_mgr->lock);
 	spin_lock_init(&buf_mgr->bufq_list_lock);
 

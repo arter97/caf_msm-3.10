@@ -295,6 +295,7 @@
 			iommus = <&apps_iommu 0x400>,
 						<&apps_iommu 0x3400>;
 			label = "vfe";
+			qcom,scratch-buf-support;
 		};
 
 		msm_cam_smmu_cb2: msm_cam_smmu_cb2 {
