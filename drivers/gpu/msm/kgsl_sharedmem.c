@@ -1,4 +1,5 @@
 /* Copyright (c) 2002,2007-2016, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -964,6 +965,9 @@ int kgsl_cma_alloc_secure(struct kgsl_device *device,
 
 	/* Align size to 1M boundaries */
 	size = ALIGN(size, SZ_1M);
+
+	if (size > UINT_MAX)
+		return -EINVAL;
 
 	memdesc->size = size;
 	memdesc->pagetable = pagetable;
